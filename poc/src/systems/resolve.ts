@@ -36,6 +36,12 @@ const PROFESSION_INCOME: Record<string, number> = {
   hunter: 4,
 };
 
+/** Nudge an actor's belonging need (companionship is built and frayed socially). */
+function bumpBelonging(world: World, id: EntityId, delta: number): void {
+  const n = world.needs.get(id);
+  if (n) n.belonging = clamp(n.belonging + delta, 0, 1000);
+}
+
 /** Apply a chosen intent's effects, drawing randomness from `rng`. ONE rule set —
  *  no `if (isPlayer)` below. */
 export function resolveIntent(world: World, a: EntityId, intent: Intent, rng: Rng): void {
@@ -100,6 +106,9 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
 
   // every encounter leaves a small routine thought (RimWorld's "chitchat")
   addThought(edge, positive ? 'bonded' : 'quarrelled', world.tick);
+  // companionship is built (or frayed) by spending time together — both feel it
+  bumpBelonging(world, a, positive ? 34 : -12);
+  bumpBelonging(world, b, positive ? 34 : -12);
 
   // a *notable* encounter is recorded as an event AND a stronger thought — but only
   // while the bond is still forming, so settled relationships don't flood history.
@@ -125,6 +134,8 @@ function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   addThought(edge, 'kindness', world.tick, { cause: emit(world, 'kindness', [a, b]) });
+  bumpBelonging(world, a, 30);
+  bumpBelonging(world, b, 30);
   promote(world, a, b, edge, rng);
 }
 
@@ -133,6 +144,8 @@ function resolveProvoke(world: World, a: EntityId, b: EntityId, rng: Rng): void 
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   addThought(edge, 'slighted', world.tick, { cause: emit(world, 'dispute', [a, b]) });
+  bumpBelonging(world, a, -16);
+  bumpBelonging(world, b, -16);
   promote(world, a, b, edge, rng);
 }
 

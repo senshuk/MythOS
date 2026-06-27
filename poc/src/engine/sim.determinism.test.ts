@@ -665,3 +665,30 @@ describe('director (storyteller)', () => {
     expect(run('grim')).not.toBe(run('gentle')); // a different storyteller => a different world
   });
 });
+
+// ---- audit fixes (logic-bug regressions) ----
+
+describe('audit fixes', () => {
+  it('the player is never involuntarily emigrated out of the focused settlement', () => {
+    const w = createWorld(2024);
+    runYears(w, 5);
+    const young = fullActors(w).find((i) => {
+      const a = w.lifecycle.get(i)!.ageYears;
+      return a >= 18 && a <= 30;
+    })!;
+    possess(w, young);
+    runYears(w, 25); // migration fires yearly; without the guard the player could be moved
+    if (w.lifecycle.get(young)!.alive) {
+      expect(w.fidelity.get(young)).toBe('full');
+      expect(w.homeSettlement.get(young)).toBe(w.focusedSettlementId);
+    }
+  });
+
+  it('rule passes to a real local heir in the focused settlement (an actor can rise to rule)', () => {
+    const w = createWorld(2024);
+    runYears(w, 70); // long enough for at least one succession
+    const rulerId = w.settlements[w.focusedSettlementId].currentRulerId!;
+    expect(w.identity.has(rulerId)).toBe(true); // a simulated actor, not a minted stranger
+    expect(w.figures.some((f) => f.id === rulerId && f.role === 'ruler')).toBe(true);
+  });
+});

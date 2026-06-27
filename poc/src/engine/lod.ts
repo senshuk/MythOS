@@ -629,8 +629,11 @@ export function migrationYearly(world: World): void {
   const rng = world.rng;
   const focusedId = world.focusedSettlementId;
 
-  // EMIGRATION: a few adults leave the focused settlement to live elsewhere
-  const leavers = fullActors(world).filter((id) => world.lifecycle.get(id)!.ageYears >= ADULT_AGE);
+  // EMIGRATION: a few adults leave the focused settlement to live elsewhere.
+  // The player is never moved involuntarily — leaving is their choice (travel).
+  const leavers = fullActors(world).filter(
+    (id) => id !== world.playerId && world.lifecycle.get(id)!.ageYears >= ADULT_AGE,
+  );
   const emigrants = Math.min(rng.int(3), leavers.length); // 0..2
   for (let i = 0; i < emigrants; i++) {
     const id = leavers[rng.int(leavers.length)];
