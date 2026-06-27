@@ -8,6 +8,7 @@
 import { useMemo, useState } from 'react';
 import type { ActorView, EventView, PlayerView, NeedKey } from '../engine/model';
 import type { Intent } from '../engine/intent';
+import { NEEDS } from '../content/fixture';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -474,7 +475,7 @@ function Dashboard({
   );
 }
 
-const NEED_BARS: NeedKey[] = ['food', 'wealth', 'safety', 'esteem', 'belonging'];
+const NEED_BARS: NeedKey[] = NEEDS; // the pack's need vector (content/fixture)
 
 function PlayerPanel({
   player,

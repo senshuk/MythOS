@@ -33,7 +33,7 @@ import { setStoryteller } from './director';
 import { renderEvent } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -222,7 +222,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
       wealth: Math.round(s.econ.wealth),
-      foodSecurity: pop > 0 ? s.econ.stock.food / pop : 0,
+      foodSecurity: pop > 0 ? s.econ.stock[SUBSISTENCE_RESOURCE] / pop : 0,
       prices: { ...s.econ.price },
     };
   });
@@ -567,8 +567,8 @@ export function canonicalize(world: World): string {
       `@${s.id}:${s.name}.det${s.detailed ? 1 : 0}.ep${s.epoch}.rng${s.rngState}.ruin${s.ruinedYear ?? -1}.gov${s.governmentId}.rl${s.currentRulerId ?? -1}.` +
         `pop${m.population}.c${m.children}.a${m.adults}.e${m.elders}.stab${m.stability}.` +
         `dom${m.dominantSpecies}.spec${s.econ.specialization}.w${Math.round(s.econ.wealth)}.` +
-        `sf${Math.round(s.econ.stock.food)}.sm${Math.round(s.econ.stock.materials)}.sg${Math.round(s.econ.stock.goods)}.` +
-        `pf${Math.round(s.econ.price.food * 100)}.pm${Math.round(s.econ.price.materials * 100)}.pg${Math.round(s.econ.price.goods * 100)}`,
+        // resources serialized generically over the pack's RESOURCES vector
+        RESOURCES.map((r) => `s_${r}${Math.round(s.econ.stock[r] ?? 0)}.p_${r}${Math.round((s.econ.price[r] ?? 0) * 100)}`).join('.'),
     );
   }
   for (const e of world.edges) {

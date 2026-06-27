@@ -15,7 +15,7 @@
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, fullName, emit } from './world';
-import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor, hasLeader } from '../content/fixture';
+import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor, hasLeader, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 
 export type AspirationKind =
   | 'survive'
@@ -118,8 +118,8 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
 
   // thresholds match decide.ts's subsistence gate, so a hungry actor's surfaced
   // goal and its forced action agree.
-  if (needs.food < 300) return { kind: 'survive', action: 'work' };
-  if (needs.wealth < 250) return { kind: 'prosper', action: 'work' };
+  if (needs[SUBSISTENCE_NEED] < 300) return { kind: 'survive', action: 'work' };
+  if (needs[WEALTH_NEED] < 250) return { kind: 'prosper', action: 'work' };
 
   // pair-bonding species seek a mate; asexual ones (who breed alone) never do.
   if (pairBondsFor(idn.speciesId) && lc.ageYears >= maturityOf(idn.speciesId) && ties.spouse === undefined) {
@@ -141,7 +141,7 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   // engine reads `ambition` + the government's succession, never a specific id.
   if (ambitionOf(traits) > 0 && canSeekRule(world, id) && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
 
-  if (needs.belonging < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
+  if (needs[SOCIAL_NEED] < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
     return { kind: 'belonging', action: 'socialize' };
   }
 

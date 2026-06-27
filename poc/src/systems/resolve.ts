@@ -19,7 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
 import { ageCompatible } from '../engine/aspiration';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity, professionIncomeOf, unionViable } from '../content/fixture';
+import { pairAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
 // opinion scale produced by the thought model (see opinion.ts).
@@ -31,7 +31,7 @@ const MARRY_AT = 310;
 /** Nudge an actor's belonging need (companionship is built and frayed socially). */
 function bumpBelonging(world: World, id: EntityId, delta: number): void {
   const n = world.needs.get(id);
-  if (n) n.belonging = clamp(n.belonging + delta, 0, 1000);
+  if (n) n[SOCIAL_NEED] = clamp(n[SOCIAL_NEED] + delta, 0, 1000);
 }
 
 /** Apply a chosen intent's effects, drawing randomness from `rng`. ONE rule set —
@@ -75,8 +75,8 @@ export function resolvePlayerIntent(world: World, a: EntityId, intent: Intent): 
 function resolveWork(world: World, a: EntityId): void {
   const n = world.needs.get(a)!;
   const prof = world.profession.get(a)!;
-  n.food = clamp(n.food + 140, 0, 1000);
-  n.wealth = clamp(n.wealth + professionIncomeOf(prof) * 7, 0, 1000);
+  n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] + 140, 0, 1000);
+  n[WEALTH_NEED] = clamp(n[WEALTH_NEED] + professionIncomeOf(prof) * 7, 0, 1000);
 }
 
 /**

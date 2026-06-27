@@ -151,6 +151,18 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   the engine applies them generically. `EventType` is an open string, so a pack can emit
   kinds the engine never declared (a `warp_jump`, a `schism`) and they render and score
   from pack data. No medieval-English wording is baked into `engine/`.
+- **Government is data, not a hardcoded dynasty** — each polity carries a `Government`
+  whose `succession` the engine dispatches on: **hereditary** (a ruler reigns until death,
+  then an heir rises — a dynasty), **elected** (a leader serves a term, then steps down
+  *alive* and a new one is chosen — no dynasty), or **none** (a leaderless hive/free folk
+  with no ruler at all). Leader titles ('Lord', 'Speaker', 'High Priest') are data too. So
+  a single world grows monarchies, rotating councils, and leaderless polities side by side.
+- **Resources and needs are pack vectors** — the economy runs over a pack-defined
+  `RESOURCES` set (so a sci-fi pack could swap in `energy`/`data`/`alloys`), and an actor's
+  `NEEDS` are likewise pack data. The engine reads the few behaviourally-wired ones by
+  **role** — `SUBSISTENCE_RESOURCE` (its depletion causes famine), `PREMIUM_RESOURCE`,
+  `SUBSISTENCE_NEED`, `WEALTH_NEED`, `SOCIAL_NEED` — never by a literal `'food'`. A pack can
+  add a new resource or need (e.g. `faith`) and the engine carries it through untouched.
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
   species/professions/traits, **with their effects as data**: a profession carries its
   `income`, a trait carries its `ambition` (drive to rule), and the engine reads those
@@ -171,7 +183,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects/reproduction/narrative gate (78 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/reproduction/narrative/government/resource-need gate (83 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

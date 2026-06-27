@@ -11,8 +11,9 @@
  *
  * Unmet needs feed the decider (decide.ts) and aspirations (aspiration.ts).
  */
-import { type World, NEED_KEYS } from '../engine/model';
+import { type World } from '../engine/model';
 import { fullActors, relCount, clamp } from '../engine/world';
+import { NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
 
 /** Move a value a fraction of the way toward a target (deterministic easing). */
 function drift(v: number, target: number, rate: number): number {
@@ -26,14 +27,14 @@ export function needsDaily(world: World): void {
 
   for (const id of fullActors(world)) {
     const n = world.needs.get(id)!;
-    // consumption & cost-of-living
-    n.food = clamp(n.food - 4, 0, 1000);
-    n.wealth = clamp(n.wealth - 1, 0, 1000);
-    n.belonging = clamp(n.belonging - 1, 0, 1000); // loneliness; socializing rebuilds it (resolve.ts)
+    // consumption & cost-of-living (engine reads needs by ROLE, not a literal id)
+    n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] - 4, 0, 1000);
+    n[WEALTH_NEED] = clamp(n[WEALTH_NEED] - 1, 0, 1000);
+    n[SOCIAL_NEED] = clamp(n[SOCIAL_NEED] - 1, 0, 1000); // loneliness; socializing rebuilds it (resolve.ts)
     // circumstantial needs drift toward where the actor's life puts them
-    n.safety = clamp(drift(n.safety, safetyTarget, 0.05), 0, 1000);
+    n[SAFETY_NEED] = clamp(drift(n[SAFETY_NEED], safetyTarget, 0.05), 0, 1000);
     const standing = clamp(250 + Math.min(relCount(world, id), 16) * 30 + (world.ties.get(id)!.spouse !== undefined ? 120 : 0), 0, 1000);
-    n.esteem = clamp(drift(n.esteem, standing, 0.04), 0, 1000);
-    for (const k of NEED_KEYS) n[k] = clamp(n[k], 0, 1000);
+    n[ESTEEM_NEED] = clamp(drift(n[ESTEEM_NEED], standing, 0.04), 0, 1000);
+    for (const k of NEEDS) n[k] = clamp(n[k], 0, 1000);
   }
 }

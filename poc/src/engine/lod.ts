@@ -22,9 +22,7 @@ import {
   type MacroPop,
   type RegionEdge,
   type Economy,
-  type ResourceKey,
   type EntityId,
-  RESOURCE_KEYS,
   DAYS_PER_YEAR,
 } from './model';
 import { Rng, mixSeed } from './rng';
@@ -55,6 +53,10 @@ import {
   unionViable,
   pickGovernment,
   hasLeader,
+  RESOURCES,
+  SUBSISTENCE_RESOURCE,
+  PREMIUM_RESOURCE,
+  SUBSISTENCE_NEED,
   PRODUCTION,
   CONSUMPTION,
   BASE_PRICE,
@@ -180,7 +182,7 @@ function freshBands(pop: number, dominant: string, rng: Rng): MacroPop {
 const round2 = (x: number) => Math.round(x * 100) / 100;
 
 function computePrices(e: Economy, pop: number): void {
-  for (const r of RESOURCE_KEYS) {
+  for (const r of RESOURCES) {
     const desired = CONSUMPTION[r] * pop * 2; // a 2-year buffer is "fair value"
     e.price[r] = round2(BASE_PRICE[r] * clamp(desired / (e.stock[r] + 1), 0.4, 3.5));
   }
@@ -188,9 +190,13 @@ function computePrices(e: Economy, pop: number): void {
 
 function initEconomy(gen: Rng, pop: number): Economy {
   const specialization = pickSpecialization(gen);
-  const stock = {} as Record<ResourceKey, number>;
-  for (const r of RESOURCE_KEYS) stock[r] = Math.round(CONSUMPTION[r] * pop * (1.2 + gen.next() * 0.8));
-  const econ: Economy = { specialization, stock, price: { food: 0, materials: 0, goods: 0 }, wealth: gen.range(50, 400) };
+  const stock: Record<string, number> = {};
+  const price: Record<string, number> = {};
+  for (const r of RESOURCES) {
+    stock[r] = Math.round(CONSUMPTION[r] * pop * (1.2 + gen.next() * 0.8));
+    price[r] = 0;
+  }
+  const econ: Economy = { specialization, stock, price, wealth: gen.range(50, 400) };
   computePrices(econ, pop);
   return econ;
 }
@@ -542,12 +548,12 @@ export function economyYearly(world: World): void {
     const pop = popOf(s);
     if (pop <= 0) continue;
     const e = s.econ;
-    for (const r of RESOURCE_KEYS) {
+    for (const r of RESOURCES) {
       const prod = PRODUCTION[e.specialization][r] * pop;
       const cons = CONSUMPTION[r] * pop;
       e.stock[r] = Math.max(0, e.stock[r] + prod - cons);
     }
-    e.wealth = Math.max(0, e.wealth * 0.96 + PRODUCTION[e.specialization].goods * pop * BASE_PRICE.goods * 0.03);
+    e.wealth = Math.max(0, e.wealth * 0.96 + PRODUCTION[e.specialization][PREMIUM_RESOURCE] * pop * BASE_PRICE[PREMIUM_RESOURCE] * 0.03);
     computePrices(e, pop);
   }
 
@@ -570,7 +576,7 @@ export function economyYearly(world: World): void {
     const relFactor = clamp((edge.relation + 30) / 100, 0.15, 1);
 
     let value = 0;
-    for (const r of RESOURCE_KEYS) {
+    for (const r of RESOURCES) {
       const seller = A.econ.price[r] <= B.econ.price[r] ? A : B;
       const buyer = seller === A ? B : A;
       const gap = buyer.econ.price[r] - seller.econ.price[r];
@@ -606,7 +612,7 @@ export function economyYearly(world: World): void {
   for (const s of world.settlements) {
     const pop = popOf(s);
     if (pop <= 0) continue;
-    const foodYears = s.econ.stock.food / pop;
+    const foodYears = s.econ.stock[SUBSISTENCE_RESOURCE] / pop;
 
     if (s.detailed) {
       // The focused settlement's economy now shapes the people you're watching:
@@ -620,7 +626,7 @@ export function economyYearly(world: World): void {
       if (foodYears < 0.5) {
         for (const id of fullActors(world)) {
           const n = world.needs.get(id);
-          if (n) n.food = clamp(n.food - 80, 0, 1000); // lean years pinch the larder
+          if (n) n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] - 80, 0, 1000); // lean years pinch the larder
         }
         if (Math.floor(world.tick / DAYS_PER_YEAR) % 4 === 0) {
           emit(world, 'famine', [], { name: s.name, toll: 0 }); // a hunger warning, no deaths

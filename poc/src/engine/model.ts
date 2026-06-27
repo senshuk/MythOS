@@ -14,9 +14,10 @@ export type EntityId = number;
  *  opaque string and dispatches reproduction through the species' Reproduction data. */
 export type Sex = string;
 
-/** The five data-defined needs (kept tiny for the PoC). */
-export const NEED_KEYS = ['food', 'wealth', 'safety', 'esteem', 'belonging'] as const;
-export type NeedKey = (typeof NEED_KEYS)[number];
+/** A need is identified by an open string id; the SET of needs is pack data
+ *  (`content/fixture.ts` NEEDS), and the engine reads behaviourally-wired needs by
+ *  ROLE (SUBSISTENCE_NEED, …) rather than a literal id. */
+export type NeedKey = string;
 export type Needs = Record<NeedKey, number>; // 0..1000
 
 export interface Identity {
@@ -138,9 +139,12 @@ export interface MacroPop {
 
 // ---- economy ----
 
-export const RESOURCE_KEYS = ['food', 'materials', 'goods'] as const;
-export type ResourceKey = (typeof RESOURCE_KEYS)[number];
-export type Specialization = 'farming' | 'mining' | 'crafting' | 'balanced';
+/** Resources and specializations are open string ids; the SETS are pack data
+ *  (`content/fixture.ts` RESOURCES / SPECIALIZATIONS). The engine's economy operates
+ *  over the resource vector generically and reads role resources (SUBSISTENCE_RESOURCE,
+ *  PREMIUM_RESOURCE) by name from the pack. */
+export type ResourceKey = string;
+export type Specialization = string;
 
 /** A settlement's local economy: what it has, what it's worth there, how rich it is. */
 export interface Economy {

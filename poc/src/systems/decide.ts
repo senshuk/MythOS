@@ -16,7 +16,7 @@ import { type World, type EntityId } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { currentAspiration } from '../engine/aspiration';
 import { isAlive } from '../engine/world';
-import { maturityOf } from '../content/fixture';
+import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED } from '../content/fixture';
 
 export function isAdult(world: World, id: EntityId): boolean {
   return world.lifecycle.get(id)!.ageYears >= maturityOf(world.identity.get(id)!.speciesId);
@@ -43,7 +43,7 @@ export function choosePartner(world: World, a: EntityId, adults: EntityId[]): En
 export function decideActor(world: World, a: EntityId, adults: EntityId[]): Intent {
   // subsistence first: hunger (or poverty) motivates plying your profession.
   const needs = world.needs.get(a)!;
-  if (needs.food < 300 || needs.wealth < 250) return { kind: 'work' };
+  if (needs[SUBSISTENCE_NEED] < 300 || needs[WEALTH_NEED] < 250) return { kind: 'work' };
 
   // pursue the current aspiration (pure function of state — character arcs).
   const asp = currentAspiration(world, a);

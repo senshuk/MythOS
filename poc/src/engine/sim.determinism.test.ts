@@ -26,7 +26,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -662,6 +662,39 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('resources & needs are pack-defined vectors (engine reads roles, not literals)', () => {
+  it('the role resources/needs are members of the pack vectors', () => {
+    expect(RESOURCES).toContain(SUBSISTENCE_RESOURCE);
+    expect(RESOURCES).toContain(PREMIUM_RESOURCE);
+    expect(NEEDS).toContain(SUBSISTENCE_NEED);
+    expect(NEEDS).toContain(WEALTH_NEED);
+    expect(NEEDS).toContain(SOCIAL_NEED);
+  });
+
+  it('a settlement economy covers the whole RESOURCES vector', () => {
+    const w = createWorld(1);
+    for (const s of w.settlements) {
+      for (const r of RESOURCES) {
+        expect(typeof s.econ.stock[r]).toBe('number');
+        expect(typeof s.econ.price[r]).toBe('number');
+      }
+    }
+  });
+
+  it('the engine initializes actors over the pack NEEDS vector — including a pack-added need', () => {
+    NEEDS.push('faith'); // a pack introduces a need the engine never declared
+    try {
+      const w = createWorld(1); // focused world materializes actors
+      const id = fullActors(w)[0];
+      const needs = w.needs.get(id)!;
+      for (const k of NEEDS) expect(typeof needs[k]).toBe('number'); // every need present...
+      expect(needs['faith']).toBe(500); // ...including the new one, with no engine change
+    } finally {
+      NEEDS.pop();
+    }
   });
 });
 

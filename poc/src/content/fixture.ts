@@ -338,6 +338,16 @@ export function pickFounderAge(rng: Rng): number {
 // All per-capita-per-year. A settlement's specialization decides what it makes;
 // everyone consumes the same basket, so specialists run surpluses & deficits that
 // drive trade along the region graph.
+//
+// RESOURCES is the pack's resource VECTOR — the engine's economy operates over it
+// generically (produce/consume/price/trade), so a sci-fi pack could swap in
+// {energy, data, alloys}. Two resources carry an engine ROLE, named here so the
+// engine never hardcodes 'food'/'goods': the SUBSISTENCE staple (its depletion
+// causes famine) and the PREMIUM trade good (the main source of accrued wealth).
+
+export const RESOURCES: string[] = ['food', 'materials', 'goods'];
+export const SUBSISTENCE_RESOURCE = 'food'; // running out of this starves a settlement
+export const PREMIUM_RESOURCE = 'goods'; // the high-value good whose production builds wealth
 
 export const SPECIALIZATIONS: Specialization[] = ['farming', 'mining', 'crafting', 'balanced'];
 
@@ -355,3 +365,16 @@ export const BASE_PRICE: Record<ResourceKey, number> = { food: 1, materials: 2, 
 export function pickSpecialization(rng: Rng): Specialization {
   return SPECIALIZATIONS[rng.int(SPECIALIZATIONS.length)];
 }
+
+// ----------------------------------------------------------- needs -----------
+// An actor's drives. NEEDS is the pack's need VECTOR (the engine stores & decays it
+// generically); five of them carry an engine ROLE — named here so the engine reads
+// needs by role, never by a literal id like 'food'. A pack could rename them (a
+// machine's SUBSISTENCE_NEED might be 'power') or add inert flavour needs.
+
+export const NEEDS: string[] = ['food', 'wealth', 'safety', 'esteem', 'belonging'];
+export const SUBSISTENCE_NEED = 'food'; // metabolism drains it; work refills it; hunger drives survival
+export const WEALTH_NEED = 'wealth'; // earned by work, bleeds as cost-of-living; want drives ambition
+export const SOCIAL_NEED = 'belonging'; // loneliness erodes it; socializing rebuilds it
+export const SAFETY_NEED = 'safety'; // drifts toward how stable the home settlement is
+export const ESTEEM_NEED = 'esteem'; // drifts toward the actor's social standing

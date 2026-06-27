@@ -1,7 +1,8 @@
 /**
  * Low-level world operations: id allocation, entity creation, relationship edges,
  * event emission, memory. Pure data mutation — no decision logic (that lives in
- * systems/). Kept free of content imports to avoid cycles.
+ * systems/). The only content it reads is the pack's NEEDS vector, to initialize an
+ * actor's needs (the pack doesn't import world, so there's no cycle).
  */
 import {
   type World,
@@ -11,10 +12,10 @@ import {
   type RelEdge,
   type Sex,
   type Needs,
-  NEED_KEYS,
   DAYS_PER_YEAR,
   MEMORY_LIMIT,
 } from './model';
+import { NEEDS } from '../content/fixture';
 
 export interface ActorProps {
   given: string;
@@ -29,7 +30,7 @@ export interface ActorProps {
 
 export function midNeeds(): Needs {
   const n = {} as Needs;
-  for (const k of NEED_KEYS) n[k] = 500;
+  for (const k of NEEDS) n[k] = 500;
   return n;
 }
 
