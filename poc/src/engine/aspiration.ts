@@ -15,7 +15,7 @@
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, fullName, emit } from './world';
-import { maturityOf, elderhoodOf, fertileWindowOf } from '../content/fixture';
+import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf } from '../content/fixture';
 
 export type AspirationKind =
   | 'survive'
@@ -128,8 +128,10 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   const feud = strongestFeud(world, id);
   if (feud !== undefined) return { kind: 'reconcile', target: feud, action: 'socialize' };
 
-  // ambition: the proud who do not yet rule strive to build standing
-  if (traits.includes('proud') && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
+  // ambition (data-driven): those whose traits carry a drive to lead, and who do
+  // not yet rule, strive to build standing. The engine reads `ambition`, never a
+  // specific trait name.
+  if (ambitionOf(traits) > 0 && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
 
   if (needs.belonging < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
     return { kind: 'belonging', action: 'socialize' };

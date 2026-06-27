@@ -19,7 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
 import { ageCompatible } from '../engine/aspiration';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity } from '../content/fixture';
+import { pairAffinity, professionIncomeOf } from '../content/fixture';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
 // opinion scale produced by the thought model (see opinion.ts).
@@ -27,15 +27,6 @@ const FRIEND_AT = 240;
 const RIVAL_AT = -190;
 const FEUD_AT = -350;
 const MARRY_AT = 310;
-
-const PROFESSION_INCOME: Record<string, number> = {
-  farmer: 3,
-  smith: 5,
-  guard: 4,
-  trader: 6,
-  healer: 4,
-  hunter: 4,
-};
 
 /** Nudge an actor's belonging need (companionship is built and frayed socially). */
 function bumpBelonging(world: World, id: EntityId, delta: number): void {
@@ -85,7 +76,7 @@ function resolveWork(world: World, a: EntityId): void {
   const n = world.needs.get(a)!;
   const prof = world.profession.get(a)!;
   n.food = clamp(n.food + 140, 0, 1000);
-  n.wealth = clamp(n.wealth + (PROFESSION_INCOME[prof] ?? 3) * 7, 0, 1000);
+  n.wealth = clamp(n.wealth + professionIncomeOf(prof) * 7, 0, 1000);
 }
 
 /**

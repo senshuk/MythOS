@@ -90,13 +90,54 @@ export const FAMILY_ROOTS = [
   'Oak', 'Hollow', 'Ridd', 'Garrow', 'Pike', 'Storr', 'Vane',
 ];
 
-export const PROFESSIONS = [
-  'farmer', 'smith', 'guard', 'trader', 'healer', 'hunter',
-] as const;
+export interface Profession {
+  id: string;
+  income: number; // wealth produced per work action — the engine reads this generically
+}
 
-export const TRAITS = [
-  'kind', 'proud', 'hot-tempered', 'loyal', 'greedy', 'curious', 'devout', 'cruel',
-] as const;
+export const PROFESSIONS: Profession[] = [
+  { id: 'farmer', income: 3 },
+  { id: 'smith', income: 5 },
+  { id: 'guard', income: 4 },
+  { id: 'trader', income: 6 },
+  { id: 'healer', income: 4 },
+  { id: 'hunter', income: 4 },
+];
+
+export interface Trait {
+  id: string;
+  /**
+   * Drive to seek power/standing (to rule a settlement). The engine reads this as
+   * DATA — it never hardcodes which trait is "ambitious", so a pack can declare its
+   * own ambitious traits (and to varying degrees) without touching engine code.
+   */
+  ambition: number;
+}
+
+export const TRAITS: Trait[] = [
+  { id: 'kind', ambition: 0 },
+  { id: 'proud', ambition: 1 },
+  { id: 'hot-tempered', ambition: 0 },
+  { id: 'loyal', ambition: 0 },
+  { id: 'greedy', ambition: 0 },
+  { id: 'curious', ambition: 0 },
+  { id: 'devout', ambition: 0 },
+  { id: 'cruel', ambition: 0 },
+];
+
+/** Wealth a profession yields per work action. Neutral fallback for unknown ids, so
+ *  the engine never needs to know the pack's profession names. */
+export function professionIncomeOf(id: string): number {
+  return PROFESSIONS.find((p) => p.id === id)?.income ?? 3;
+}
+
+/** Summed ambition of an actor's traits — the urge to rule. Data-driven: ANY pack
+ *  trait can contribute, not just one the engine knows by name. */
+export function ambitionOf(traitIds: string[]): number {
+  let sum = 0;
+  for (const t of traitIds) sum += TRAITS.find((d) => d.id === t)?.ambition ?? 0;
+  return sum;
+}
 
 /**
  * Trait affinity: how a pair of traits (one from each actor) nudges a social
@@ -157,13 +198,13 @@ export function pickTraits(rng: Rng): string[] {
   const pool = [...TRAITS];
   const out: string[] = [];
   for (let i = 0; i < count && pool.length; i++) {
-    out.push(pool.splice(rng.int(pool.length), 1)[0]);
+    out.push(pool.splice(rng.int(pool.length), 1)[0].id);
   }
   return out;
 }
 
 export function pickProfession(rng: Rng): string {
-  return rng.pick(PROFESSIONS);
+  return rng.pick(PROFESSIONS).id;
 }
 
 /** Founders skew toward working-age adults. */

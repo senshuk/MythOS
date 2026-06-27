@@ -137,7 +137,10 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   a short-lived one mature, reproduce, and die on their **own** schedules instead of
   one hardcoded human calendar — a step toward the engine being truly universe-agnostic.
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
-  species/professions/traits. In the real engine this becomes a Universe Pack.
+  species/professions/traits, **with their effects as data**: a profession carries its
+  `income`, a trait carries its `ambition` (drive to rule), and the engine reads those
+  generically — it never branches on a specific id like `'proud'` or `'farmer'`. In the
+  real engine this whole file becomes a Universe Pack.
 
 ## Scale, concretely
 
@@ -153,7 +156,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species gate (72 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects gate (73 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

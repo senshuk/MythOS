@@ -24,7 +24,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -649,6 +649,19 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('trait & profession effects are pack DATA, not engine branches', () => {
+  it('profession income and trait ambition are read from the pack, with neutral fallbacks', () => {
+    // income lives on the profession (was a hardcoded map in resolve.ts)
+    expect(professionIncomeOf('trader')).toBe(6);
+    expect(professionIncomeOf('farmer')).toBe(3);
+    expect(professionIncomeOf('nonesuch')).toBe(3); // engine never needs to know pack names
+    // ambition lives on the trait (was `traits.includes('proud')` in aspiration/figures)
+    expect(ambitionOf(['proud'])).toBeGreaterThan(0);
+    expect(ambitionOf(['kind', 'loyal'])).toBe(0);
+    expect(ambitionOf(['kind', 'proud'])).toBeGreaterThan(0); // any ambitious trait counts
   });
 });
 

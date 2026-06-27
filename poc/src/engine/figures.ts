@@ -16,7 +16,7 @@ import {
 } from './model';
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
-import { generateGiven, generateFamily, maturityOf } from '../content/fixture';
+import { generateGiven, generateFamily, maturityOf, ambitionOf } from '../content/fixture';
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
  *  founders (worldgen stream) and successions (figure stream) stay deterministic. */
@@ -52,19 +52,20 @@ export function getFigure(world: World, id: FigureId | undefined): HistoricalFig
 }
 
 /** The local heir to a focused settlement's rule: the most prominent living adult,
- *  the ambitious (proud) favoured. Deterministic — no RNG (fullActors is id-order,
- *  strict `>` keeps the lowest-id winner on ties). */
+ *  the more ambitious favoured (ambition is data on their traits, not a hardcoded
+ *  trait name). Deterministic — no RNG (fullActors is id-order, strict `>` keeps the
+ *  lowest-id winner on ties). */
 function chooseHeir(world: World, settlementId: number): EntityId | undefined {
   let best: EntityId | undefined;
-  let bestProud = -1;
+  let bestAmbition = -1;
   let bestTies = -1;
   for (const id of fullActors(world)) {
     if (world.homeSettlement.get(id) !== settlementId) continue;
     if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
-    const proud = world.traits.get(id)!.includes('proud') ? 1 : 0;
+    const ambition = ambitionOf(world.traits.get(id)!);
     const ties = relCount(world, id);
-    if (proud > bestProud || (proud === bestProud && ties > bestTies)) {
-      bestProud = proud;
+    if (ambition > bestAmbition || (ambition === bestAmbition && ties > bestTies)) {
+      bestAmbition = ambition;
       bestTies = ties;
       best = id;
     }
