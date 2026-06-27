@@ -373,6 +373,10 @@ export function fecundityOf(speciesId: string): number {
 export function macroFertilityOf(speciesId: string): number {
   return speciesById(speciesId).reproduction.macroFertility ?? 1;
 }
+/** Does this species pair-bond EXCLUSIVELY (one spouse at a time)? false => polygamy. */
+export function monogamousOf(speciesId: string): boolean {
+  return speciesById(speciesId).reproduction.monogamous;
+}
 /** Can an individual of this species/sex gestate offspring? */
 export function canBear(speciesId: string, sex: string): boolean {
   const r = speciesById(speciesId).reproduction;

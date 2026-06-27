@@ -54,7 +54,7 @@ describe('aspirations', () => {
     const w = createWorld(1);
     runYears(w, 8);
     const id = fullActors(w).find(
-      (i) => w.ties.get(i)!.spouse === undefined && w.lifecycle.get(i)!.ageYears >= ADULT_AGE,
+      (i) => w.ties.get(i)!.spouses.length === 0 && w.lifecycle.get(i)!.ageYears >= ADULT_AGE,
     )!;
     const n = w.needs.get(id)!;
     n.food = 900;
@@ -75,7 +75,7 @@ describe('aspirations', () => {
     const w = createWorld(11);
     runYears(w, 30); // long enough for warm relationships to form
     const withCrush = fullActors(w).find((i) => {
-      if (w.ties.get(i)!.spouse !== undefined) return false;
+      if (w.ties.get(i)!.spouses.length > 0) return false;
       const n = w.needs.get(i)!;
       n.food = 900;
       n.wealth = 900;
@@ -96,7 +96,7 @@ describe('aspirations', () => {
     // wed (some adults are on the 'rule' track instead; this isolates the wed aspiration).
     let single = -1;
     for (const i of fullActors(w)) {
-      if (w.ties.get(i)!.spouse !== undefined || w.lifecycle.get(i)!.ageYears < ADULT_AGE) continue;
+      if (w.ties.get(i)!.spouses.length > 0 || w.lifecycle.get(i)!.ageYears < ADULT_AGE) continue;
       const nd = w.needs.get(i)!;
       nd.food = 900;
       nd.wealth = 900;
@@ -115,7 +115,7 @@ describe('aspirations', () => {
 
     // force the fulfilment condition: they now have a spouse
     const someone = fullActors(w).find((i) => i !== single)!;
-    w.ties.get(single)!.spouse = someone;
+    w.ties.get(single)!.spouses.push(someone);
 
     checkPlayerGoal(w);
     const after = w.events.filter((e) => e.type === 'goal_met').length;

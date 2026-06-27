@@ -6,7 +6,7 @@
  * 'f'-mother / two-parent assumption.
  */
 import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
-import { fullActors, createActor, emit } from '../engine/world';
+import { fullActors, createActor, emit, primarySpouse } from '../engine/world';
 import { killActor } from '../engine/world';
 import {
   speciesById,
@@ -59,7 +59,7 @@ export function lifecycleYearly(world: World): void {
       continue;
     }
     // pair-bonding: needs a living spouse, and exactly ONE partner bears per couple.
-    const spouse = world.ties.get(id)!.spouse;
+    const spouse = primarySpouse(world, id);
     if (spouse === undefined) continue;
     const sp = world.lifecycle.get(spouse)!;
     if (!sp.alive) continue;
@@ -82,7 +82,7 @@ function bear(world: World, bearer: EntityId): void {
   const rng = world.rng;
   const idn = world.identity.get(bearer)!;
   const species = idn.speciesId;
-  const mate = world.ties.get(bearer)!.spouse; // undefined for asexual (solo) births
+  const mate = primarySpouse(world, bearer); // undefined for asexual (solo) births
   const parents = mate !== undefined ? [bearer, mate] : [bearer];
 
   const childId = createActor(world, {

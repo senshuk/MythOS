@@ -15,7 +15,7 @@ import {
   DAYS_PER_YEAR,
   MEMORY_LIMIT,
 } from './model';
-import { NEEDS } from '../content/fixture';
+import { NEEDS, monogamousOf } from '../content/fixture';
 
 export interface ActorProps {
   given: string;
@@ -32,6 +32,36 @@ export function midNeeds(): Needs {
   const n = {} as Needs;
   for (const k of NEEDS) n[k] = 500;
   return n;
+}
+
+/** Is this actor currently wed (to anyone)? */
+export function isWed(world: World, id: EntityId): boolean {
+  return (world.ties.get(id)?.spouses.length ?? 0) > 0;
+}
+
+/** This actor's primary (first) spouse, if any — the partner used where one is needed
+ *  (display, the co-parent of a birth). For a monogamous species this is their spouse. */
+export function primarySpouse(world: World, id: EntityId): EntityId | undefined {
+  return world.ties.get(id)?.spouses[0];
+}
+
+/** May this actor take a(nother) spouse? A monogamous species can only wed when unwed;
+ *  a non-monogamous one always may. This replaces the old "spouse === undefined" gate so
+ *  monogamy is SPECIES DATA, not a hardcoded assumption. */
+export function canTakeSpouse(world: World, id: EntityId): boolean {
+  const t = world.ties.get(id);
+  if (!t) return false;
+  const sp = world.identity.get(id)?.speciesId;
+  if (sp && !monogamousOf(sp)) return true;
+  return t.spouses.length === 0;
+}
+
+/** Remove `other` from `id`'s spouse list (one direction). */
+export function removeSpouse(world: World, id: EntityId, other: EntityId): void {
+  const t = world.ties.get(id);
+  if (!t) return;
+  const i = t.spouses.indexOf(other);
+  if (i >= 0) t.spouses.splice(i, 1);
 }
 
 export function createActor(world: World, p: ActorProps): EntityId {
@@ -53,7 +83,7 @@ export function createActor(world: World, p: ActorProps): EntityId {
   world.needs.set(id, midNeeds());
   world.traits.set(id, [...p.traits]);
   world.profession.set(id, p.profession);
-  world.ties.set(id, { parents: p.parents ? [...p.parents] : [], children: [] });
+  world.ties.set(id, { spouses: [], parents: p.parents ? [...p.parents] : [], children: [] });
   world.memory.set(id, []);
   world.rels.set(id, new Map());
   // new actors are born/created at full fidelity in the focused settlement
@@ -184,11 +214,11 @@ export function killActor(
   const subjects = type === 'died_brawl' ? [id, ...others] : [id];
   emit(world, type, subjects, { age: lc.ageYears }, causes);
 
-  // widow the spouse
-  const spouse = world.ties.get(id)!.spouse;
-  if (spouse !== undefined && world.lifecycle.get(spouse)!.alive) {
-    world.ties.get(spouse)!.spouse = undefined;
-    world.ties.get(id)!.spouse = undefined;
+  // widow every surviving spouse (≤1 for a monogamous species)
+  for (const spouse of [...world.ties.get(id)!.spouses]) {
+    if (!world.lifecycle.get(spouse)!.alive) continue;
+    removeSpouse(world, spouse, id);
+    removeSpouse(world, id, spouse);
     const e = world.rels.get(id)!.get(spouse);
     if (e) e.flags.spouse = false;
     emit(world, 'widowed', [spouse], {}, [world.events[world.events.length - 1].id]);
@@ -216,12 +246,9 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   // player keeps their identity and history no matter which settlement is focused.
   if (id === world.playerId) return;
 
-  // widow a surviving spouse so no dangling spouse reference remains
+  // widow surviving spouses so no dangling spouse reference remains
   const ties = world.ties.get(id);
-  if (ties?.spouse !== undefined) {
-    const sp = world.ties.get(ties.spouse);
-    if (sp && sp.spouse === id) sp.spouse = undefined;
-  }
+  if (ties) for (const spouse of ties.spouses) removeSpouse(world, spouse, id);
   // prune reverse edges so surviving (e.g. summary) actors don't dangle
   const myRels = world.rels.get(id);
   if (myRels) for (const partner of myRels.keys()) world.rels.get(partner)?.delete(id);

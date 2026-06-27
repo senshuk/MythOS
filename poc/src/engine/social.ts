@@ -8,7 +8,7 @@
  */
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
-import { isKin } from './world';
+import { isKin, canTakeSpouse } from './world';
 import { maturityOf, unionViable, hasLeader } from '../content/fixture';
 
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
@@ -30,7 +30,7 @@ export function ageCompatible(world: World, a: EntityId, b: EntityId): boolean {
 /** The warmest eligible match this actor already knows — their emergent "crush". */
 export function bestSuitor(world: World, id: EntityId): EntityId | undefined {
   const me = world.identity.get(id)!;
-  if (world.ties.get(id)!.spouse !== undefined) return undefined;
+  if (!canTakeSpouse(world, id)) return undefined;
   let best: EntityId | undefined;
   let bestOpinion = CRUSH_WARMTH;
   for (const [other, edge] of world.rels.get(id)!) {
@@ -38,7 +38,7 @@ export function bestSuitor(world: World, id: EntityId): EntityId | undefined {
     if (!olc?.alive) continue;
     const oi = world.identity.get(other);
     if (!oi || !unionViable(me.speciesId, me.sex, oi.speciesId, oi.sex)) continue; // species-defined compatibility
-    if (world.ties.get(other)!.spouse !== undefined) continue;
+    if (!canTakeSpouse(world, other)) continue;
     if (!ageCompatible(world, id, other)) continue; // only pine for the marriageable
     if (isKin(world, id, other)) continue;
     const op = computeOpinion(edge, world.tick);

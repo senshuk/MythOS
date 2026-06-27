@@ -36,7 +36,10 @@ export interface Lifecycle {
 }
 
 export interface SocialTies {
-  spouse?: EntityId;
+  /** current spouses. 0 = unwed; monogamous species hold at most 1, but the model does
+   *  not ASSUME monogamy — a non-monogamous species (Reproduction.monogamous=false) may
+   *  hold several. Use isWed / primarySpouse / canTakeSpouse (world.ts) to read it. */
+  spouses: EntityId[];
   parents: EntityId[];
   children: EntityId[];
 }

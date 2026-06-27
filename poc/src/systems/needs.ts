@@ -12,7 +12,7 @@
  * Unmet needs feed the decider (decide.ts) and aspirations (aspiration.ts).
  */
 import { type World } from '../engine/model';
-import { fullActors, relCount, clamp } from '../engine/world';
+import { fullActors, relCount, clamp, isWed } from '../engine/world';
 import { NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
 
 /** Move a value a fraction of the way toward a target (deterministic easing). */
@@ -33,7 +33,7 @@ export function needsDaily(world: World): void {
     n[SOCIAL_NEED] = clamp(n[SOCIAL_NEED] - 1, 0, 1000); // loneliness; socializing rebuilds it (resolve.ts)
     // circumstantial needs drift toward where the actor's life puts them
     n[SAFETY_NEED] = clamp(drift(n[SAFETY_NEED], safetyTarget, 0.05), 0, 1000);
-    const standing = clamp(250 + Math.min(relCount(world, id), 16) * 30 + (world.ties.get(id)!.spouse !== undefined ? 120 : 0), 0, 1000);
+    const standing = clamp(250 + Math.min(relCount(world, id), 16) * 30 + (isWed(world, id) ? 120 : 0), 0, 1000);
     n[ESTEEM_NEED] = clamp(drift(n[ESTEEM_NEED], standing, 0.04), 0, 1000);
     for (const k of NEEDS) n[k] = clamp(n[k], 0, 1000);
   }

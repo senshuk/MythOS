@@ -27,7 +27,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { generateGeography } from './geography';
-import { fullActors, summaryActors, fullName, relCount, homeName } from './world';
+import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
@@ -193,7 +193,7 @@ function actorView(world: World, id: EntityId): ActorView {
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
     profession: world.profession.get(id)!,
     traits: world.traits.get(id)!,
-    spouse: world.ties.get(id)!.spouse,
+    spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
   };
 }
@@ -597,7 +597,7 @@ export function canonicalize(world: World): string {
       `#${id}:${idn.given}.${idn.family}.${idn.speciesId}.${idn.sex}.` +
         `age${lc.ageYears}.alive${lc.alive ? 1 : 0}.death${lc.deathTick ?? -1}.` +
         `fid${world.fidelity.get(id) ?? '-'}.home${world.homeSettlement.get(id) ?? -1}.` +
-        `sp${ties.spouse ?? -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}`,
+        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}`,
     );
   }
   for (const s of world.settlements) {

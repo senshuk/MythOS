@@ -16,7 +16,7 @@
  * the ladder adapts to who the actor is.
  */
 import { type World, type EntityId, type Aspiration, type AspirationDef } from '../engine/model';
-import { fullName } from '../engine/world';
+import { fullName, isWed, primarySpouse, canTakeSpouse } from '../engine/world';
 import { bestSuitor, strongestFeud, isRuler, canSeekRule } from '../engine/social';
 import {
   maturityOf,
@@ -57,13 +57,13 @@ export const ASPIRATIONS: AspirationDef[] = [
         !!idn && !!lc && !!ties &&
         pairBondsFor(idn.speciesId) &&
         lc.ageYears >= maturityOf(idn.speciesId) &&
-        ties.spouse === undefined
+        canTakeSpouse(w, id)
       );
     },
     target: (w, id) => bestSuitor(w, id),
     action: (t) => (t !== undefined ? 'court' : 'socialize'),
     label: (w, _id, t) => (t !== undefined ? `Win the heart of ${fullName(w, t)}` : 'Find someone to marry'),
-    fulfilled: (w, id) => w.ties.get(id)?.spouse !== undefined,
+    fulfilled: (w, id) => isWed(w, id),
   },
   // raise a family
   {
@@ -74,12 +74,12 @@ export const ASPIRATIONS: AspirationDef[] = [
       const ties = w.ties.get(id);
       return (
         !!idn && !!lc && !!ties &&
-        ties.spouse !== undefined &&
+        ties.spouses.length > 0 &&
         ties.children.length === 0 &&
         lc.ageYears <= fertileWindowOf(idn.speciesId)[1]
       );
     },
-    target: (w, id) => w.ties.get(id)?.spouse,
+    target: (w, id) => primarySpouse(w, id),
     action: () => 'socialize',
     label: () => 'Start a family',
     fulfilled: (w, id) => (w.ties.get(id)?.children.length ?? 0) > 0,

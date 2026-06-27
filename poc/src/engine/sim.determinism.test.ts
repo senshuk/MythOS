@@ -19,7 +19,7 @@ import {
 } from './sim';
 import { resolveIntent, resolvePlayerIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
-import { fullActors, summaryActors, createActor, emit } from './world';
+import { fullActors, summaryActors, createActor, emit, canTakeSpouse } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { ageCompatible } from './social';
 import { renderEvent } from './render';
@@ -728,6 +728,25 @@ describe('actions are a pack vocabulary (the engine resolves verbs it never decl
   });
 });
 
+describe('marriage is not assumed monogamous (monogamy is species data)', () => {
+  it('a non-monogamous people may take another spouse; a monogamous one may not', () => {
+    const w = createWorld(1);
+    runYears(w, 8);
+    const [a, b] = fullActors(w);
+    w.ties.get(a)!.spouses.push(b); // a is now wed to b
+    const sp = speciesById(w.identity.get(a)!.speciesId);
+    const orig = sp.reproduction.monogamous;
+    try {
+      sp.reproduction.monogamous = true;
+      expect(canTakeSpouse(w, a)).toBe(false); // already wed + monogamous => cannot wed again
+      sp.reproduction.monogamous = false;
+      expect(canTakeSpouse(w, a)).toBe(true); // a non-monogamous people still may
+    } finally {
+      sp.reproduction.monogamous = orig;
+    }
+  });
+});
+
 describe('macro demography is species-data driven', () => {
   it('aggregate reproduction is DATA: a non-breeding people does not grow', () => {
     const speciesId = createWorld(7, false).settlements.find((s) => s.macro.population > 20)!.macro.dominantSpecies;
@@ -959,7 +978,7 @@ describe('reproduction is species DATA (not a hardcoded humanoid model)', () => 
     );
     expect(soloBirths.length).toBeGreaterThan(0);
     // and no Grok ever took a spouse
-    for (const g of groks) expect(w.ties.get(g)?.spouse).toBeUndefined();
+    for (const g of groks) expect(w.ties.get(g)?.spouses.length).toBe(0);
   });
 });
 

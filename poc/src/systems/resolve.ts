@@ -16,7 +16,7 @@
 import { type World, type EntityId, type RelEdge } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
-import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
+import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible } from '../engine/social';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
@@ -195,8 +195,8 @@ function eligibleToMarry(world: World, a: EntityId, b: EntityId, rng: Rng): bool
   // reproductive compatibility comes from species DATA (sexes/mode), not a hardcoded
   // opposite-sex rule — same-sex (hermaphroditic) unions are viable; asexual don't wed.
   if (!unionViable(ia.speciesId, ia.sex, ib.speciesId, ib.sex)) return false;
-  if (world.ties.get(a)!.spouse !== undefined) return false;
-  if (world.ties.get(b)!.spouse !== undefined) return false;
+  if (!canTakeSpouse(world, a)) return false;
+  if (!canTakeSpouse(world, b)) return false;
   if (isKin(world, a, b)) return false;
   // age compatibility (shared with courtship) — stops teenagers wedding elders
   if (!ageCompatible(world, a, b)) return false;
@@ -204,8 +204,8 @@ function eligibleToMarry(world: World, a: EntityId, b: EntityId, rng: Rng): bool
 }
 
 function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
-  world.ties.get(a)!.spouse = b;
-  world.ties.get(b)!.spouse = a;
+  world.ties.get(a)!.spouses.push(b);
+  world.ties.get(b)!.spouses.push(a);
   edge.flags.spouse = true;
   edge.flags.friend = true;
   edge.flags.feud = false;

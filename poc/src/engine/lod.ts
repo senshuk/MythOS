@@ -35,6 +35,7 @@ import {
   emit,
   relCount,
   removeActorCompletely,
+  canTakeSpouse,
   clamp,
 } from './world';
 import { addThought } from './opinion';
@@ -303,7 +304,7 @@ function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
     const idn = world.identity.get(id)!;
     if (!pairBondsFor(idn.speciesId)) return false;
     if (ageOf(id) < maturityOf(idn.speciesId)) return false;
-    return world.ties.get(id)!.spouse === undefined;
+    return canTakeSpouse(world, id);
   });
   // pair by age proximity: sort once, then each unmarried person takes the nearest-age
   // viable partner ahead of them. Generic over sexes/modes — no male/female buckets.
@@ -322,8 +323,8 @@ function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
       if (!unionViable(ia.speciesId, ia.sex, ib.speciesId, ib.sex)) continue;
       taken.add(a);
       taken.add(b);
-      world.ties.get(a)!.spouse = b;
-      world.ties.get(b)!.spouse = a;
+      world.ties.get(a)!.spouses.push(b);
+      world.ties.get(b)!.spouses.push(a);
       const edge = getRel(world, a, b);
       addThought(edge, 'wed', world.tick);
       edge.flags.spouse = true;
@@ -737,9 +738,8 @@ export function summaryYearly(world: World): void {
       lc.alive = false;
       lc.deathTick = world.tick;
       const deathId = emit(world, 'died', [id], { age: lc.ageYears, settlement: world.settlements[home].name });
-      const spouse = world.ties.get(id)!.spouse;
-      if (spouse !== undefined && world.lifecycle.get(spouse)?.alive) {
-        emit(world, 'widowed', [spouse], {}, [deathId]);
+      for (const spouse of world.ties.get(id)!.spouses) {
+        if (world.lifecycle.get(spouse)?.alive) emit(world, 'widowed', [spouse], {}, [deathId]);
       }
       const macro = world.settlements[home].macro;
       macro.population = Math.max(0, macro.population - 1);
