@@ -7,7 +7,7 @@
  * overlay (the SVG) is shared on top — only the backdrop changes.
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -59,7 +59,9 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   const water = theme.water ?? { deep: [18, 26, 40] as RGB, shallow: [40, 60, 80] as RGB, level: sea };
   const river: RGB = [Math.min(255, water.shallow[0] * 1.15 + 16), Math.min(255, water.shallow[1] * 1.15 + 16), Math.min(255, water.shallow[2] * 1.15 + 20)];
 
-  const gOf = (w: number) => Math.max(0, Math.min(N - 1, (w / 100) * (N - 1)));
+  // world coord → grid coord over the geography's full extent (the grid spans more than
+  // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
+  const gOf = (w: number) => Math.max(0, Math.min(N - 1, ((w - GEO_MIN) / GEO_SPAN) * (N - 1)));
 
   const img = ctx.createImageData(W, H);
   const data = img.data;

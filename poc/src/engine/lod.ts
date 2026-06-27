@@ -434,6 +434,17 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   m.adults = Math.max(0, m.adults + matured - aged);
   m.elders += aged;
 
+  // Viability floor: below a critical mass a community can no longer sustain itself —
+  // the last families disperse and the place falls to ruin. This is the world's SLOW
+  // decline death, distinct from conquest: geography makes it likeliest for the small,
+  // marginal sites that famine, plague or raids have already gutted. Without it, the
+  // logistic recovery below would let every settlement bounce back forever (no falls).
+  if (m.population < 15) {
+    applyDeaths(m, Math.max(2, Math.round(m.population * 0.4))); // the last people drain away
+    m.population = m.children + m.adults + m.elders;
+    return; // no recovery below the floor
+  }
+
   // mean-reverting stability prevents getting stuck in a death-spiral
   m.stability = clamp(Math.round(m.stability * 0.9) + rng.range(-6, 6), -100, 100);
 
@@ -444,7 +455,12 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // cities; barren, dry, isolated ones stay villages.
   const CAPACITY = 260 * s.capacity;
   const room = Math.max(0, 1 - m.population / CAPACITY);
-  const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300)));
+  // births also depend on FOOD: a starving settlement does not breed its way back to
+  // health. So a chronically food-broken, trade-isolated place (geography's marginal,
+  // dry, inland sites) can actually decline toward ruin instead of bouncing back.
+  const foodYears = s.econ.stock[SUBSISTENCE_RESOURCE] / Math.max(1, m.population);
+  const foodFactor = 0.25 + 0.75 * clamp(foodYears, 0, 1);
+  const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300) * foodFactor));
   m.children += births;
 
   // Mortality scales with the dominant species' OWN lifespan — consistent with the
@@ -525,10 +541,12 @@ export function geographyYearly(world: World): void {
       e.relation = clamp(e.relation - rng.range(4, 10), -100, 100);
       e.tradeVolume = 0;
       if (strong.macro.population > weak.macro.population * 1.28 && rng.chance(0.82)) {
-        // a decisive CONQUEST — the weaker is razed to ruin under the victor's ruler.
+        // a decisive CONQUEST — the weaker is razed under the victor's ruler.
         // Geography makes these mismatches: a fertile great city against a poor village.
+        // We only empty it here (the war's cause); recordRuins then registers the fall as
+        // a 'ruined' landmark naming the FALLEN settlement's last ruler — a razed town is
+        // still a ruin on the map, however it died.
         weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
-        weak.ruinedYear = Math.floor(world.tick / DAYS_PER_YEAR);
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
         emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) });

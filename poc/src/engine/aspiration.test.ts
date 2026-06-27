@@ -70,13 +70,21 @@ describe('aspirations', () => {
   it('fulfilling a goal emits a celebratory goal_met event (player-only)', () => {
     const w = createWorld(5);
     runYears(w, 8);
-    const single = fullActors(w).find(
-      (i) => w.ties.get(i)!.spouse === undefined && w.lifecycle.get(i)!.ageYears >= ADULT_AGE,
-    )!;
-    const n = w.needs.get(single)!;
-    n.food = 900;
-    n.wealth = 900;
-    n.belonging = 900;
+    // pick a spouseless adult whose foremost goal — once fed, wealthy & connected — is to
+    // wed (some adults are on the 'rule' track instead; this isolates the wed aspiration).
+    let single = -1;
+    for (const i of fullActors(w)) {
+      if (w.ties.get(i)!.spouse !== undefined || w.lifecycle.get(i)!.ageYears < ADULT_AGE) continue;
+      const nd = w.needs.get(i)!;
+      nd.food = 900;
+      nd.wealth = 900;
+      nd.belonging = 900;
+      if (currentAspiration(w, i).kind === 'wed') {
+        single = i;
+        break;
+      }
+    }
+    expect(single).toBeGreaterThanOrEqual(0);
 
     possess(w, single);
     checkPlayerGoal(w); // baseline — should NOT emit

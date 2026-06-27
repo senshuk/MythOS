@@ -18,8 +18,19 @@ export const WATER_LAKE = 2;
 export const WATER_RIVER = 3;
 export type WaterKind = 0 | 1 | 2 | 3;
 
-export const GEO_SIZE = 128; // grid resolution over the 100×100 world plane
+export const GEO_SIZE = 128; // grid resolution across the world extent
+
+/** Default fraction of terrain below which a cell holds water. It is a PARAMETER, not
+ *  a law: a dry/desert world passes a low value (few or no seas — just basins), a water
+ *  world a high one. Nothing in the engine assumes a world has oceans. */
 export const SEA_LEVEL = 0.4;
+
+/** The world-coordinate span the geography grid covers. It is deliberately LARGER than
+ *  the [0,100] settlement plane, so the map can render terrain past the settled area
+ *  instead of smearing the grid's edge cells to fill its margin. The grid edge carries
+ *  no meaning — land may run right off it; it is not a coastline. */
+export const GEO_MIN = -10;
+export const GEO_SPAN = 120;
 
 export interface Geography {
   size: number;
@@ -70,56 +81,64 @@ function fbm(x: number, y: number, seed: number, octaves: number): number {
 
 const FREQ = 0.05; // world-units → noise scale (smaller = larger landmasses)
 
-/** Generate the world's geography. Deterministic from `seed`. */
-export function generateGeography(seed: number, size = GEO_SIZE): Geography {
+/** Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
+ *  wet the world is (dry/desert → low, water world → high). */
+export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL): Geography {
   const N = size;
   const NN = N * N;
   const elevation = new Float32Array(NN);
   const moisture = new Float32Array(NN);
   const water = new Uint8Array(NN);
   const fertility = new Float32Array(NN);
+  const wOf = (i: number) => GEO_MIN + (i / (N - 1)) * GEO_SPAN;
 
-  // 1) elevation (base fbm + ridged detail for mountain ranges) + moisture
+  // 1) elevation (base fbm + ridged detail for mountain ranges) + an independent
+  //    moisture field, sampled across the world extent. No edge treatment: the noise
+  //    decides where land and water fall, so topology is whatever the seed makes.
   for (let j = 0; j < N; j++) {
-    const wy = (j / N) * 100;
+    const wy = wOf(j);
     for (let i = 0; i < N; i++) {
-      const wx = (i / N) * 100;
+      const wx = wOf(i);
       let e = fbm(wx * FREQ, wy * FREQ, seed, 5);
       e = e * 0.82 + (0.5 - Math.abs(fbm(wx * FREQ * 2.4, wy * FREQ * 2.4, seed + 99, 3) - 0.5)) * 0.36;
       const k = j * N + i;
-      elevation[k] = e > 1 ? 1 : e;
+      elevation[k] = e < 0 ? 0 : e > 1 ? 1 : e;
       moisture[k] = fbm(wx * FREQ * 0.85 + 40, wy * FREQ * 0.85 + 40, seed + 7, 3);
     }
   }
 
-  // 2) seas: flood-fill below-sea-level cells reachable from the map border. Below-
-  //    sea-level cells NOT reachable become inland lakes.
-  const queue: number[] = [];
-  for (let i = 0; i < N; i++) {
-    for (const k of [i, (N - 1) * N + i, i * N, i * N + N - 1]) {
-      if (elevation[k] < SEA_LEVEL && water[k] === WATER_NONE) {
-        water[k] = WATER_SEA;
-        queue.push(k);
+  // 2) water bodies. Every below-sea-level cell holds water; classify each connected
+  //    body by SIZE — a large body is a SEA/ocean, a small one an inland LAKE. The map
+  //    border is NOT assumed to be ocean (the old flood-from-the-edge rule baked that
+  //    in): a world may be a continent with only lakes, an archipelago, mostly sea, or
+  //    — at a low sea level — nearly dry. Topology is emergent, not imposed.
+  const SEA_MIN_CELLS = NN * 0.03; // a water body larger than ~3% of the world is a sea
+  const seen = new Uint8Array(NN);
+  const stack: number[] = [];
+  for (let start = 0; start < NN; start++) {
+    if (seen[start] || elevation[start] >= seaLevel) continue;
+    const body: number[] = [];
+    seen[start] = 1;
+    stack.length = 0;
+    stack.push(start);
+    while (stack.length) {
+      const k = stack.pop() as number;
+      body.push(k);
+      const x = k % N;
+      const y = (k / N) | 0;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+        const nk = ny * N + nx;
+        if (!seen[nk] && elevation[nk] < seaLevel) {
+          seen[nk] = 1;
+          stack.push(nk);
+        }
       }
     }
-  }
-  for (let q = 0; q < queue.length; q++) {
-    const k = queue[q];
-    const x = k % N;
-    const y = (k / N) | 0;
-    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-      const nk = ny * N + nx;
-      if (water[nk] === WATER_NONE && elevation[nk] < SEA_LEVEL) {
-        water[nk] = WATER_SEA;
-        queue.push(nk);
-      }
-    }
-  }
-  for (let k = 0; k < NN; k++) {
-    if (elevation[k] < SEA_LEVEL && water[k] === WATER_NONE) water[k] = WATER_LAKE;
+    const kind = body.length >= SEA_MIN_CELLS ? WATER_SEA : WATER_LAKE;
+    for (const k of body) water[k] = kind;
   }
 
   // 3) rivers: from scattered high cells, follow steepest descent to water; mark river.
@@ -173,7 +192,7 @@ export function generateGeography(seed: number, size = GEO_SIZE): Geography {
     fertility[k] = Math.min(1, moisture[k] * 0.7 * elevFit + waterBoost);
   }
 
-  return { size: N, seaLevel: SEA_LEVEL, elevation, moisture, fertility, water, freshDist, seaDist };
+  return { size: N, seaLevel, elevation, moisture, fertility, water, freshDist, seaDist };
 }
 
 /** Multi-source BFS distance (in cells) to the nearest cell matching `is`. */
@@ -207,7 +226,7 @@ function bfsDistance(water: Uint8Array, N: number, is: (w: number) => boolean): 
 
 // --- sampling (world coords 0..100) -----------------------------------------
 function clampIdx(v: number, N: number): number {
-  const i = Math.round((v / 100) * (N - 1));
+  const i = Math.round(((v - GEO_MIN) / GEO_SPAN) * (N - 1));
   return i < 0 ? 0 : i > N - 1 ? N - 1 : i;
 }
 function cellOf(geo: Geography, x: number, y: number): number {
