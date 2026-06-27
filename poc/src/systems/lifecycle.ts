@@ -54,7 +54,7 @@ export function lifecycleYearly(world: World): void {
   // actively seek partners (aspirations) and so marry far more than when
   // socializing was unfocused — without this the focused settlement explodes.
   for (const mother of mothers) {
-    if (!rng.chance(0.18)) continue;
+    if (!rng.chance(0.21)) continue;
     bear(world, mother);
   }
 }

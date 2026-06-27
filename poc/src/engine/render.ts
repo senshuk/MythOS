@@ -57,7 +57,9 @@ export function renderEvent(world: World, ev: WorldEvent): string {
     case 'raid':
       return `${d.raider} raided ${d.victim}${d.toll ? ` (${d.toll} lost)` : ''}.`;
     case 'famine':
-      return `Famine struck ${d.name} — ${d.toll} starved.`;
+      return d.toll
+        ? `Famine struck ${d.name} — ${d.toll} starved.`
+        : `Hunger gripped ${d.name} — the granaries ran low.`;
     case 'focus_shift':
       return `Attention turned from ${d.from} to ${d.to}.`;
     case 'emigrated':

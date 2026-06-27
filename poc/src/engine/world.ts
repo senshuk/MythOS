@@ -192,6 +192,15 @@ export function killActor(
     if (e) e.flags.spouse = false;
     emit(world, 'widowed', [spouse], {}, [world.events[world.events.length - 1].id]);
   }
+
+  // sever relationships from the LIVING graph: the dead no longer count as anyone's
+  // tie (so relationshipCount, standing, heirship reflect the living). Their bonds
+  // live on in the event log, not as a stale +650 to a departed spouse.
+  const myRels = world.rels.get(id);
+  if (myRels) {
+    for (const partner of myRels.keys()) world.rels.get(partner)?.delete(id);
+    myRels.clear();
+  }
 }
 
 /**

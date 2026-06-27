@@ -16,5 +16,8 @@ export default defineConfig({
     // The simulation engine is pure TS and runs headless in Node for tests.
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Determinism tests run many full multi-decade sims in one block; the default
+    // 5s is too tight for a simulation suite.
+    testTimeout: 30000,
   },
 });

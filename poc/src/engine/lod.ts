@@ -236,11 +236,17 @@ function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
     if (world.ties.get(id)!.spouse !== undefined) continue;
     (world.identity.get(id)!.sex === 'm' ? males : females).push(id);
   }
+  // pair by age proximity (sort both, match adjacent) so seeded couples are
+  // age-compatible instead of arbitrary array neighbours.
+  const ageOf = (id: EntityId) => world.lifecycle.get(id)!.ageYears;
+  males.sort((x, y) => ageOf(x) - ageOf(y) || x - y);
+  females.sort((x, y) => ageOf(x) - ageOf(y) || x - y);
   const pairs = Math.min(males.length, females.length);
   for (let i = 0; i < pairs; i++) {
     if (!rng.chance(0.45)) continue;
     const m = males[i];
     const f = females[i];
+    if (Math.abs(ageOf(m) - ageOf(f)) > 16) continue; // skip implausible gaps
     world.ties.get(m)!.spouse = f;
     world.ties.get(f)!.spouse = m;
     const edge = getRel(world, m, f);
@@ -565,7 +571,28 @@ export function economyYearly(world: World): void {
     const pop = popOf(s);
     if (pop <= 0) continue;
     const foodYears = s.econ.stock.food / pop;
-    if (s.detailed) continue; // focused town's deaths come from its full-fidelity sim
+
+    if (s.detailed) {
+      // The focused settlement's economy now shapes the people you're watching:
+      // morale (stability) settles toward how well the town feeds itself and how
+      // wealthy it is, and that flows into the safety need (see needs.ts). NON-lethal
+      // on purpose — the abstract economy can't reliably feed a non-farming town's
+      // full population, so a food-poor focus is *grim* (low morale/safety, lean
+      // larders) rather than a death spiral (which made such towns unplayable).
+      const target = clamp(Math.round(-50 + foodYears * 55 + (s.econ.wealth > 600 ? 15 : 0)), -80, 90);
+      s.macro.stability = clamp(Math.round(s.macro.stability + (target - s.macro.stability) * 0.2), -100, 100);
+      if (foodYears < 0.5) {
+        for (const id of fullActors(world)) {
+          const n = world.needs.get(id);
+          if (n) n.food = clamp(n.food - 80, 0, 1000); // lean years pinch the larder
+        }
+        if (Math.floor(world.tick / DAYS_PER_YEAR) % 4 === 0) {
+          emit(world, 'famine', [], { name: s.name, toll: 0 }); // a hunger warning, no deaths
+        }
+      }
+      continue;
+    }
+
     if (foodYears < 0.5) {
       const toll = Math.round((0.5 - foodYears) * pop * 0.4);
       if (toll > 0) {
@@ -630,9 +657,12 @@ export function migrationYearly(world: World): void {
   const focusedId = world.focusedSettlementId;
 
   // EMIGRATION: a few adults leave the focused settlement to live elsewhere.
-  // The player is never moved involuntarily — leaving is their choice (travel).
+  // Neither the player (leaving is their choice) nor the sitting ruler (who must
+  // stay to rule, else the seat is held by someone who wandered off) is moved
+  // involuntarily.
+  const rulerId = world.settlements[focusedId].currentRulerId;
   const leavers = fullActors(world).filter(
-    (id) => id !== world.playerId && world.lifecycle.get(id)!.ageYears >= ADULT_AGE,
+    (id) => id !== world.playerId && id !== rulerId && world.lifecycle.get(id)!.ageYears >= ADULT_AGE,
   );
   const emigrants = Math.min(rng.int(3), leavers.length); // 0..2
   for (let i = 0; i < emigrants; i++) {

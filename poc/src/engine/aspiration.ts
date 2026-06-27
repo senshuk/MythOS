@@ -37,17 +37,28 @@ export interface Aspiration {
 const FERTILE_MAX = 48; // matches the lifecycle birth window
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
 
+/** Whether two ages are a plausible marriage match (both adult; wider gaps allowed
+ *  later in life). Shared by courtship (who you pine for) and the wedding gate, so
+ *  actors only pursue partners they could actually marry. */
+export function ageCompatible(ageA: number, ageB: number): boolean {
+  if (ageA < ADULT_AGE || ageB < ADULT_AGE) return false;
+  return Math.abs(ageA - ageB) <= 12 + Math.round((Math.min(ageA, ageB) - ADULT_AGE) * 0.4);
+}
+
 /** The warmest eligible match this actor already knows — their emergent "crush". */
 function bestSuitor(world: World, id: EntityId): EntityId | undefined {
   const me = world.identity.get(id)!;
+  const myAge = world.lifecycle.get(id)!.ageYears;
   if (world.ties.get(id)!.spouse !== undefined) return undefined;
   let best: EntityId | undefined;
   let bestOpinion = CRUSH_WARMTH;
   for (const [other, edge] of world.rels.get(id)!) {
-    if (!world.lifecycle.get(other)?.alive) continue;
+    const olc = world.lifecycle.get(other);
+    if (!olc?.alive) continue;
     const oi = world.identity.get(other);
     if (!oi || oi.sex === me.sex) continue; // PoC: opposite-sex marriage
     if (world.ties.get(other)!.spouse !== undefined) continue;
+    if (!ageCompatible(myAge, olc.ageYears)) continue; // only pine for the marriageable
     if (isKin(world, id, other)) continue;
     const op = computeOpinion(edge, world.tick);
     if (op > bestOpinion) {
