@@ -45,6 +45,18 @@ This folder contains a two-part architectural study:
 |------|----------|
 | `09-dwarf-fortress-study.md` | DF deep-simulation teardown + what to fold into MythOS, and what to avoid |
 
+5. **Part 5 — The Intent / Resolver Seam** (`10-intent-resolver-design.md`)
+   A concrete design for step 1 of *player-as-actor*: splitting every action into a
+   serializable `Intent` (decided) and a shared resolver (applied), so the player
+   becomes one more intent producer with no `if (isPlayer)` in any rule. Designed
+   directly against the current `systems/social.ts` and `systems/needs.ts`, with the
+   determinism plan (dedicated player RNG stream + replay input log) and a staged
+   migration checklist.
+
+| File | Contents |
+|------|----------|
+| `10-intent-resolver-design.md` | Intent/resolver seam: the player-as-actor foundation |
+
 ## How Warsim was studied
 
 The repository ships the compiled game (`Warsim.exe`, ~20 MB QB64 binary) plus a

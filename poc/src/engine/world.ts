@@ -161,6 +161,40 @@ export function clamp(v: number, lo: number, hi: number): number {
 }
 
 /**
+ * Shared kill path: mark an actor dead, emit the death event, and widow a
+ * surviving spouse. Pure data mutation + event emission — the caller decides
+ * *that* someone dies (lifecycle old-age, a brawl, a plague); this just records
+ * it consistently. Lives here (not in a system) so every death path shares it
+ * without import cycles.
+ */
+export function killActor(
+  world: World,
+  id: EntityId,
+  tick: number,
+  type: 'died' | 'died_brawl',
+  others: EntityId[],
+  causes: EventId[],
+): void {
+  const lc = world.lifecycle.get(id)!;
+  if (!lc.alive) return;
+  lc.alive = false;
+  lc.deathTick = tick;
+
+  const subjects = type === 'died_brawl' ? [id, ...others] : [id];
+  emit(world, type, subjects, { age: lc.ageYears }, causes);
+
+  // widow the spouse
+  const spouse = world.ties.get(id)!.spouse;
+  if (spouse !== undefined && world.lifecycle.get(spouse)!.alive) {
+    world.ties.get(spouse)!.spouse = undefined;
+    world.ties.get(id)!.spouse = undefined;
+    const e = world.rels.get(id)!.get(spouse);
+    if (e) e.flags.spouse = false;
+    emit(world, 'widowed', [spouse], {}, [world.events[world.events.length - 1].id]);
+  }
+}
+
+/**
  * Fully remove an actor and all its components from the world. Used by demotion:
  * when a settlement folds back into aggregate, its individual actors are freed so
  * the live entity count stays bounded no matter how large the world grows.

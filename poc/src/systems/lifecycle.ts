@@ -5,7 +5,7 @@
  */
 import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
 import { fullActors, createActor, emit } from '../engine/world';
-import { killActor } from './social';
+import { killActor } from '../engine/world';
 import {
   speciesById,
   generateGiven,

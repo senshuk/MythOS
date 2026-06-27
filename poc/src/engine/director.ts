@@ -15,7 +15,7 @@
 import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PER_YEAR } from './model';
 import { Rng } from './rng';
 import { fullActors, emit, clamp } from './world';
-import { killActor } from '../systems/social';
+import { killActor } from './world';
 import { expand, type GrammarRules } from './grammar';
 
 interface DirectorDef {

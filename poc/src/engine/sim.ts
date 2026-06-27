@@ -31,7 +31,7 @@ export { setStoryteller } from './director';
 import { speciesById } from '../content/fixture';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
-import { socialWeekly } from '../systems/social';
+import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 
 export { focusSettlement } from './lod';
@@ -101,7 +101,7 @@ export function stepTick(world: World): void {
   // worldgen mode there are no live actors, so the world advances purely by the
   // aggregate, geography, economy, director and chronicle passes below.
   if (hasFocus) needsDaily(world); // focused actors, daily
-  if (hasFocus && world.tick % 7 === 0) socialWeekly(world); // focused actors, weekly
+  if (hasFocus && world.tick % 7 === 0) actWeekly(world); // focused actors, weekly
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world); // focused settlement, full fidelity
     macroYearly(world); // every other settlement, aggregate
