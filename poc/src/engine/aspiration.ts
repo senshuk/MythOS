@@ -1,0 +1,152 @@
+/**
+ * Emergent aspirations. An actor's current goal is a PURE FUNCTION of its state —
+ * needs, family ties, relationships, traits, age, station — not a scripted quest.
+ * The same derivation drives two things:
+ *
+ *   - the PLAYER sees it as their objective (text-adventure wisdom: a world with no
+ *     goal loses the player), and
+ *   - NPCs PURSUE it (decide.ts), turning the reactive social loop into character
+ *     arcs — the player and NPCs use the identical rule ("every character is equal").
+ *
+ * Because it's derived (no stored state), it needs no serialization and can never
+ * desync; as the world changes, an actor's aspiration changes with it (find a
+ * spouse → start a family → be remembered), which is the sense of progress.
+ */
+import { type World, type EntityId, ADULT_AGE, ELDER_AGE } from './model';
+import { computeOpinion } from './opinion';
+import { isKin, fullName } from './world';
+
+export type AspirationKind =
+  | 'survive'
+  | 'prosper'
+  | 'wed'
+  | 'family'
+  | 'reconcile'
+  | 'rule'
+  | 'belonging'
+  | 'legacy'
+  | 'content';
+
+export interface Aspiration {
+  kind: AspirationKind;
+  target?: EntityId;
+  /** the action that pursues this goal (decide.ts maps it to an Intent). */
+  action: 'work' | 'court' | 'socialize' | 'idle';
+}
+
+const FERTILE_MAX = 48; // matches the lifecycle birth window
+const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
+
+/** The warmest eligible match this actor already knows — their emergent "crush". */
+function bestSuitor(world: World, id: EntityId): EntityId | undefined {
+  const me = world.identity.get(id)!;
+  if (world.ties.get(id)!.spouse !== undefined) return undefined;
+  let best: EntityId | undefined;
+  let bestOpinion = CRUSH_WARMTH;
+  for (const [other, edge] of world.rels.get(id)!) {
+    if (!world.lifecycle.get(other)?.alive) continue;
+    const oi = world.identity.get(other);
+    if (!oi || oi.sex === me.sex) continue; // PoC: opposite-sex marriage
+    if (world.ties.get(other)!.spouse !== undefined) continue;
+    if (isKin(world, id, other)) continue;
+    const op = computeOpinion(edge, world.tick);
+    if (op > bestOpinion) {
+      bestOpinion = op;
+      best = other;
+    }
+  }
+  return best;
+}
+
+/** The bitterest active feud, if any. */
+function strongestFeud(world: World, id: EntityId): EntityId | undefined {
+  let worst: EntityId | undefined;
+  let worstOpinion = 0;
+  for (const [other, edge] of world.rels.get(id)!) {
+    if (!edge.flags.feud) continue;
+    if (!world.lifecycle.get(other)?.alive) continue;
+    const op = computeOpinion(edge, world.tick);
+    if (op < worstOpinion) {
+      worstOpinion = op;
+      worst = other;
+    }
+  }
+  return worst;
+}
+
+function isRuler(world: World, id: EntityId): boolean {
+  const h = world.homeSettlement.get(id);
+  return h !== undefined && world.settlements[h]?.currentRulerId === id;
+}
+
+/**
+ * The actor's current aspiration. Priority follows a life arc: stay alive, make a
+ * living, find a partner, raise a family, settle grudges, seek standing, find
+ * belonging, leave a legacy — falling back to a quiet life.
+ */
+export function currentAspiration(world: World, id: EntityId): Aspiration {
+  const needs = world.needs.get(id);
+  const lc = world.lifecycle.get(id);
+  const ties = world.ties.get(id);
+  const idn = world.identity.get(id);
+  if (!needs || !lc || !ties || !idn) return { kind: 'content', action: 'socialize' };
+  const traits = world.traits.get(id) ?? [];
+
+  // thresholds match decide.ts's subsistence gate, so a hungry actor's surfaced
+  // goal and its forced action agree.
+  if (needs.food < 300) return { kind: 'survive', action: 'work' };
+  if (needs.wealth < 250) return { kind: 'prosper', action: 'work' };
+
+  if (lc.ageYears >= ADULT_AGE && ties.spouse === undefined) {
+    const crush = bestSuitor(world, id);
+    return crush !== undefined
+      ? { kind: 'wed', target: crush, action: 'court' }
+      : { kind: 'wed', action: 'socialize' };
+  }
+
+  if (ties.spouse !== undefined && ties.children.length === 0 && lc.ageYears <= FERTILE_MAX) {
+    return { kind: 'family', target: ties.spouse, action: 'socialize' };
+  }
+
+  const feud = strongestFeud(world, id);
+  if (feud !== undefined) return { kind: 'reconcile', target: feud, action: 'socialize' };
+
+  // ambition: the proud who do not yet rule strive to build standing
+  if (traits.includes('proud') && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
+
+  if (needs.belonging < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
+    return { kind: 'belonging', action: 'socialize' };
+  }
+
+  if (lc.ageYears >= ELDER_AGE) return { kind: 'legacy', action: 'socialize' };
+
+  return { kind: 'content', action: 'socialize' };
+}
+
+/** A player-facing one-line description of an aspiration. */
+export function aspirationLabel(world: World, id: EntityId, asp: Aspiration): string {
+  const name = (t?: EntityId) => (t !== undefined ? fullName(world, t) : 'someone');
+  switch (asp.kind) {
+    case 'survive':
+      return 'Stave off hunger';
+    case 'prosper':
+      return 'Build a livelihood';
+    case 'wed':
+      return asp.target !== undefined ? `Win the heart of ${name(asp.target)}` : 'Find someone to marry';
+    case 'family':
+      return 'Start a family';
+    case 'reconcile':
+      return `Make peace with ${name(asp.target)}`;
+    case 'rule': {
+      const h = world.homeSettlement.get(id);
+      const place = h !== undefined ? world.settlements[h]?.name ?? 'the village' : 'the village';
+      return `Rise to lead ${place}`;
+    }
+    case 'belonging':
+      return 'Find true friends';
+    case 'legacy':
+      return 'Be remembered in the village';
+    case 'content':
+      return 'Live a good and quiet life';
+  }
+}

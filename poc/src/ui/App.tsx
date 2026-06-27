@@ -167,7 +167,7 @@ export default function App() {
         <div className="loading">Booting simulation worker…</div>
       ) : (
         <>
-          {stat.player && (
+          {stat.player ? (
             <PlayerPanel
               player={stat.player}
               onAct={(intent) => sim.playerAct(intent)}
@@ -175,6 +175,12 @@ export default function App() {
               onInspect={(id) => sim.inspectActor(id)}
               busy={sim.busy}
             />
+          ) : (
+            <div className="onboard">
+              ▶ <strong>Live as one of them.</strong> Click the ▶ beside any villager
+              (in “Notable villagers” below, or in the inspector) to take control. You’ll
+              get a goal and act a week at a time — and the world keeps going around you.
+            </div>
           )}
           <div className="grid">
             <Dashboard
@@ -517,6 +523,21 @@ function PlayerPanel({
         </p>
       ) : (
         <>
+          <div className="goal">
+            <span className="goal-tag">🎯 Goal</span>{' '}
+            <span className="goal-label">{player.aspiration.label}</span>
+            {player.aspiration.suggested && (
+              <button
+                className="act-btn goal-pursue"
+                onClick={() => onAct(player.aspiration.suggested!)}
+                disabled={busy}
+                title="take the action your character is driven toward"
+              >
+                Pursue ▸
+              </button>
+            )}
+          </div>
+
           <div className="needs">
             {NEED_BARS.map((k) => {
               const v = player.needs[k];

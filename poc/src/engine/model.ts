@@ -462,6 +462,9 @@ export interface PlayerView {
   deathYear?: number;
   settlement: string;
   needs: Needs;
+  // the actor's current drive (a goal). `suggested` is the one-click action that
+  // pursues it, when the goal points at a concrete action/target.
+  aspiration: { kind: string; label: string; targetName?: string; suggested?: Intent };
   actions: PlayerActionView[];
   targets: PlayerTargetView[];
 }

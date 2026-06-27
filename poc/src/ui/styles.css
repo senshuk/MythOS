@@ -223,3 +223,18 @@ body {
 
 /* topbar save/load separator */
 .ctl-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; display: inline-block; }
+
+/* ---- aspirations / onboarding ---- */
+.onboard {
+  margin: 12px 18px 0; padding: 10px 14px;
+  border: 1px dashed var(--accent); border-radius: 6px;
+  background: rgba(127,178,255,0.06); color: var(--ink);
+}
+.goal {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 10px;
+  background: var(--panel2); border-radius: 6px; border-left: 3px solid var(--accent);
+}
+.goal-tag { color: var(--accent); font-weight: bold; }
+.goal-label { font-weight: bold; }
+.goal-pursue { padding: 4px 10px; }

@@ -50,8 +50,11 @@ export function lifecycleYearly(world: World): void {
     mothers.push(id);
   }
 
+  // Per-couple yearly birth chance. Tuned for ~replacement now that actors
+  // actively seek partners (aspirations) and so marry far more than when
+  // socializing was unfocused — without this the focused settlement explodes.
   for (const mother of mothers) {
-    if (!rng.chance(0.4)) continue;
+    if (!rng.chance(0.18)) continue;
     bear(world, mother);
   }
 }

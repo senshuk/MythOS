@@ -21,6 +21,7 @@ import {
   ADULT_AGE,
 } from './model';
 import { type Intent } from './intent';
+import { currentAspiration, aspirationLabel } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { fullActors, summaryActors, fullName, relCount, homeName } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
@@ -274,6 +275,14 @@ function buildPlayerView(world: World): PlayerView | undefined {
       a.id - b.id,
   );
 
+  const asp = currentAspiration(world, id);
+  // a one-click pursue intent, only when the goal is directly actionable
+  let suggested: Intent | undefined;
+  if (asp.action === 'work') suggested = { kind: 'work' };
+  else if (asp.target !== undefined && (asp.action === 'court' || asp.action === 'socialize')) {
+    suggested = { kind: asp.action, target: asp.target };
+  }
+
   return {
     id,
     name: fullName(world, id),
@@ -284,6 +293,12 @@ function buildPlayerView(world: World): PlayerView | undefined {
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
+    aspiration: {
+      kind: asp.kind,
+      label: aspirationLabel(world, id, asp),
+      targetName: asp.target !== undefined ? fullName(world, asp.target) : undefined,
+      suggested,
+    },
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
   };

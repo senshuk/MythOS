@@ -14,6 +14,8 @@
  */
 import { type World, type EntityId, ADULT_AGE } from '../engine/model';
 import { type Intent } from '../engine/intent';
+import { currentAspiration } from '../engine/aspiration';
+import { isAlive } from '../engine/world';
 
 export function isAdult(world: World, id: EntityId): boolean {
   return world.lifecycle.get(id)!.ageYears >= ADULT_AGE;
@@ -42,8 +44,19 @@ export function decideActor(world: World, a: EntityId, adults: EntityId[]): Inte
   const needs = world.needs.get(a)!;
   if (needs.food < 300 || needs.wealth < 250) return { kind: 'work' };
 
-  // otherwise be social, at the same activity rate as before
+  // pursue the current aspiration (pure function of state — character arcs).
+  const asp = currentAspiration(world, a);
+  if (asp.action === 'work') return { kind: 'work' }; // e.g. the ambitious build standing
+
+  // social activity at the same rate as before; when active, pursue the goal's
+  // subject if it has one, else fall back to deepening an existing bond.
   if (!world.rng.chance(0.55)) return { kind: 'idle' };
+  if (asp.target !== undefined && isAlive(world, asp.target)) {
+    // NPCs pursue gently via plain socializing (focus, not fervour) — aggressive
+    // `court` is reserved for the player's deliberate choice, so NPC courtship
+    // doesn't trivialize marriage and explode the population.
+    return { kind: 'socialize', target: asp.target };
+  }
   const b = choosePartner(world, a, adults);
   if (b === undefined) return { kind: 'idle' };
   return { kind: 'socialize', target: b };
