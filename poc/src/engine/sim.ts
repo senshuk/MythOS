@@ -39,6 +39,7 @@ import { renderEvent, renderEventParts } from './render';
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
 import { personalityOf } from './social';
+import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
@@ -203,6 +204,17 @@ function actorView(world: World, id: EntityId): ActorView {
   };
 }
 
+// event-data keys that can name a settlement — used to tell whether an event concerns the
+// focused place (so the feed can scope to it / always keep its happenings legible).
+const PLACE_KEYS = ['settlement', 'name', 'from', 'to', 'a', 'b', 'victim', 'raider', 'victor', 'fallen', 'place'];
+function eventConcernsFocused(world: World, ev: WorldEvent): boolean {
+  const fid = world.focusedSettlementId;
+  for (const id of ev.subjects) if (world.homeSettlement.get(id) === fid) return true;
+  const fname = world.settlements[fid]?.name;
+  if (fname) for (const k of PLACE_KEYS) if (ev.data[k] === fname) return true;
+  return false;
+}
+
 function eventView(world: World, ev: WorldEvent): EventView {
   return {
     id: ev.id,
@@ -212,6 +224,9 @@ function eventView(world: World, ev: WorldEvent): EventView {
     parts: renderEventParts(world, ev),
     subjects: ev.subjects,
     causes: ev.causes,
+    interest: eventInterest(ev.type, ev.data),
+    local: eventConcernsFocused(world, ev),
+    involvesPlayer: world.playerId !== undefined && ev.subjects.includes(world.playerId),
   };
 }
 

@@ -464,6 +464,14 @@ export interface EventView {
   parts: EventPart[];
   subjects: EntityId[];
   causes: EventId[];
+  /** how memorable this event is (0 = routine chitchat … 70+ = a landmark of the age).
+   *  Lets the feed curate by signal instead of dumping every banal happening. */
+  interest: number;
+  /** does this event concern the FOCUSED settlement? (so the player can always follow
+   *  their own place, and scope the feed to it). */
+  local: boolean;
+  /** does this event involve the player's actor? (always surfaced, so their thread is legible). */
+  involvesPlayer: boolean;
 }
 
 /** Detail for a remembered historical FIGURE (a record, not a live actor). */

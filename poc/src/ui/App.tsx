@@ -247,7 +247,7 @@ export default function App() {
               onPossess={(id) => sim.possess(id)}
               busy={sim.busy}
             />
-            <HistoryFeed events={stat.recentEvents} onPickEvent={inspectEvent} onRef={inspectRef} />
+            <HistoryFeed events={stat.recentEvents} focusedName={stat.settlementName} onPickEvent={inspectEvent} onRef={inspectRef} />
             <Inspector
               actorDetail={sim.actorDetail}
               eventChain={sim.eventChain}
@@ -872,36 +872,108 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+const FEED_FLOOR = 1; // interest below this is banal — digested (focused place) or dropped
+// the focused place's demographic flux is worth a per-year tally; pure social chitchat
+// (friendships, kindnesses, quarrels) is left to a person's inspector, never the feed.
+const DIGEST_CAT: Record<string, string> = {
+  born: 'births',
+  immigrated: 'comings & goings',
+  emigrated: 'comings & goings',
+};
+type FeedItem =
+  | { kind: 'event'; ev: EventView }
+  | { kind: 'digest'; year: number; counts: Record<string, number> };
+const itemYear = (it: FeedItem) => (it.kind === 'event' ? it.ev.year : it.year);
+
+/** Turn the raw event stream into a readable feed: in "notable" mode, momentous events (and
+ *  anything touching the player) show individually, the focused place's everyday happenings
+ *  are folded into a per-year digest, and distant villages' chitchat is dropped. "everything"
+ *  is the raw firehose. Scope narrows to the focused settlement. */
+function processFeed(events: EventView[], scope: 'world' | 'place', mode: 'notable' | 'all'): FeedItem[] {
+  const evs = scope === 'place' ? events.filter((e) => e.local) : events;
+  if (mode === 'all') return evs.slice(0, 200).map((ev) => ({ kind: 'event', ev }));
+  const items: FeedItem[] = [];
+  const digests = new Map<number, Record<string, number>>();
+  for (const ev of evs) {
+    if (ev.interest >= FEED_FLOOR || ev.involvesPlayer) {
+      items.push({ kind: 'event', ev });
+    } else if (ev.local && DIGEST_CAT[ev.type]) {
+      const cat = DIGEST_CAT[ev.type];
+      const d = digests.get(ev.year) ?? {};
+      d[cat] = (d[cat] ?? 0) + 1;
+      digests.set(ev.year, d);
+    }
+    // else: routine social chitchat (or a distant village's) — left to the inspector, not the feed
+  }
+  for (const [year, counts] of digests) items.push({ kind: 'digest', year, counts });
+  items.sort((a, b) => itemYear(b) - itemYear(a)); // newest first (stable: digest trails its year)
+  return items.slice(0, 120);
+}
+
 function HistoryFeed({
   events,
+  focusedName,
   onPickEvent,
   onRef,
 }: {
   events: EventView[];
+  focusedName: string;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
 }) {
+  const [scope, setScope] = useState<'world' | 'place'>('world');
+  const [mode, setMode] = useState<'notable' | 'all'>('notable');
+  const items = useMemo(() => processFeed(events, scope, mode), [events, scope, mode]);
+
   return (
     <section className="panel feed">
       <h2>As the years turn</h2>
-      <ul>
-        {events.map((ev) => (
-          <li key={ev.id} className={`ev ${TYPE_TONE[ev.type] ?? 'neutral'}`}>
-            {/* click a name to inspect it · click anywhere else to trace the causes */}
-            <div
-              className="ev-row"
-              onClick={() => onPickEvent(ev.id)}
-              onKeyDown={(e) => onActivate(e, () => onPickEvent(ev.id))}
-              role="button"
-              tabIndex={0}
-              title="trace causes"
-            >
-              <span className="ev-year">y{ev.year}</span> <EventText parts={ev.parts} onRef={onRef} />
-              {ev.causes.length > 0 && <span className="why"> · why?</span>}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="feed-controls" role="group" aria-label="history filters">
+        <div className="seg" role="group" aria-label="scope">
+          <button className={scope === 'world' ? 'on' : ''} onClick={() => setScope('world')}>The world</button>
+          <button className={scope === 'place' ? 'on' : ''} onClick={() => setScope('place')}>{focusedName}</button>
+        </div>
+        <div className="seg" role="group" aria-label="detail">
+          <button className={mode === 'notable' ? 'on' : ''} onClick={() => setMode('notable')}>Notable</button>
+          <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>Everything</button>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <p className="muted">Nothing of note yet — advance the years, or switch to “Everything”.</p>
+      ) : (
+        <ul>
+          {items.map((it) =>
+            it.kind === 'event' ? (
+              <li key={`e${it.ev.id}`} className={`ev ${TYPE_TONE[it.ev.type] ?? 'neutral'}`}>
+                {/* click a name to inspect it · click anywhere else to trace the causes */}
+                <div
+                  className="ev-row"
+                  onClick={() => onPickEvent(it.ev.id)}
+                  onKeyDown={(e) => onActivate(e, () => onPickEvent(it.ev.id))}
+                  role="button"
+                  tabIndex={0}
+                  title="trace causes"
+                >
+                  <span className="ev-year">y{it.ev.year}</span> <EventText parts={it.ev.parts} onRef={onRef} />
+                  {it.ev.causes.length > 0 && <span className="why"> · why?</span>}
+                </div>
+              </li>
+            ) : (
+              <li key={`d${it.year}`} className="ev digest">
+                <div className="ev-row digest-row">
+                  <span className="ev-year">y{it.year}</span>{' '}
+                  <span className="muted">
+                    in {focusedName}:{' '}
+                    {Object.entries(it.counts)
+                      .map(([cat, n]) => `${n} ${cat}`)
+                      .join(' · ')}
+                  </span>
+                </div>
+              </li>
+            ),
+          )}
+        </ul>
+      )}
     </section>
   );
 }

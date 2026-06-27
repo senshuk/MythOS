@@ -1100,6 +1100,29 @@ describe('dynasties & houses (a string of rulers becomes a family saga)', () => 
   });
 });
 
+describe('the feed carries curation signal (so the UI can declutter the banal)', () => {
+  it('every feed event is scored by interest + flagged local/player', () => {
+    const w = createWorld(1);
+    runYears(w, 40);
+    const snap = buildSnapshot(w);
+    expect(snap.recentEvents.length).toBeGreaterThan(0);
+    for (const e of snap.recentEvents) {
+      expect(typeof e.interest).toBe('number');
+      expect(typeof e.local).toBe('boolean');
+      expect(typeof e.involvesPlayer).toBe('boolean');
+    }
+    // chitchat scores 0 (digested/dropped); landmarks score high (always shown)
+    for (const e of snap.recentEvents) {
+      if (['born', 'friendship', 'kindness', 'dispute', 'brawl'].includes(e.type)) expect(e.interest).toBe(0);
+      if (['conquest', 'ruined', 'settlement_founded', 'dynasty', 'house_fallen'].includes(e.type)) {
+        expect(e.interest).toBeGreaterThan(0);
+      }
+    }
+    // the focused settlement's own happenings are flagged so the feed can always keep them
+    expect(snap.recentEvents.some((e) => e.local)).toBe(true);
+  });
+});
+
 describe('resources & needs are pack-defined vectors (engine reads roles, not literals)', () => {
   it('the role resources/needs are members of the pack vectors', () => {
     expect(RESOURCES).toContain(SUBSISTENCE_RESOURCE);
