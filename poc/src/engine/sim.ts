@@ -266,7 +266,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
       wealth: Math.round(s.econ.wealth),
-      foodSecurity: pop > 0 ? s.econ.stock[SUBSISTENCE_RESOURCE] / pop : 0,
+      subsistenceSecurity: pop > 0 ? s.econ.stock[SUBSISTENCE_RESOURCE] / pop : 0,
       prices: { ...s.econ.price },
     };
   });

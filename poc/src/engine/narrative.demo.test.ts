@@ -150,7 +150,7 @@ describe('narrative demo', () => {
     for (const s of snap.settlements) {
       line(
         `  ${s.name.padEnd(12)} ${s.specialization.padEnd(8)} · ${String(s.wealth).padStart(5)}w ` +
-          `· food ${s.prices.food.toFixed(2)} (${(s.foodSecurity).toFixed(1)}yr)`,
+          `· food ${s.prices.food.toFixed(2)} (${(s.subsistenceSecurity).toFixed(1)}yr)`,
       );
     }
     line(`  total world wealth: ${snap.worldWealth}`);

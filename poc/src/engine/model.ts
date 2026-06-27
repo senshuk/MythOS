@@ -75,6 +75,15 @@ export type EventId = number;
 export type FigureId = EntityId; // shares the id space; resolves via the name registry
 
 /**
+ * The capacity in which the world remembers a figure. An OPEN string, like EventType:
+ * the engine mints two STRUCTURAL roles today ('founder' of a settlement, 'ruler' of a
+ * polity), but a pack or future system can remember others — a 'prophet', 'inventor',
+ * 'hero', 'traitor', 'explorer' — without an engine change. The leader's flavourful
+ * TITLE (Lord / Speaker / Captain / CEO) is separate pack data; this is the role.
+ */
+export type FigureRole = string;
+
+/**
  * A historical figure — a named person the world *remembers* (founder, ruler…),
  * tracked as a lightweight RECORD, not a fully-simulated ECS actor (DF's model).
  * Minted by the aggregate layer during worldgen so the deep past has people, not
@@ -85,7 +94,7 @@ export interface HistoricalFigure {
   id: FigureId;
   name: string;
   species: string;
-  role: 'founder' | 'ruler';
+  role: FigureRole;
   settlementId: SettlementId;
   bornYear: number;
   deathYear?: number;
@@ -417,7 +426,7 @@ export interface SettlementView {
   // economy
   specialization: Specialization;
   wealth: number;
-  foodSecurity: number; // stock.food / population => years of food buffer
+  subsistenceSecurity: number; // stock[SUBSISTENCE_RESOURCE] / population => years of staple buffer
   prices: Record<ResourceKey, number>;
 }
 

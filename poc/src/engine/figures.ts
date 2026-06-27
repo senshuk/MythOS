@@ -11,6 +11,7 @@ import {
   type Settlement,
   type HistoricalFigure,
   type FigureId,
+  type FigureRole,
   type EntityId,
   DAYS_PER_YEAR,
 } from './model';
@@ -25,7 +26,7 @@ export function mintFigure(
   s: Settlement,
   year: number,
   rng: Rng,
-  role: 'founder' | 'ruler',
+  role: FigureRole,
 ): HistoricalFigure {
   const id: FigureId = world.nextEntityId++;
   const species = s.macro.dominantSpecies;

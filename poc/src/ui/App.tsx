@@ -52,13 +52,16 @@ const TYPE_TONE: Record<string, string> = {
   famine: 'bad',
 };
 
-function foodLabel(security: number): string {
+// Presentation of a settlement's staple buffer. The label is deliberately pack-flavoured
+// (a food pack reads "starving/fed"); the underlying number is the role-neutral
+// subsistenceSecurity from the snapshot.
+function subsistenceLabel(security: number): string {
   if (security < 0.5) return '⚠ starving';
   if (security < 1) return 'lean';
   if (security > 1.8) return 'plentiful';
   return 'fed';
 }
-function foodClass(security: number): string {
+function subsistenceClass(security: number): string {
   if (security < 0.5) return 'food-bad';
   if (security < 1) return 'food-warn';
   if (security > 1.8) return 'food-good';
@@ -654,7 +657,7 @@ function Dashboard({
               <span className="muted">
                 {' '}
                 · {s.population} {s.dominantSpecies} · {s.specialization} · {s.wealth}w{' '}
-                <span className={foodClass(s.foodSecurity)}>{foodLabel(s.foodSecurity)}</span>
+                <span className={subsistenceClass(s.subsistenceSecurity)}>{subsistenceLabel(s.subsistenceSecurity)}</span>
                 <span className="figs"> · {s.culture}</span>
                 {s.leaderTitle && s.ruler ? (
                   <span className="ruler"> · {s.leaderTitle} {s.ruler}</span>
