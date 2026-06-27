@@ -149,7 +149,8 @@ export type Specialization = string;
 
 /** A settlement's local economy: what it has, what it's worth there, how rich it is. */
 export interface Economy {
-  specialization: Specialization;
+  specialization: Specialization; // a display label for what the land makes here
+  production: Record<ResourceKey, number>; // per-capita yields, DERIVED FROM LOCAL TERRAIN
   stock: Record<ResourceKey, number>; // units on hand
   price: Record<ResourceKey, number>; // local price (scarcity-driven)
   wealth: number; // accumulated prosperity from production + trade
@@ -189,6 +190,9 @@ export interface Settlement {
   governmentId: string;
   /** this people's culture (value profile) — a pack id; drives inter-settlement relations. */
   cultureId: string;
+  /** how much population this site's LAND can sustain — a multiplier on base carrying
+   *  capacity, from local fertility/water/coast. Generous land grows great cities. */
+  capacity: number;
   /** the figure who currently rules here (founder, then a line of successors). Absent
    *  in a leaderless polity (government with no leader). */
   currentRulerId?: FigureId;

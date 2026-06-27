@@ -70,10 +70,15 @@ export function directorYearly(world: World): void {
   st.tension = clamp(st.tension + def.tensionGain - recentDrama * 0.06, 0, 200);
 
   if (st.tension >= def.trigger && yr - st.lastIncidentYear >= def.minGap) {
+    const before = world.events.length;
     fireIncident(world, def, rng);
-    st.tension -= def.trigger * 0.75;
-    st.lastIncidentYear = yr;
-    st.incidents += 1;
+    // only a fired incident that actually LANDED (emitted an event, i.e. found a valid
+    // target) counts and relieves tension; a no-op attempt simply retries next year.
+    if (world.events.length > before) {
+      st.tension -= def.trigger * 0.75;
+      st.lastIncidentYear = yr;
+      st.incidents += 1;
+    }
   }
 
   world.directorRngState = rng.state;

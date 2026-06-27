@@ -222,6 +222,22 @@ export function waterAt(geo: Geography, x: number, y: number): WaterKind {
 export function fertilityAt(geo: Geography, x: number, y: number): number {
   return geo.fertility[cellOf(geo, x, y)];
 }
+export function moistureAt(geo: Geography, x: number, y: number): number {
+  return geo.moisture[cellOf(geo, x, y)];
+}
+
+/**
+ * How much population/development the land here can sustain, as a multiplier on the
+ * base carrying capacity. Fertile, well-watered, coastal ground supports large cities
+ * (think floodplains and ports); harsh, dry, isolated ground supports only villages.
+ */
+export function terrainCapacity(geo: Geography, x: number, y: number): number {
+  const fert = fertilityAt(geo, x, y);
+  let c = 0.55 + fert * 0.95;
+  if (freshWaterDist(geo, x, y) <= 1) c += 0.25; // on a river
+  if (seaDist(geo, x, y) <= 3) c += 0.2; // a port
+  return c; // ≈ 0.55 (barren) … 1.9 (a fertile river-coast)
+}
 export function isLand(geo: Geography, x: number, y: number): boolean {
   const w = geo.water[cellOf(geo, x, y)];
   return w === WATER_NONE || w === WATER_RIVER;

@@ -26,7 +26,7 @@ import {
   DAYS_PER_YEAR,
 } from './model';
 import { Rng, mixSeed } from './rng';
-import { siteSuitability, isLand } from './geography';
+import { type Geography, siteSuitability, isLand, terrainCapacity } from './geography';
 import {
   fullActors,
   summaryActors,
@@ -47,7 +47,8 @@ import {
   pickSex,
   pickTraits,
   pickProfession,
-  pickSpecialization,
+  terrainYields,
+  specializationFromTerrain,
   maturityOf,
   elderhoodOf,
   pairBondsFor,
@@ -61,7 +62,6 @@ import {
   SUBSISTENCE_RESOURCE,
   PREMIUM_RESOURCE,
   SUBSISTENCE_NEED,
-  PRODUCTION,
   CONSUMPTION,
   BASE_PRICE,
 } from '../content/fixture';
@@ -135,8 +135,9 @@ export function createSettlements(world: World): void {
       rngState: mixSeed(world.seed, i + 1),
       governmentId: pickGovernment(gen),
       cultureId: pickCulture(gen, dominant),
+      capacity: terrainCapacity(geo, site.x, site.y),
       macro,
-      econ: initEconomy(gen, pop),
+      econ: initEconomy(gen, pop, geo, site.x, site.y),
     };
     world.settlements.push(s);
     // mint the founder so the founding has a named person. In a polity with a leader
@@ -227,15 +228,17 @@ function computePrices(e: Economy, pop: number): void {
   }
 }
 
-function initEconomy(gen: Rng, pop: number): Economy {
-  const specialization = pickSpecialization(gen);
+function initEconomy(gen: Rng, pop: number, geo: Geography, x: number, y: number): Economy {
+  // production and trade come from the LAND, not a random roll
+  const production = terrainYields(geo, x, y);
+  const specialization = specializationFromTerrain(geo, x, y);
   const stock: Record<string, number> = {};
   const price: Record<string, number> = {};
   for (const r of RESOURCES) {
     stock[r] = Math.round(CONSUMPTION[r] * pop * (1.2 + gen.next() * 0.8));
     price[r] = 0;
   }
-  const econ: Economy = { specialization, stock, price, wealth: gen.range(50, 400) };
+  const econ: Economy = { specialization, production, stock, price, wealth: gen.range(50, 400) };
   computePrices(econ, pop);
   return econ;
 }
@@ -437,7 +440,9 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // Logistic growth: a settlement breeds fast when there's room (so it RECOVERS
   // from shocks instead of spiralling to ruin) and tapers toward a soft carrying
   // capacity. This is what keeps a world sustainable over many centuries.
-  const CAPACITY = 260;
+  // carrying capacity is set by the LAND: fertile, watered, coastal sites grow great
+  // cities; barren, dry, isolated ones stay villages.
+  const CAPACITY = 260 * s.capacity;
   const room = Math.max(0, 1 - m.population / CAPACITY);
   const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300)));
   m.children += births;
@@ -519,8 +524,9 @@ export function geographyYearly(world: World): void {
       const weak = strong === A ? B : A;
       e.relation = clamp(e.relation - rng.range(4, 10), -100, 100);
       e.tradeVolume = 0;
-      if (strong.macro.population > weak.macro.population * 1.4 && rng.chance(0.7)) {
-        // a decisive CONQUEST — the weaker is razed to ruin under the victor's ruler
+      if (strong.macro.population > weak.macro.population * 1.28 && rng.chance(0.82)) {
+        // a decisive CONQUEST — the weaker is razed to ruin under the victor's ruler.
+        // Geography makes these mismatches: a fertile great city against a poor village.
         weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
         weak.ruinedYear = Math.floor(world.tick / DAYS_PER_YEAR);
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
@@ -592,11 +598,11 @@ export function economyYearly(world: World): void {
     if (pop <= 0) continue;
     const e = s.econ;
     for (const r of RESOURCES) {
-      const prod = PRODUCTION[e.specialization][r] * pop;
+      const prod = e.production[r] * pop;
       const cons = CONSUMPTION[r] * pop;
       e.stock[r] = Math.max(0, e.stock[r] + prod - cons);
     }
-    e.wealth = Math.max(0, e.wealth * 0.96 + PRODUCTION[e.specialization][PREMIUM_RESOURCE] * pop * BASE_PRICE[PREMIUM_RESOURCE] * 0.03);
+    e.wealth = Math.max(0, e.wealth * 0.96 + e.production[PREMIUM_RESOURCE] * pop * BASE_PRICE[PREMIUM_RESOURCE] * 0.03);
     computePrices(e, pop);
   }
 
@@ -684,7 +690,9 @@ export function economyYearly(world: World): void {
         raidMacro(s.macro, toll);
         s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
         s.macro.stability = clamp(s.macro.stability - 8, -100, 100);
-        emit(world, 'famine', [], { name: s.name, toll });
+        // the land bleeds the people every lean year, but only a SEVERE famine is
+        // worth remembering — chronic marginal hunger shouldn't flood the chronicle.
+        if (toll >= Math.max(3, pop * 0.025)) emit(world, 'famine', [], { name: s.name, toll });
       }
     } else if (foodYears > 1.6) {
       s.macro.stability = clamp(s.macro.stability + 1, -100, 100);

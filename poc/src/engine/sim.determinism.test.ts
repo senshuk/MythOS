@@ -19,7 +19,7 @@ import {
 } from './sim';
 import { resolvePlayerIntent } from '../systems/resolve';
 import { fullActors, summaryActors, createActor, emit } from './world';
-import { generateGeography, isLand, freshWaterDist } from './geography';
+import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { ageCompatible } from './aspiration';
 import { renderEvent } from './render';
 import { EVENT_RENDER, eventInterest } from '../content/narrative';
@@ -307,20 +307,16 @@ describe('region geography', () => {
 });
 
 describe('economy', () => {
-  it('specialization drives prices: farmers have cheaper food than miners', () => {
+  it('local food production drives prices: rich-farmland towns have cheaper food', () => {
     const w = createWorld(42);
     runYears(w, 30);
-    const avgFoodPrice = (spec: string) => {
-      const ss = w.settlements.filter(
-        (s) => s.econ.specialization === spec && !s.detailed && s.macro.population > 0,
-      );
-      return ss.length ? ss.reduce((a, s) => a + s.econ.price.food, 0) / ss.length : null;
-    };
-    const farm = avgFoodPrice('farming');
-    const mine = avgFoodPrice('mining');
-    expect(farm).not.toBeNull();
-    expect(mine).not.toBeNull();
-    expect(farm!).toBeLessThan(mine!); // surplus → cheap, deficit → dear
+    const live = w.settlements.filter((s) => !s.detailed && s.macro.population > 0);
+    const byFood = [...live].sort((a, b) => b.econ.production.food - a.econ.production.food);
+    const n = Math.max(1, Math.floor(byFood.length / 3));
+    const avg = (arr: typeof live) => arr.reduce((s, x) => s + x.econ.price.food, 0) / arr.length;
+    const high = avg(byFood.slice(0, n)); // the best farmland
+    const low = avg(byFood.slice(-n)); // the poorest soil
+    expect(high).toBeLessThan(low); // surplus → cheap, scarcity → dear
 
     // prices always stay within the clamp bounds
     for (const s of w.settlements) {
@@ -686,6 +682,18 @@ describe('geography is the world substrate (drives where civilizations are found
       const watered = w.settlements.filter((s) => freshWaterDist(w.geography, s.pos.x, s.pos.y) <= 8).length;
       expect(watered).toBeGreaterThanOrEqual(7);
     }
+  });
+
+  it('the land sets a settlement’s trade and how great it can grow', () => {
+    const w = createWorld(7, false);
+    // a coastal site trades (goods) more than the most landlocked one
+    const bySea = [...w.settlements].sort(
+      (a, b) => seaDist(w.geography, a.pos.x, a.pos.y) - seaDist(w.geography, b.pos.x, b.pos.y),
+    );
+    expect(bySea[0].econ.production.goods).toBeGreaterThan(bySea[bySea.length - 1].econ.production.goods);
+    // carrying capacity varies with the land — generous ground breeds great cities
+    const caps = w.settlements.map((s) => s.capacity);
+    expect(Math.max(...caps)).toBeGreaterThan(Math.min(...caps) + 0.2);
   });
 });
 

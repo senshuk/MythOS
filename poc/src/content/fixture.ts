@@ -6,7 +6,8 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
-import type { Sex, Specialization, ResourceKey } from '../engine/model';
+import type { Sex, ResourceKey } from '../engine/model';
+import { type Geography, fertilityAt, elevationAt, moistureAt, seaDist } from '../engine/geography';
 
 /**
  * How a species reproduces — SPECIES DATA the engine dispatches on, so the sim does
@@ -416,21 +417,42 @@ export const RESOURCES: string[] = ['food', 'materials', 'goods'];
 export const SUBSISTENCE_RESOURCE = 'food'; // running out of this starves a settlement
 export const PREMIUM_RESOURCE = 'goods'; // the high-value good whose production builds wealth
 
-export const SPECIALIZATIONS: Specialization[] = ['farming', 'mining', 'crafting', 'balanced'];
-
-export const PRODUCTION: Record<Specialization, Record<ResourceKey, number>> = {
-  farming: { food: 1.5, materials: 0.15, goods: 0.1 },
-  mining: { food: 0.8, materials: 1.0, goods: 0.15 },
-  crafting: { food: 0.85, materials: 0.5, goods: 0.8 },
-  balanced: { food: 1.05, materials: 0.4, goods: 0.3 },
-};
-
 export const CONSUMPTION: Record<ResourceKey, number> = { food: 1.0, materials: 0.2, goods: 0.1 };
 
 export const BASE_PRICE: Record<ResourceKey, number> = { food: 1, materials: 2, goods: 5 };
 
-export function pickSpecialization(rng: Rng): Specialization {
-  return SPECIALIZATIONS[rng.int(SPECIALIZATIONS.length)];
+/**
+ * Production is LOCATION-DEPENDENT — what a settlement makes comes from the LAND around
+ * it, not a random roll. The terrain→resource mapping is PACK data (a sci-fi pack maps
+ * its own terrain to its own resources): fertile soil & coasts → food (farms, fishing);
+ * hills & forest → materials (ore, stone, timber); coasts & forest → trade goods.
+ */
+export function terrainYields(geo: Geography, x: number, y: number): Record<ResourceKey, number> {
+  const fert = fertilityAt(geo, x, y);
+  const elev = elevationAt(geo, x, y);
+  const moist = moistureAt(geo, x, y);
+  const coastal = seaDist(geo, x, y) <= 3;
+  const forest = moist > 0.55 && elev > 0.42 && elev < 0.72;
+  const hills = elev > 0.6;
+  return {
+    // food averages BELOW the per-capita demand, so poor/dry inland sites run a deficit
+    // (famine-prone unless fed by trade) while fertile coasts run a thriving surplus.
+    food: Math.max(0.2, 0.4 + fert * 1.2 + (coastal ? 0.34 : 0)),
+    materials: Math.max(0.05, 0.12 + (hills ? (elev - 0.6) * 2.3 : 0) + (forest ? 0.55 : 0)),
+    goods: Math.max(0.05, 0.1 + (coastal ? 0.55 : 0) + (forest ? 0.18 : 0) + fert * 0.1),
+  };
+}
+
+/** A short label for what the land makes here (display only). */
+export function specializationFromTerrain(geo: Geography, x: number, y: number): string {
+  const elev = elevationAt(geo, x, y);
+  const moist = moistureAt(geo, x, y);
+  const fert = fertilityAt(geo, x, y);
+  if (seaDist(geo, x, y) <= 3) return fert > 0.5 ? 'fishing & farms' : 'fishing & trade';
+  if (elev > 0.66) return 'mining';
+  if (moist > 0.55 && elev > 0.45) return 'forestry';
+  if (fert > 0.5) return 'farming';
+  return 'mixed';
 }
 
 // ----------------------------------------------------------- needs -----------
