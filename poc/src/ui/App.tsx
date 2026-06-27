@@ -434,7 +434,11 @@ function Dashboard({
                 {' '}
                 · {s.population} {s.dominantSpecies} · {s.specialization} · {s.wealth}w{' '}
                 <span className={foodClass(s.foodSecurity)}>{foodLabel(s.foodSecurity)}</span>
-                {s.ruler && <span className="ruler"> · ruled by {s.ruler}</span>}
+                {s.leaderTitle && s.ruler ? (
+                  <span className="ruler"> · {s.leaderTitle} {s.ruler}</span>
+                ) : !s.leaderTitle ? (
+                  <span className="figs"> · free folk (no ruler)</span>
+                ) : null}
                 {s.figureNames.length > 0 && (
                   <span className="figs"> · still there: {s.figureNames.join(', ')}</span>
                 )}

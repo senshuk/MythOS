@@ -16,7 +16,7 @@ import {
 } from './model';
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
-import { generateGiven, generateFamily, maturityOf, ambitionOf } from '../content/fixture';
+import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan } from '../content/fixture';
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
  *  founders (worldgen stream) and successions (figure stream) stay deterministic. */
@@ -39,7 +39,8 @@ export function mintFigure(
     settlementId: s.id,
     bornYear: year - rng.range(22, 42),
     reignStart: year,
-    reignEnd: year + rng.range(15, 45),
+    // a hereditary ruler reigns until death; an elected one serves a fixed term.
+    reignEnd: year + reignSpan(s.governmentId, rng),
   };
   world.figures.push(fig);
   return fig;
@@ -87,29 +88,37 @@ function crownActor(world: World, s: Settlement, id: EntityId, year: number, rng
     settlementId: s.id,
     bornYear: year - lc.ageYears,
     reignStart: year,
-    reignEnd: year + rng.range(15, 45),
+    reignEnd: year + reignSpan(s.governmentId, rng),
   });
   return id;
 }
 
-/** Yearly: rule passes from one figure to the next when a reign ends. Living
- *  settlements always have a ruler (the founder, then successors). */
+/** Yearly: leadership transfers per the polity's GOVERNMENT (succession is data).
+ *  Hereditary: a ruler reigns until death, then an heir/successor rises. Elected: a
+ *  leader serves a term, then steps down (alive) and a new one is chosen — no dynasty.
+ *  Leaderless polities have no ruler and are skipped entirely. */
 export function figuresYearly(world: World): void {
   const rng = new Rng(world.figureRngState);
   const year = Math.floor(world.tick / DAYS_PER_YEAR);
 
   for (const s of world.settlements) {
     if (s.ruinedYear !== undefined || s.macro.population <= 0) continue; // no rule in a dying town
+    const gov = governmentById(s.governmentId);
+    if (gov.succession === 'none') continue; // leaderless — no rulers, ever
 
+    const title = leaderTitleOf(s.governmentId);
     const ruler = getFigure(world, s.currentRulerId);
     if (!ruler) {
-      // defensive: a living settlement with no ruler gets one
+      // defensive: a leader-bearing polity with no ruler gets one
       s.currentRulerId = mintFigure(world, s, year, rng, 'ruler').id;
       continue;
     }
     if (year >= ruler.reignEnd) {
-      ruler.deathYear = year;
-      emit(world, 'ruler_died', [ruler.id], { settlement: s.name });
+      // a hereditary ruler dies in office; an elected leader merely steps down (lives on).
+      if (gov.succession === 'hereditary') {
+        ruler.deathYear = year;
+        emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title });
+      }
       // In the focused settlement, rule passes to a real local heir (so an actor —
       // and the player — can actually rise to lead). Elsewhere, mint a figure.
       let successorId: FigureId;
@@ -120,7 +129,7 @@ export function figuresYearly(world: World): void {
         successorId = mintFigure(world, s, year, rng, 'ruler').id;
       }
       s.currentRulerId = successorId;
-      emit(world, 'ascension', [successorId], { settlement: s.name });
+      emit(world, 'ascension', [successorId], { settlement: s.name, title });
     }
   }
 

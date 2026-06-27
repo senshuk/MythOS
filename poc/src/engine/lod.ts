@@ -53,6 +53,8 @@ import {
   elderhoodOf,
   pairBondsFor,
   unionViable,
+  pickGovernment,
+  hasLeader,
   PRODUCTION,
   CONSUMPTION,
   BASE_PRICE,
@@ -91,13 +93,16 @@ export function createSettlements(world: World): void {
       detailed: false,
       epoch: 0,
       rngState: mixSeed(world.seed, i + 1),
+      governmentId: pickGovernment(gen),
       macro,
       econ: initEconomy(gen, pop),
     };
     world.settlements.push(s);
-    // mint the founder (also the first ruler) so the founding has a named person
+    // mint the founder so the founding has a named person. In a polity with a leader
+    // the founder is also its first ruler; a leaderless polity records the founder in
+    // history but has no ongoing ruler.
     const founder = mintFigure(world, s, 0, gen, 'founder');
-    s.currentRulerId = founder.id;
+    if (hasLeader(s.governmentId)) s.currentRulerId = founder.id;
     emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop });
   }
 

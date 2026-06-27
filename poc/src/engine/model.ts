@@ -180,7 +180,10 @@ export interface Settlement {
   rngState: number;
   /** set to the year the settlement fell to ruin (population reached 0). */
   ruinedYear?: number;
-  /** the figure who currently rules here (founder, then a line of successors). */
+  /** this polity's government (succession model) — a pack id; see content/fixture. */
+  governmentId: string;
+  /** the figure who currently rules here (founder, then a line of successors). Absent
+   *  in a leaderless polity (government with no leader). */
   currentRulerId?: FigureId;
   macro: MacroPop;
   econ: Economy;
@@ -355,6 +358,8 @@ export interface SettlementView {
   stability: number;
   figureNames: string[];
   ruinedYear?: number; // set if the settlement is a ruin
+  government: string; // the polity's government (display label, e.g. 'Lord'/'Speaker'/'free folk')
+  leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   // economy

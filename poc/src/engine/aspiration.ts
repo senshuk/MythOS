@@ -15,7 +15,7 @@
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, fullName, emit } from './world';
-import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor } from '../content/fixture';
+import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor, hasLeader } from '../content/fixture';
 
 export type AspirationKind =
   | 'survive'
@@ -96,6 +96,13 @@ function isRuler(world: World, id: EntityId): boolean {
   return h !== undefined && world.settlements[h]?.currentRulerId === id;
 }
 
+/** Whether this actor's polity even has a leadership seat to aspire to (not a
+ *  leaderless government). */
+function canSeekRule(world: World, id: EntityId): boolean {
+  const h = world.homeSettlement.get(id);
+  return h !== undefined && hasLeader(world.settlements[h].governmentId);
+}
+
 /**
  * The actor's current aspiration. Priority follows a life arc: stay alive, make a
  * living, find a partner, raise a family, settle grudges, seek standing, find
@@ -129,10 +136,10 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   const feud = strongestFeud(world, id);
   if (feud !== undefined) return { kind: 'reconcile', target: feud, action: 'socialize' };
 
-  // ambition (data-driven): those whose traits carry a drive to lead, and who do
-  // not yet rule, strive to build standing. The engine reads `ambition`, never a
-  // specific trait name.
-  if (ambitionOf(traits) > 0 && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
+  // ambition (data-driven): those whose traits carry a drive to lead — and whose
+  // polity HAS a leadership seat — strive for it, unless they already hold it. The
+  // engine reads `ambition` + the government's succession, never a specific id.
+  if (ambitionOf(traits) > 0 && canSeekRule(world, id) && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
 
   if (needs.belonging < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
     return { kind: 'belonging', action: 'socialize' };

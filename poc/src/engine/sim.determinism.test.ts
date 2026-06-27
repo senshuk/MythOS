@@ -26,7 +26,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -583,8 +583,11 @@ describe('historical figures', () => {
       expect(w.figures.some((f) => f.role === 'founder' && f.settlementId === s.id)).toBe(true);
     }
     expect(w.figures.filter((f) => f.role === 'ruler').length).toBeGreaterThan(0);
-    // a surviving settlement has had multiple rulers across history
-    const longLived = w.settlements.find((s) => s.ruinedYear === undefined && s.macro.population > 0)!;
+    // a surviving LED settlement has had a line of leaders across history (a leaderless
+    // polity would have only its founder — no ongoing rule)
+    const longLived = w.settlements.find(
+      (s) => s.ruinedYear === undefined && s.macro.population > 0 && hasLeader(s.governmentId),
+    )!;
     expect(w.figures.filter((f) => f.settlementId === longLived.id).length).toBeGreaterThan(1);
   });
 
@@ -599,17 +602,20 @@ describe('historical figures', () => {
     // last ruler. Searched across seeds/centuries so at least one ruin reliably occurs
     // regardless of demographic balance (a healthy world may have none for a while).
     let sawRuin = false;
+    let sawNamedRuin = false;
     for (const seed of [1492, 7, 42, 99, 2024]) {
       const w2 = createWorld(seed, false);
       runYears(w2, 600);
       for (const e of w2.events) {
         if (e.type === 'ruined') {
           sawRuin = true;
-          expect(e.subjects.length).toBe(1); // its last ruler
+          expect(e.subjects.length).toBeLessThanOrEqual(1); // a led polity names its last ruler; a leaderless one names none
+          if (e.subjects.length === 1) sawNamedRuin = true;
         }
       }
     }
     expect(sawRuin).toBe(true);
+    expect(sawNamedRuin).toBe(true); // when a polity that HAD a ruler falls, the ruin names them
   });
 
   it('figures are records, not actors — they never enter the entity systems', () => {
@@ -656,6 +662,50 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('government is DATA (leadership transfer is not a hardcoded dynasty)', () => {
+  it('the pack defines succession modes and leader titles', () => {
+    expect(successionOf('monarchy')).toBe('hereditary');
+    expect(successionOf('council')).toBe('elected');
+    expect(successionOf('freefolk')).toBe('none');
+    expect(hasLeader('monarchy')).toBe(true);
+    expect(hasLeader('freefolk')).toBe(false); // leaderless
+    expect(leaderTitleOf('council')).toBe('Speaker');
+  });
+
+  it('leaderless polities have no ruler; hereditary die in office; elected rotate while living', () => {
+    let leaderlessSeen = false;
+    let hereditaryDies = false;
+    let electedRotatesAlive = false;
+    for (let seed = 1; seed < 40 && !(leaderlessSeen && hereditaryDies && electedRotatesAlive); seed++) {
+      const w = createWorld(seed, false);
+      runYears(w, 200);
+      for (const s of w.settlements) {
+        const mode = successionOf(s.governmentId);
+        if (mode === 'none') {
+          // a leaderless polity NEVER has a ruler
+          expect(s.currentRulerId).toBeUndefined();
+          leaderlessSeen = true;
+        }
+      }
+      // hereditary rulers die in office (a dynasty of ruler_died → ascension)
+      if (w.events.some((e) => e.type === 'ruler_died')) hereditaryDies = true;
+      // an elected polity accumulates several leaders over 200y, NONE of whom died in
+      // office (they step down alive — no deathYear) — impossible under the old model.
+      for (const s of w.settlements) {
+        if (successionOf(s.governmentId) !== 'elected') continue;
+        const rulers = w.figures.filter((f) => f.settlementId === s.id && f.role === 'ruler');
+        if (rulers.length >= 2 && rulers.every((f) => f.deathYear === undefined)) {
+          electedRotatesAlive = true;
+          break;
+        }
+      }
+    }
+    expect(leaderlessSeen).toBe(true);
+    expect(hereditaryDies).toBe(true);
+    expect(electedRotatesAlive).toBe(true);
   });
 });
 

@@ -25,8 +25,8 @@ export type RenderFn = (n: (i: number) => string, d: Record<string, number | str
 export const EVENT_RENDER: Record<string, RenderFn> = {
   settlement_founded: (n, d, c) =>
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
-  ascension: (n, d) => `${n(0)} became ruler of ${d.settlement}.`,
-  ruler_died: (n, d) => `${n(0)}, ruler of ${d.settlement}, passed away.`,
+  ascension: (n, d) => `${n(0)} became ${d.title || 'ruler'} of ${d.settlement}.`,
+  ruler_died: (n, d) => `${n(0)}, ${d.title || 'ruler'} of ${d.settlement}, passed away.`,
   prosperity: (_n, d) => `${d.name} enjoyed a prosperous year (now ${d.population} souls).`,
   hardship: (_n, d) => `${d.name} suffered hardship — ${d.toll} souls lost.`,
   milestone: (_n, d) => `${d.name} grew to ${d.population} souls.`,

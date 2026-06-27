@@ -207,6 +207,55 @@ export function pairAffinity(traitsA: string[], traitsB: string[]): number {
   return sum;
 }
 
+// ----------------------------------------------------------- government ------
+// How a polity's leadership transfers — SPECIES-agnostic DATA the engine dispatches
+// on, so the simulation isn't hardwired to a single hereditary ruler. Succession
+// modes the engine understands: hereditary (rule until death, then an heir/successor),
+// elected (a leader serves a term, then a new one is chosen — no dynasty), and none
+// (leaderless: a hive or free folk with no ruler at all).
+
+export type SuccessionMode = 'hereditary' | 'elected' | 'none';
+
+export interface Government {
+  id: string;
+  /** what the leader is called ('Lord', 'Speaker'…); empty for a leaderless polity. */
+  title: string;
+  succession: SuccessionMode;
+  /** elected only: years a leader serves before a new one is chosen. */
+  termYears?: number;
+}
+
+export const GOVERNMENTS: Government[] = [
+  { id: 'monarchy', title: 'Lord', succession: 'hereditary' },
+  { id: 'chiefdom', title: 'Chief', succession: 'hereditary' },
+  { id: 'council', title: 'Speaker', succession: 'elected', termYears: 12 },
+  { id: 'theocracy', title: 'High Priest', succession: 'elected', termYears: 20 },
+  { id: 'freefolk', title: '', succession: 'none' },
+];
+
+export function governmentById(id: string): Government {
+  return GOVERNMENTS.find((g) => g.id === id) ?? GOVERNMENTS[0];
+}
+export function pickGovernment(rng: Rng): string {
+  return rng.pick(GOVERNMENTS).id;
+}
+export function successionOf(id: string): SuccessionMode {
+  return governmentById(id).succession;
+}
+export function leaderTitleOf(id: string): string {
+  return governmentById(id).title;
+}
+/** Does this government have a single leader at all (i.e. not leaderless)? */
+export function hasLeader(id: string): boolean {
+  return governmentById(id).succession !== 'none';
+}
+/** How long a fresh leader holds office before succession: a term (elected) or a
+ *  natural reign until death (hereditary), expressed as a year span from `rng`. */
+export function reignSpan(id: string, rng: Rng): number {
+  const g = governmentById(id);
+  return g.succession === 'elected' && g.termYears !== undefined ? g.termYears : rng.range(15, 45);
+}
+
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;
 }
