@@ -1,0 +1,13 @@
+# --- Studied games: copyrighted reference material, NEVER published ---
+Dwarf Fortress/
+RimWorld/
+Warsim The Realm of Aslona/
+
+# --- Local tooling / agent config ---
+.claude/
+
+# --- Node / build artifacts ---
+node_modules/
+dist/
+.vite/
+*.log

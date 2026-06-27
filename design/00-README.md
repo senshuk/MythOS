@@ -1,0 +1,65 @@
+# MythOS Design Dossier
+
+This folder contains a two-part architectural study:
+
+1. **Part 1 — Warsim Reverse-Engineering Analysis** (`01-warsim-analysis.md`)
+   A software-architect's teardown of *Warsim: The Realm of Aslona*, reconstructed
+   from its shipped data files and save files (the BASIC/QB64 source is closed). It
+   covers architecture, simulation, procedural generation, content organization,
+   save/load, UI, strengths, weaknesses, and what to redesign.
+
+2. **Part 2 — MythOS Engine Design** (files `02`–`07`)
+   A principal-engineer's design for the *fictional universe simulation engine*
+   described in `CLAUDE.md`. It deliberately challenges several assumptions in the
+   stated vision where they will cause long-term pain.
+
+| File | Contents |
+|------|----------|
+| `01-warsim-analysis.md` | Full Warsim teardown (deliverables 1–9 of the brief) |
+| `02-vision-and-architecture.md` | Vision doc, architecture doc, assumptions challenged |
+| `03-entity-world-data-model.md` | Entity model, world model, data model, save format |
+| `04-simulation-systems.md` | Tick model, scheduler, LOD, all core systems |
+| `05-modules-and-universe-packs.md` | Module/plugin system, universe pack format |
+| `06-tech-roadmap-mvp-risks.md` | Tech recs, folder layout, roadmap, MVP, risks, things to avoid |
+| `07-lessons-and-surpassing-warsim.md` | Lessons from Warsim, how to surpass it without cloning |
+
+3. **Part 3 — RimWorld Storytelling Study** (`08-rimworld-study.md`)
+   An evaluation of *RimWorld* (Ludeon) focused on **storytelling & worldbuilding** —
+   the Storyteller/AI-Director, the Thought (opinion/mood) system, Tales
+   (history-as-content), and the recursive RulePack grammar — plus what the Warsim
+   evaluation under-weighted, and prioritized recommendations for MythOS and the PoC.
+   Studied from the shipped XML `Defs` and `Source/` reference; no code/content copied.
+
+| File | Contents |
+|------|----------|
+| `08-rimworld-study.md` | RimWorld storytelling teardown + what to fold into MythOS |
+
+4. **Part 4 — Dwarf Fortress Study** (`09-dwarf-fortress-study.md`)
+   An evaluation of *Dwarf Fortress* (Bay 12 / Kitfox) focused on **depth and the
+   world-before-player**: pre-play worldgen history, civilizations as data-driven
+   ethics/values, meaningful procedural language, and legends-as-database — plus the
+   crucial *cautionary* lesson (DF's depth costs legibility, LOD, and determinism,
+   which MythOS must keep). Studied from the shipped XML/raw `objects`; nothing copied.
+
+| File | Contents |
+|------|----------|
+| `09-dwarf-fortress-study.md` | DF deep-simulation teardown + what to fold into MythOS, and what to avoid |
+
+## How Warsim was studied
+
+The repository ships the compiled game (`Warsim.exe`, ~20 MB QB64 binary) plus a
+fully exposed `Data/` and `Saves/` tree. The source is not present, so every claim
+in Part 1 is grounded in **observable file formats and content**, not in reading
+code. Where a mechanism is inferred rather than directly observed, it is marked
+*(inferred)*. The most informative artifacts were:
+
+- `Saves/0.txt` — a complete world serialized as one flat positional record.
+- `Data/RaceType.txt`, `Data/RaceSuffix.txt` — the race + modifier grammar.
+- `Data/RacePacks/*` — Warsim's embryonic "universe pack" concept.
+- `Data/Currency.txt`, `Data/Weapons/*`, `Data/monsters.txt`, `Data/Faces/*` —
+  compositional procedural generation by part-assembly + token grammar.
+- `Data/Names/*` and the `*_NamingSystem.txt` files — the naming engine.
+- `Data/*Talk.txt` — context-tagged dialogue pools.
+- `Extras/Warsim Cheat List.txt` — an unintentional catalogue of every live
+  simulation subsystem (factions, relations, bandits, demons, plague, void gates,
+  leagues, deserters, mercenaries, blackmarket, slavers, public opinion, quests).
