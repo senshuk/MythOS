@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -247,7 +247,14 @@ export default function App() {
               onPossess={(id) => sim.possess(id)}
               busy={sim.busy}
             />
-            <HistoryFeed events={stat.recentEvents} focusedName={stat.settlementName} onPickEvent={inspectEvent} onRef={inspectRef} />
+            <HistoryFeed
+              events={stat.recentEvents}
+              eras={stat.eras}
+              legends={stat.chronicle}
+              focusedName={stat.settlementName}
+              onPickEvent={inspectEvent}
+              onRef={inspectRef}
+            />
             <Inspector
               actorDetail={sim.actorDetail}
               eventChain={sim.eventChain}
@@ -572,16 +579,41 @@ function Dashboard({
         ))}
       </div>
 
-      <h3>{stat.settlementName} · where your gaze rests</h3>
-      <div className="stats">
-        <Stat label="Souls" value={stat.population} />
-        <Stat label="Births" value={stat.totalBorn} />
-        <Stat label="Deaths" value={stat.totalDied} />
-        <Stat label="Marriages" value={stat.marriages} />
-        <Stat label="Feuds" value={stat.feuds} />
-      </div>
+      <section className="focus-panel">
+        <h3>{stat.settlementName} · where your gaze rests</h3>
+        <div className="stats">
+          <Stat label="Souls" value={stat.population} />
+          <Stat label="Births" value={stat.totalBorn} />
+          <Stat label="Deaths" value={stat.totalDied} />
+          <Stat label="Marriages" value={stat.marriages} />
+          <Stat label="Feuds" value={stat.feuds} />
+        </div>
+        <h4 className="live-as-head">Notable folk — press ▶ to live one of their lives</h4>
+        <ul className="notable">
+          {stat.notable.map((a) => (
+            <li key={a.id}>
+              <button
+                className="play-btn"
+                onClick={() => onPossess(a.id)}
+                disabled={busy || a.id === stat.player?.id}
+                aria-label={a.id === stat.player?.id ? `You live as ${a.name}` : `Live as ${a.name}`}
+                title={a.id === stat.player?.id ? 'you live as this soul' : 'live as this soul'}
+              >
+                {a.id === stat.player?.id ? '◉' : '▶'}
+              </button>{' '}
+              <button className="link" onClick={() => onPickActor(a.id)}>
+                {a.name}
+              </button>
+              <span className="muted">
+                {' '}
+                · {a.species} {a.profession}, {a.ageYears}y · {a.relationshipCount} ties
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-      <h3>Settlements — click to turn your gaze, and live it in full</h3>
+      <h3>Settlements — turn your gaze elsewhere</h3>
       <ul className="settlements">
         {stat.settlements.map((s) => (
           <li key={s.id} className={`${s.detailed ? 'focused' : ''} ${s.ruinedYear !== undefined ? 'is-ruin' : ''}`}>
@@ -625,67 +657,22 @@ function Dashboard({
         ))}
       </ul>
 
-      <h3>Notable folk of {stat.settlementName} — ▶ to live as one</h3>
-      <ul className="notable">
-        {stat.notable.map((a) => (
-          <li key={a.id}>
-            <button
-              className="play-btn"
-              onClick={() => onPossess(a.id)}
-              disabled={busy || a.id === stat.player?.id}
-              aria-label={a.id === stat.player?.id ? `You live as ${a.name}` : `Live as ${a.name}`}
-              title={a.id === stat.player?.id ? 'you live as this soul' : 'live as this soul'}
-            >
-              {a.id === stat.player?.id ? '◉' : '▶'}
-            </button>{' '}
-            <button className="link" onClick={() => onPickActor(a.id)}>
-              {a.name}
-            </button>
-            <span className="muted">
-              {' '}
-              · {a.species} {a.profession}, {a.ageYears}y · {a.relationshipCount} ties
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {(stat.eras.length > 0 || stat.chronicle.length > 0) && (
+      {stat.historicalFigures.length > 0 && (
         <>
-          <h3>Chronicle — the world remembers</h3>
-          {stat.eras.length > 0 && (
-            <ul className="eras">
-              {stat.eras.slice(0, 6).map((e, i) => (
-                <li key={i}>
-                  <span className="muted">y{e.year}:</span> {e.title}
-                </li>
-              ))}
-            </ul>
-          )}
-          <ul className="legends">
-            {stat.chronicle.slice(0, 8).map((t, i) => (
+          <h3>Figures of history</h3>
+          <ul className="figures-hist">
+            {stat.historicalFigures.slice(0, 8).map((f, i) => (
               <li key={i}>
-                <span className="muted">y{t.year}</span> {t.text}
+                <span className="fig-name">{f.name}</span>
+                <span className="muted">
+                  {' '}
+                  — {f.role}
+                  {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
+                  {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
+                </span>
               </li>
             ))}
           </ul>
-          {stat.historicalFigures.length > 0 && (
-            <>
-              <h4>Figures of history</h4>
-              <ul className="figures-hist">
-                {stat.historicalFigures.slice(0, 8).map((f, i) => (
-                  <li key={i}>
-                    <span className="fig-name">{f.name}</span>
-                    <span className="muted">
-                      {' '}
-                      — {f.role}
-                      {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
-                      {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
         </>
       )}
 
@@ -913,67 +900,111 @@ function processFeed(events: EventView[], scope: 'world' | 'place', mode: 'notab
 
 function HistoryFeed({
   events,
+  eras,
+  legends,
   focusedName,
   onPickEvent,
   onRef,
 }: {
   events: EventView[];
+  eras: EraView[];
+  legends: TaleView[];
   focusedName: string;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
 }) {
+  const [view, setView] = useState<'recent' | 'legends'>('recent');
   const [scope, setScope] = useState<'world' | 'place'>('world');
   const [mode, setMode] = useState<'notable' | 'all'>('notable');
   const items = useMemo(() => processFeed(events, scope, mode), [events, scope, mode]);
 
   return (
     <section className="panel feed">
-      <h2>As the years turn</h2>
-      <div className="feed-controls" role="group" aria-label="history filters">
-        <div className="seg" role="group" aria-label="scope">
-          <button className={scope === 'world' ? 'on' : ''} onClick={() => setScope('world')}>The world</button>
-          <button className={scope === 'place' ? 'on' : ''} onClick={() => setScope('place')}>{focusedName}</button>
-        </div>
-        <div className="seg" role="group" aria-label="detail">
-          <button className={mode === 'notable' ? 'on' : ''} onClick={() => setMode('notable')}>Notable</button>
-          <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>Everything</button>
-        </div>
+      <h2>The chronicle</h2>
+      {/* Recent = the unfolding stream; Legends & Ages = the enshrined deep history */}
+      <div className="seg view-tabs" role="group" aria-label="history view">
+        <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')}>Recent</button>
+        <button className={view === 'legends' ? 'on' : ''} onClick={() => setView('legends')}>Legends &amp; Ages</button>
       </div>
-      {items.length === 0 ? (
-        <p className="muted">Nothing of note yet — advance the years, or switch to “Everything”.</p>
-      ) : (
-        <ul>
-          {items.map((it) =>
-            it.kind === 'event' ? (
-              <li key={`e${it.ev.id}`} className={`ev ${TYPE_TONE[it.ev.type] ?? 'neutral'}`}>
-                {/* click a name to inspect it · click anywhere else to trace the causes */}
-                <div
-                  className="ev-row"
-                  onClick={() => onPickEvent(it.ev.id)}
-                  onKeyDown={(e) => onActivate(e, () => onPickEvent(it.ev.id))}
-                  role="button"
-                  tabIndex={0}
-                  title="trace causes"
-                >
-                  <span className="ev-year">y{it.ev.year}</span> <EventText parts={it.ev.parts} onRef={onRef} />
-                  {it.ev.causes.length > 0 && <span className="why"> · why?</span>}
-                </div>
-              </li>
-            ) : (
-              <li key={`d${it.year}`} className="ev digest">
-                <div className="ev-row digest-row">
-                  <span className="ev-year">y{it.year}</span>{' '}
-                  <span className="muted">
-                    in {focusedName}:{' '}
-                    {Object.entries(it.counts)
-                      .map(([cat, n]) => `${n} ${cat}`)
-                      .join(' · ')}
-                  </span>
-                </div>
-              </li>
-            ),
+
+      {view === 'recent' ? (
+        <>
+          <div className="feed-controls" role="group" aria-label="history filters">
+            <div className="seg" role="group" aria-label="scope">
+              <button className={scope === 'world' ? 'on' : ''} onClick={() => setScope('world')}>The world</button>
+              <button className={scope === 'place' ? 'on' : ''} onClick={() => setScope('place')}>{focusedName}</button>
+            </div>
+            <div className="seg" role="group" aria-label="detail">
+              <button className={mode === 'notable' ? 'on' : ''} onClick={() => setMode('notable')}>Notable</button>
+              <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>Everything</button>
+            </div>
+          </div>
+          {items.length === 0 ? (
+            <p className="muted">Nothing of note yet — advance the years, or switch to “Everything”.</p>
+          ) : (
+            <ul>
+              {items.map((it) =>
+                it.kind === 'event' ? (
+                  <li key={`e${it.ev.id}`} className={`ev ${TYPE_TONE[it.ev.type] ?? 'neutral'}`}>
+                    {/* click a name to inspect it · click anywhere else to trace the causes */}
+                    <div
+                      className="ev-row"
+                      onClick={() => onPickEvent(it.ev.id)}
+                      onKeyDown={(e) => onActivate(e, () => onPickEvent(it.ev.id))}
+                      role="button"
+                      tabIndex={0}
+                      title="trace causes"
+                    >
+                      <span className="ev-year">y{it.ev.year}</span> <EventText parts={it.ev.parts} onRef={onRef} />
+                      {it.ev.causes.length > 0 && <span className="why"> · why?</span>}
+                    </div>
+                  </li>
+                ) : (
+                  <li key={`d${it.year}`} className="ev digest">
+                    <div className="ev-row digest-row">
+                      <span className="ev-year">y{it.year}</span>{' '}
+                      <span className="muted">
+                        in {focusedName}:{' '}
+                        {Object.entries(it.counts)
+                          .map(([cat, n]) => `${n} ${cat}`)
+                          .join(' · ')}
+                      </span>
+                    </div>
+                  </li>
+                ),
+              )}
+            </ul>
           )}
-        </ul>
+        </>
+      ) : eras.length === 0 && legends.length === 0 ? (
+        <p className="muted">No legends yet — the great deeds of this age are still being written.</p>
+      ) : (
+        <>
+          {eras.length > 0 && (
+            <>
+              <h3>The named ages</h3>
+              <ul className="eras">
+                {eras.slice(0, 8).map((e, i) => (
+                  <li key={i}>
+                    <span className="muted">y{e.year}:</span> {e.title}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {legends.length > 0 && (
+            <>
+              <h3>Legends still told</h3>
+              <ul className="legends">
+                {legends.slice(0, 12).map((t, i) => (
+                  <li key={i}>
+                    <span className="muted">y{t.year}</span> {t.text}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
       )}
     </section>
   );
