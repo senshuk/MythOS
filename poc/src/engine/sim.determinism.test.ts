@@ -18,8 +18,10 @@ import {
   schedulePlayerIntent,
 } from './sim';
 import { resolvePlayerIntent } from '../systems/resolve';
-import { fullActors, summaryActors, createActor } from './world';
+import { fullActors, summaryActors, createActor, emit } from './world';
 import { ageCompatible } from './aspiration';
+import { renderEvent } from './render';
+import { EVENT_RENDER, eventInterest } from '../content/narrative';
 import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
@@ -654,6 +656,36 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('event vocabulary is pack-owned (the engine is narration-agnostic)', () => {
+  it('prose and interest come from the pack, not the engine', () => {
+    // the templates/weights live in content/narrative.ts; engine modules only consume them
+    expect(typeof EVENT_RENDER['married']).toBe('function');
+    expect(eventInterest('died_brawl', {})).toBeGreaterThan(eventInterest('born', {}));
+    const w = createWorld(1);
+    const founding = w.events.find((e) => e.type === 'settlement_founded')!;
+    const prose = renderEvent(w, founding);
+    expect(prose.length).toBeGreaterThan(0);
+    expect(prose).not.toBe(founding.type); // a real sentence, not the raw type
+  });
+
+  it('a pack may emit & render an event type the ENGINE never declared', () => {
+    const w = createWorld(1);
+    // emit a type the engine has no knowledge of — the open EventType permits it
+    const id = emit(w, 'warp_jump', [], { from: 'Terra', to: 'Vega' });
+    const ev = w.events.find((e) => e.id === id)!;
+    // with no pack template, it falls back gracefully to the raw type (no crash)
+    expect(renderEvent(w, ev)).toBe('warp_jump');
+    expect(eventInterest('warp_jump', {})).toBe(0); // unknown → routine
+    // and when the PACK supplies a template, the engine renders it generically
+    EVENT_RENDER['warp_jump'] = (_n, d) => `A ship jumped from ${d.from} to ${d.to}.`;
+    try {
+      expect(renderEvent(w, ev)).toBe('A ship jumped from Terra to Vega.');
+    } finally {
+      delete EVENT_RENDER['warp_jump'];
+    }
   });
 });
 

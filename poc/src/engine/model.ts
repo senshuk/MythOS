@@ -106,51 +106,18 @@ export interface WorldEvent {
   causes: EventId[]; // parent events -> the causal story graph
 }
 
-export type EventType =
-  | 'settlement_founded'
-  // --- full-fidelity (focused settlement) events ---
-  | 'born'
-  | 'died'
-  | 'died_brawl'
-  | 'married'
-  | 'widowed'
-  | 'friendship'
-  | 'rivalry'
-  | 'feud'
-  | 'dispute'
-  | 'kindness'
-  | 'brawl'
-  // --- aggregate (macro layer) events ---
-  | 'prosperity'
-  | 'hardship'
-  | 'milestone'
-  | 'figure_passed'
-  // --- geography & economy: trade, conflict, famine ---
-  | 'trade'
-  | 'raid'
-  | 'famine'
-  // --- director-fired incidents ---
-  | 'boon'
-  | 'blight'
-  | 'plague'
-  // --- landmark: a settlement falls to ruin ---
-  | 'ruined'
-  // --- historical figures: rulers & succession ---
-  | 'ascension'
-  | 'ruler_died'
-  // --- wars, wonders, beasts, portents (Warsim/RimWorld/DF flavor) ---
-  | 'battle'
-  | 'conquest'
-  | 'wonder'
-  | 'beast'
-  | 'omen'
-  // --- migration / cross-settlement ---
-  | 'emigrated'
-  | 'immigrated'
-  // --- player: a controlled actor fulfils an aspiration ---
-  | 'goal_met'
-  // --- LOD control ---
-  | 'focus_shift';
+/**
+ * An event's type is an OPEN string, not a fixed enum — the VOCABULARY of events is
+ * owned by the Universe Pack (see `content/narrative.ts`), so a pack can introduce
+ * new kinds (a sci-fi `warp_jump`, a `schism`…) without editing the engine. The
+ * pack supplies each type's prose, interest weight, and grammar. The kinds this PoC
+ * pack emits today: settlement_founded, born, died, died_brawl, married, widowed,
+ * friendship, rivalry, feud, dispute, kindness, brawl, prosperity, hardship,
+ * milestone, figure_passed, trade, raid, famine, boon, blight, plague, ruined,
+ * ascension, ruler_died, battle, conquest, wonder, beast, omen, emigrated,
+ * immigrated, goal_met, focus_shift.
+ */
+export type EventType = string;
 
 export type SettlementId = number;
 

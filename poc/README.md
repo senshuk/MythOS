@@ -144,6 +144,13 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   **Grok** are *asexual* (they spawn **alone**, no mate, single-parent births). Nothing
   in the engine assumes `'m'`/`'f'`, opposite-sex marriage, or two parents. (Polygamy is
   flagged in the data but not yet implemented — the social tie is still a single spouse.)
+- **The event vocabulary is pack-owned** (`src/content/narrative.ts`) — the engine knows
+  the *structure* of an event and the *mechanism* of history, but not what events MEAN or
+  how they READ. Each event type's **prose**, **interest weight** (how memorable it is),
+  and the **grammars** that name ages and coin wonders/beasts/omens all live in the pack;
+  the engine applies them generically. `EventType` is an open string, so a pack can emit
+  kinds the engine never declared (a `warp_jump`, a `schism`) and they render and score
+  from pack data. No medieval-English wording is baked into `engine/`.
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
   species/professions/traits, **with their effects as data**: a profession carries its
   `income`, a trait carries its `ambition` (drive to rule), and the engine reads those
@@ -164,7 +171,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects/reproduction gate (76 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects/reproduction/narrative gate (78 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

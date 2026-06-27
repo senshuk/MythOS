@@ -16,7 +16,8 @@ import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PE
 import { Rng } from './rng';
 import { fullActors, emit, clamp } from './world';
 import { killActor } from './world';
-import { expand, type GrammarRules } from './grammar';
+import { expand } from './grammar';
+import { WONDER_GRAMMAR, BEAST_GRAMMAR, OMEN_GRAMMAR, BOONS } from '../content/narrative';
 
 interface DirectorDef {
   id: string;
@@ -94,37 +95,6 @@ function fireIncident(world: World, def: DirectorDef, rng: Rng): void {
     hardYear(world, def, rng);
   }
 }
-
-const BOONS = ['A bountiful harvest', 'A golden season', 'A time of plenty', 'Fair fortune', 'A mild and giving year'];
-
-const WONDER_GRAMMAR: GrammarRules = {
-  wonder: ['the Great [hall] of [PLACE]', 'the [adj] [hall] of [PLACE]', 'the [material] [monument] of [PLACE]'],
-  hall: ['Hall', 'Temple', 'Tower', 'Library', 'Spire', 'Citadel', 'Vault'],
-  adj: ['Golden', 'Grand', 'Eternal', 'Hallowed', 'High', 'Shining'],
-  material: ['Bronze', 'Marble', 'Onyx', 'Crystal', 'Iron', 'Silver'],
-  monument: ['Colossus', 'Obelisk', 'Throne', 'Great Bell', 'Gate', 'Archive'],
-};
-
-const BEAST_GRAMMAR: GrammarRules = {
-  beast: ['the [badj] [creature]', '[bname] the [epithet]', 'the [badj] [creature]'],
-  badj: ['Dread', 'Ancient', 'Black', 'Pale', 'Ravenous', 'Vile', 'Great'],
-  creature: ['Wyrm', 'Drake', 'Serpent', 'Beast', 'Terror', 'Hydra', 'Wolf', 'Roc'],
-  bname: ['Grimfang', 'Vorrath', 'Skarn', 'Maugrim', 'Ssylith', 'Korgath'],
-  epithet: ['Devourer', 'Bloodmaw', 'Shadowmaw', 'the Unending', 'Ironhide', 'the Pale'],
-};
-
-const OMEN_GRAMMAR: GrammarRules = {
-  omen: [
-    'a comet streaked the night sky',
-    'the sun was swallowed in eclipse',
-    'the aurora burned blood-red',
-    'two moons rose as one',
-    'a calf was born with two heads',
-    'the rivers ran red for a day',
-    'stars fell like rain',
-    'a great silence fell at midday',
-  ],
-};
 
 function pickPopulated(world: World, rng: Rng): Settlement | undefined {
   const live = world.settlements.filter((s) => s.ruinedYear === undefined && s.macro.population > 0);
