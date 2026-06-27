@@ -42,6 +42,7 @@ import { mintFigure } from './figures';
 import {
   SPECIES,
   speciesById,
+  macroFertilityOf,
   generateGiven,
   generateFamily,
   pickSex,
@@ -460,7 +461,10 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // dry, inland sites) can actually decline toward ruin instead of bouncing back.
   const foodYears = s.econ.stock[SUBSISTENCE_RESOURCE] / Math.max(1, m.population);
   const foodFactor = 0.25 + 0.75 * clamp(foodYears, 0, 1);
-  const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300) * foodFactor));
+  // aggregate fertility is SPECIES DATA: an ordinary people = 1, a non-reproducing
+  // construct society = 0 (its numbers only change by migration & mortality).
+  const fertility = macroFertilityOf(m.dominantSpecies);
+  const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300) * foodFactor * fertility));
   m.children += births;
 
   // Mortality scales with the dominant species' OWN lifespan — consistent with the

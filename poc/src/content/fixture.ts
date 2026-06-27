@@ -33,6 +33,10 @@ export interface Reproduction {
   monogamous: boolean;
   /** per-bearer yearly chance to produce a child, in the focused settlement. */
   fecundity: number;
+  /** multiplier on the AGGREGATE (macro-tier) birth rate; default 1. A people that does
+   *  not reproduce — a manufactured construct / android society — sets 0; a fast-breeding
+   *  one sets >1. Lets a pack express populations the fixed human birth rate can't. */
+  macroFertility?: number;
 }
 
 export interface Species {
@@ -363,6 +367,11 @@ export function isAsexual(speciesId: string): boolean {
 /** Per-bearer yearly chance of a child. */
 export function fecundityOf(speciesId: string): number {
   return speciesById(speciesId).reproduction.fecundity;
+}
+/** Multiplier on a settlement's AGGREGATE birth rate, from species data. Default 1 (an
+ *  ordinary reproducing people); 0 = a population that does not breed at all. */
+export function macroFertilityOf(speciesId: string): number {
+  return speciesById(speciesId).reproduction.macroFertility ?? 1;
 }
 /** Can an individual of this species/sex gestate offspring? */
 export function canBear(speciesId: string, sex: string): boolean {

@@ -27,7 +27,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -706,6 +706,31 @@ describe('geography is the world substrate (drives where civilizations are found
     // carrying capacity varies with the land — generous ground breeds great cities
     const caps = w.settlements.map((s) => s.capacity);
     expect(Math.max(...caps)).toBeGreaterThan(Math.min(...caps) + 0.2);
+  });
+});
+
+describe('macro demography is species-data driven', () => {
+  it('aggregate reproduction is DATA: a non-breeding people does not grow', () => {
+    const speciesId = createWorld(7, false).settlements.find((s) => s.macro.population > 20)!.macro.dominantSpecies;
+    const sp = speciesById(speciesId);
+    // net population change over 25 years for the chosen species' settlement, at a given
+    // aggregate fertility (mutating the shared species object, restored each run).
+    const netGrowth = (macroFertility: number): number => {
+      const orig = sp.reproduction.macroFertility;
+      sp.reproduction.macroFertility = macroFertility;
+      try {
+        const w = createWorld(7, false);
+        const s = w.settlements.find((x) => x.macro.dominantSpecies === speciesId && x.macro.population > 20)!;
+        const before = s.macro.population;
+        runYears(w, 25);
+        return s.macro.population - before;
+      } finally {
+        sp.reproduction.macroFertility = orig;
+      }
+    };
+    const breeding = netGrowth(1); // an ordinary people
+    const sterile = netGrowth(0); // a construct society that never breeds
+    expect(sterile).toBeLessThan(breeding); // species DATA, not a fixed human rate, drives growth
   });
 });
 
