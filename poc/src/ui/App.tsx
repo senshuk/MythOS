@@ -221,9 +221,9 @@ export default function App() {
             />
           ) : (
             <div className="onboard">
-              ▶ <strong>Live as one of them.</strong> Click the ▶ beside any villager
-              (in “Notable villagers” below, or in the inspector) to take control. You’ll
-              get a goal and act a week at a time — and the world keeps going around you.
+              ▶ <strong>Live as one of them.</strong> Click the ▶ beside any soul
+              (in “Notable folk” below, or in the inspector) to take up their life. You’ll
+              be given a purpose and live a week at a time — and the world goes on around you.
             </div>
           )}
           <div className="grid" data-tab={tab}>
@@ -528,7 +528,7 @@ function Dashboard({
 
       <div className="storyteller">
         <label>
-          Storyteller:{' '}
+          The Fates:{' '}
           <select
             value={stat.director.personality}
             disabled={busy}
@@ -543,29 +543,28 @@ function Dashboard({
         </label>
         <span className="muted">
           {' '}
-          · {stat.director.mood} · {stat.director.incidents} incidents
+          · {stat.director.mood} · {stat.director.incidents} turns of fate
         </span>
-        <div className="tension-bar" title={`dramatic tension ${stat.director.tension}/200`}>
+        <div className="tension-bar" title="the gathering temper of the age">
           <div className="tension-fill" style={{ width: `${Math.min(100, stat.director.tension / 2)}%` }} />
         </div>
       </div>
 
       <div className="worldscale">
         <div>
-          <span className="ws-num">{stat.worldPopulation.toLocaleString()}</span> souls in the
-          world across {stat.settlements.length} settlements
+          <span className="ws-num">{stat.worldPopulation.toLocaleString()}</span> souls draw breath
+          across {stat.settlements.length} settlements
         </div>
         <div className="muted">
-          only <strong>{stat.simulatedInDetail}</strong> simulated in detail right now (in{' '}
-          {stat.settlementName}) — the rest evolve as aggregates
+          Your gaze rests on {stat.settlementName}, where its <strong>{stat.simulatedInDetail}</strong>{' '}
+          souls are each known by name and deed — beyond it, the world lives on in chronicle and rumour
         </div>
         <div className="muted">
-          + <strong>{stat.namedPeople}</strong> named people tracked across the world
-          (summary tier) who carry their relationships when they move
+          <strong>{stat.namedPeople}</strong> figures of note are followed across the wider world,
+          their bonds travelling with them
         </div>
         <div className="muted">
-          economy: <strong>{stat.worldWealth.toLocaleString()}</strong> total wealth, traded
-          along the routes below
+          <strong>{stat.worldWealth.toLocaleString()}</strong> in wealth flows along the trade roads below
         </div>
       </div>
 
@@ -609,7 +608,7 @@ function Dashboard({
       )}
 
       <div className="map-head">
-        <h3>Region map — click a settlement to read its story</h3>
+        <h3>Map of the known world — click a settlement to read its tale</h3>
       </div>
       <RegionMap map={stat.map} seed={stat.seed} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
       <div className="legend">
@@ -625,16 +624,16 @@ function Dashboard({
         ))}
       </div>
 
-      <h3>{stat.settlementName} · focused</h3>
+      <h3>{stat.settlementName} · where your gaze rests</h3>
       <div className="stats">
-        <Stat label="Population" value={stat.population} />
+        <Stat label="Souls" value={stat.population} />
         <Stat label="Births" value={stat.totalBorn} />
         <Stat label="Deaths" value={stat.totalDied} />
         <Stat label="Marriages" value={stat.marriages} />
         <Stat label="Feuds" value={stat.feuds} />
       </div>
 
-      <h3>Settlements — click to focus (full-fidelity)</h3>
+      <h3>Settlements — click to turn your gaze, and live it in full</h3>
       <ul className="settlements">
         {stat.settlements.map((s) => (
           <li key={s.id} className={s.detailed ? 'focused' : ''}>
@@ -644,10 +643,10 @@ function Dashboard({
               onClick={() => onFocus(s.id)}
               title={
                 s.detailed
-                  ? 'currently focused'
+                  ? 'your gaze rests here'
                   : s.population === 0
-                    ? 'abandoned — nothing to simulate'
-                    : 'focus (simulate in detail)'
+                    ? 'abandoned — none remain'
+                    : 'turn your gaze here, and live it in full'
               }
             >
               {s.detailed ? '◉' : s.ruinedYear !== undefined ? '⚑' : '○'} {s.name}
@@ -674,7 +673,7 @@ function Dashboard({
         ))}
       </ul>
 
-      <h3>Notable villagers (focused) — ▶ to play as one</h3>
+      <h3>Notable folk of {stat.settlementName} — ▶ to live as one</h3>
       <ul className="notable">
         {stat.notable.map((a) => (
           <li key={a.id}>
@@ -682,7 +681,7 @@ function Dashboard({
               className="play-btn"
               onClick={() => onPossess(a.id)}
               disabled={busy || a.id === stat.player?.id}
-              title={a.id === stat.player?.id ? 'you are playing as this villager' : 'play as this villager'}
+              title={a.id === stat.player?.id ? 'you live as this soul' : 'live as this soul'}
             >
               {a.id === stat.player?.id ? '◉' : '▶'}
             </button>{' '}
@@ -844,7 +843,7 @@ function HistoryFeed({
 }) {
   return (
     <section className="panel feed">
-      <h2>History feed</h2>
+      <h2>As the years turn</h2>
       <ul>
         {events.map((ev) => (
           <li key={ev.id} className={`ev ${TYPE_TONE[ev.type] ?? 'neutral'}`}>
@@ -890,10 +889,10 @@ function Inspector({
   if (!actorDetail && !eventChain && !figureDetail && !settlementDetail) {
     return (
       <section className="panel inspector empty">
-        <h2>Inspector</h2>
+        <h2>A closer look</h2>
         <p className="muted">
-          Click any <strong>name</strong> in the history — a person or a place — to inspect it, or
-          click an event and follow <em>why?</em> to walk its causal chain.
+          Click any <strong>name</strong> in the history — a person or a place — to look closer, or
+          click an event and follow <em>why?</em> to trace what led to it.
         </p>
       </section>
     );
@@ -913,7 +912,7 @@ function Inspector({
   return (
     <section className="panel inspector">
       <div className="inspector-head">
-        <h2>Inspector</h2>
+        <h2>A closer look</h2>
         <button className="link" onClick={onClose}>
           close
         </button>
@@ -929,7 +928,7 @@ function Inspector({
                 <span className="muted"> · ◉ you</span>
               ) : (
                 <button className="play-inline" onClick={() => onPossess(actorDetail.actor.id)}>
-                  ▶ play as
+                  ▶ live as
                 </button>
               ))}
           </h3>
@@ -1007,7 +1006,7 @@ function Inspector({
           )}
           {settV && !settV.detailed && settV.ruinedYear === undefined && (
             <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>
-              ◉ observe in detail
+              ◉ turn your gaze here
             </button>
           )}
           <h4>Local history</h4>

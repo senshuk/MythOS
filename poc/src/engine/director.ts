@@ -31,10 +31,10 @@ interface DirectorDef {
 }
 
 const DIRECTORS: Record<string, DirectorDef> = {
-  balanced: { id: 'balanced', label: 'Balanced', tensionGain: 14, trigger: 48, positiveBias: 0.45, intensity: 1.0, minGap: 2, plagueChance: 0.3 },
-  grim: { id: 'grim', label: 'Grim', tensionGain: 18, trigger: 38, positiveBias: 0.22, intensity: 1.5, minGap: 1, plagueChance: 0.45 },
-  gentle: { id: 'gentle', label: 'Gentle', tensionGain: 9, trigger: 72, positiveBias: 0.72, intensity: 0.7, minGap: 3, plagueChance: 0.12 },
-  chaotic: { id: 'chaotic', label: 'Chaotic', tensionGain: 20, trigger: 34, positiveBias: 0.5, intensity: 1.35, minGap: 1, plagueChance: 0.4 },
+  balanced: { id: 'balanced', label: 'Even-Handed', tensionGain: 14, trigger: 48, positiveBias: 0.45, intensity: 1.0, minGap: 2, plagueChance: 0.3 },
+  grim: { id: 'grim', label: 'Cruel', tensionGain: 18, trigger: 38, positiveBias: 0.22, intensity: 1.5, minGap: 1, plagueChance: 0.45 },
+  gentle: { id: 'gentle', label: 'Merciful', tensionGain: 9, trigger: 72, positiveBias: 0.72, intensity: 0.7, minGap: 3, plagueChance: 0.12 },
+  chaotic: { id: 'chaotic', label: 'Capricious', tensionGain: 20, trigger: 34, positiveBias: 0.5, intensity: 1.35, minGap: 1, plagueChance: 0.4 },
 };
 
 export const DIRECTOR_OPTIONS = Object.values(DIRECTORS).map((d) => ({ id: d.id, label: d.label }));
@@ -50,10 +50,10 @@ export function setStoryteller(world: World, id: string): void {
 export function directorMood(world: World): string {
   const def = directorDef(world.director.personality);
   const yr = Math.floor(world.tick / DAYS_PER_YEAR);
-  if (world.director.lastIncidentYear === yr) return 'stirring the pot';
-  if (world.director.tension >= def.trigger * 0.8) return 'building tension';
-  if (world.director.tension <= def.trigger * 0.3) return 'content to watch';
-  return 'calm';
+  if (world.director.lastIncidentYear === yr) return 'fate stirs';
+  if (world.director.tension >= def.trigger * 0.8) return 'omens gather';
+  if (world.director.tension <= def.trigger * 0.3) return 'the age is quiet';
+  return 'an even age';
 }
 
 /** Yearly pacing pass. */
