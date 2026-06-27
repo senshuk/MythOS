@@ -534,9 +534,10 @@ export interface DirectorView {
   options: { id: string; label: string }[]; // selectable personalities
 }
 
-/** An action the player can choose this turn (mirrors the Intent vocabulary). */
+/** An action the player can choose this turn (mirrors the open Intent vocabulary; the
+ *  set of actions is pack data — see content/actions.ts). */
 export interface PlayerActionView {
-  kind: 'idle' | 'work' | 'socialize' | 'court' | 'give' | 'provoke';
+  kind: string;
   label: string;
   hint: string;
   needsTarget: boolean;

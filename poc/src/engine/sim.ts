@@ -38,6 +38,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -272,14 +273,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
   });
 }
 
-const PLAYER_ACTIONS: PlayerView['actions'] = [
-  { kind: 'work', label: 'Work', hint: 'ply your profession (feeds you)', needsTarget: false },
-  { kind: 'socialize', label: 'Socialize', hint: 'spend time with someone', needsTarget: true },
-  { kind: 'court', label: 'Court', hint: 'pursue a bond toward marriage', needsTarget: true },
-  { kind: 'give', label: 'Give', hint: 'a deliberate kindness', needsTarget: true },
-  { kind: 'provoke', label: 'Provoke', hint: 'a deliberate slight', needsTarget: true },
-  { kind: 'idle', label: 'Rest', hint: 'let the week pass', needsTarget: false },
-];
+// the player's action menu is PACK DATA (content/actions.ts), not an engine constant
 
 /** The controlled actor's actionable state, or undefined if no one is possessed
  *  (or the player has been freed from the world). */

@@ -20,6 +20,7 @@ import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world'
 import { ageCompatible } from '../engine/social';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { resolveExtraAction } from '../content/actions';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
 // opinion scale produced by the thought model (see opinion.ts).
@@ -38,19 +39,27 @@ function bumpBelonging(world: World, id: EntityId, delta: number): void {
  *  no `if (isPlayer)` below. */
 export function resolveIntent(world: World, a: EntityId, intent: Intent, rng: Rng): void {
   if (!isAlive(world, a)) return; // may have died earlier this turn (e.g. a brawl)
+  const t = intent.target;
   switch (intent.kind) {
     case 'idle':
       return;
     case 'work':
       return resolveWork(world, a);
     case 'socialize':
-      return resolveInteract(world, a, intent.target, 0, rng);
+      if (t !== undefined) resolveInteract(world, a, t, 0, rng);
+      return;
     case 'court':
-      return resolveInteract(world, a, intent.target, 0.15, rng);
+      if (t !== undefined) resolveInteract(world, a, t, 0.15, rng);
+      return;
     case 'give':
-      return resolveGift(world, a, intent.target, rng);
+      if (t !== undefined) resolveGift(world, a, t, rng);
+      return;
     case 'provoke':
-      return resolveProvoke(world, a, intent.target, rng);
+      if (t !== undefined) resolveProvoke(world, a, t, rng);
+      return;
+    default:
+      // a verb the engine doesn't know — a pack-specific action (content/actions.ts).
+      return resolveExtraAction(world, a, intent, rng);
   }
 }
 

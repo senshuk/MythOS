@@ -17,7 +17,8 @@ import {
   possess,
   schedulePlayerIntent,
 } from './sim';
-import { resolvePlayerIntent } from '../systems/resolve';
+import { resolveIntent, resolvePlayerIntent } from '../systems/resolve';
+import { EXTRA_ACTIONS } from '../content/actions';
 import { fullActors, summaryActors, createActor, emit } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { ageCompatible } from './social';
@@ -706,6 +707,24 @@ describe('geography is the world substrate (drives where civilizations are found
     // carrying capacity varies with the land — generous ground breeds great cities
     const caps = w.settlements.map((s) => s.capacity);
     expect(Math.max(...caps)).toBeGreaterThan(Math.min(...caps) + 0.2);
+  });
+});
+
+describe('actions are a pack vocabulary (the engine resolves verbs it never declared)', () => {
+  it('a pack can register a new action verb the engine dispatches', () => {
+    const w = createWorld(5);
+    runYears(w, 6);
+    const actor = fullActors(w)[0];
+    let salutedBy: number | undefined;
+    EXTRA_ACTIONS['salute'] = (_world, a) => {
+      salutedBy = a;
+    };
+    try {
+      resolveIntent(w, actor, { kind: 'salute' }, new Rng(1)); // a verb unknown to the engine
+      expect(salutedBy).toBe(actor); // dispatched through the pack registry
+    } finally {
+      delete EXTRA_ACTIONS['salute'];
+    }
   });
 });
 
