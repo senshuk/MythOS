@@ -6,7 +6,8 @@
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
 import { useMemo, useState } from 'react';
-import type { ActorView, EventView } from '../engine/model';
+import type { ActorView, EventView, PlayerView, NeedKey } from '../engine/model';
+import type { Intent } from '../engine/intent';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -120,28 +121,42 @@ export default function App() {
       {!stat ? (
         <div className="loading">Booting simulation worker…</div>
       ) : (
-        <div className="grid">
-          <Dashboard
-            stat={stat}
-            onPickActor={(id) => sim.inspectActor(id)}
-            onFocus={(id) => sim.focusSettlement(id)}
-            onSetStoryteller={(id) => sim.setStoryteller(id)}
-            busy={sim.busy}
-          />
-          <HistoryFeed
-            events={stat.recentEvents}
-            onPickEvent={(id) => sim.inspectEvent(id)}
-            onPickActor={(id) => sim.inspectActor(id)}
-          />
-          <Inspector
-            actorDetail={sim.actorDetail}
-            eventChain={sim.eventChain}
-            actorsById={stat.actors}
-            onPickActor={(id) => sim.inspectActor(id)}
-            onPickEvent={(id) => sim.inspectEvent(id)}
-            onClose={sim.clearInspect}
-          />
-        </div>
+        <>
+          {stat.player && (
+            <PlayerPanel
+              player={stat.player}
+              onAct={(intent) => sim.playerAct(intent)}
+              onRelease={() => sim.release()}
+              onInspect={(id) => sim.inspectActor(id)}
+              busy={sim.busy}
+            />
+          )}
+          <div className="grid">
+            <Dashboard
+              stat={stat}
+              onPickActor={(id) => sim.inspectActor(id)}
+              onFocus={(id) => sim.focusSettlement(id)}
+              onSetStoryteller={(id) => sim.setStoryteller(id)}
+              onPossess={(id) => sim.possess(id)}
+              busy={sim.busy}
+            />
+            <HistoryFeed
+              events={stat.recentEvents}
+              onPickEvent={(id) => sim.inspectEvent(id)}
+              onPickActor={(id) => sim.inspectActor(id)}
+            />
+            <Inspector
+              actorDetail={sim.actorDetail}
+              eventChain={sim.eventChain}
+              actorsById={stat.actors}
+              playerId={stat.player?.id}
+              onPickActor={(id) => sim.inspectActor(id)}
+              onPickEvent={(id) => sim.inspectEvent(id)}
+              onPossess={(id) => sim.possess(id)}
+              onClose={sim.clearInspect}
+            />
+          </div>
+        </>
       )}
       <footer className="foot">
         Deterministic worker-isolated ECS sim · same seed ⇒ identical history ·
@@ -228,12 +243,14 @@ function Dashboard({
   onPickActor,
   onFocus,
   onSetStoryteller,
+  onPossess,
   busy,
 }: {
   stat: NonNullable<ReturnType<typeof useSim>['snapshot']>;
   onPickActor: (id: number) => void;
   onFocus: (id: number) => void;
   onSetStoryteller: (id: string) => void;
+  onPossess: (id: number) => void;
   busy: boolean;
 }) {
   return (
@@ -375,10 +392,18 @@ function Dashboard({
         ))}
       </ul>
 
-      <h3>Notable villagers (focused)</h3>
+      <h3>Notable villagers (focused) — ▶ to play as one</h3>
       <ul className="notable">
         {stat.notable.map((a) => (
           <li key={a.id}>
+            <button
+              className="play-btn"
+              onClick={() => onPossess(a.id)}
+              disabled={busy || a.id === stat.player?.id}
+              title={a.id === stat.player?.id ? 'you are playing as this villager' : 'play as this villager'}
+            >
+              {a.id === stat.player?.id ? '◉' : '▶'}
+            </button>{' '}
             <button className="link" onClick={() => onPickActor(a.id)}>
               {a.name}
             </button>
@@ -389,6 +414,114 @@ function Dashboard({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+const NEED_BARS: NeedKey[] = ['food', 'wealth', 'safety', 'esteem', 'belonging'];
+
+function PlayerPanel({
+  player,
+  onAct,
+  onRelease,
+  onInspect,
+  busy,
+}: {
+  player: PlayerView;
+  onAct: (intent: Intent) => void;
+  onRelease: () => void;
+  onInspect: (id: number) => void;
+  busy: boolean;
+}) {
+  const [actionKind, setActionKind] = useState<PlayerView['actions'][number]['kind']>('work');
+  const [targetId, setTargetId] = useState<number | ''>('');
+
+  const action = player.actions.find((a) => a.kind === actionKind) ?? player.actions[0];
+  const needsTarget = action.needsTarget;
+  const canAct = player.alive && !busy && (!needsTarget || targetId !== '');
+
+  const submit = () => {
+    if (!canAct) return;
+    const intent: Intent = needsTarget
+      ? ({ kind: actionKind, target: Number(targetId) } as Intent)
+      : ({ kind: actionKind } as Intent);
+    onAct(intent);
+  };
+
+  return (
+    <section className="panel player-panel">
+      <div className="player-head">
+        <div>
+          <span className="player-tag">▶ Playing as</span>{' '}
+          <button className="link strong" onClick={() => onInspect(player.id)}>
+            {player.name}
+          </button>{' '}
+          <span className="muted">
+            — {player.species} {player.profession}, {player.ageYears}y · {player.settlement}
+          </span>
+        </div>
+        <button className="link" onClick={onRelease} disabled={busy}>
+          release
+        </button>
+      </div>
+
+      {!player.alive ? (
+        <p className="player-dead">
+          You died{player.deathYear !== undefined ? ` in year ${player.deathYear}` : ''}. The
+          world goes on without you — release to keep watching, or advance time.
+        </p>
+      ) : (
+        <>
+          <div className="needs">
+            {NEED_BARS.map((k) => {
+              const v = player.needs[k];
+              const pct = Math.round((v / 1000) * 100);
+              const tone = v < 250 ? 'need-bad' : v < 450 ? 'need-warn' : 'need-good';
+              return (
+                <div className="need" key={k} title={`${k}: ${v}/1000`}>
+                  <span className="need-label">{k}</span>
+                  <div className="need-bar">
+                    <div className={`need-fill ${tone}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="action-bar">
+            <select
+              value={actionKind}
+              onChange={(e) => setActionKind(e.target.value as typeof actionKind)}
+              disabled={busy}
+            >
+              {player.actions.map((a) => (
+                <option key={a.kind} value={a.kind}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            {needsTarget && (
+              <select
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={busy}
+              >
+                <option value="">— choose someone —</option>
+                {player.targets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.relation}
+                    {t.relation !== 'stranger' ? ` ${t.valence >= 0 ? '+' : ''}${t.valence}` : ''})
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="act-btn" onClick={submit} disabled={!canAct}>
+              {action.label} ▸ (1 week)
+            </button>
+            <span className="muted action-hint">{action.hint}</span>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -435,15 +568,19 @@ function Inspector({
   actorDetail,
   eventChain,
   actorsById,
+  playerId,
   onPickActor,
   onPickEvent,
+  onPossess,
   onClose,
 }: {
   actorDetail: ReturnType<typeof useSim>['actorDetail'];
   eventChain: ReturnType<typeof useSim>['eventChain'];
   actorsById: ActorView[];
+  playerId?: number;
   onPickActor: (id: number) => void;
   onPickEvent: (id: number) => void;
+  onPossess: (id: number) => void;
   onClose: () => void;
 }) {
   const nameMap = useMemo(() => {
@@ -482,6 +619,14 @@ function Inspector({
                 (died y{actorDetail.actor.deathYear})
               </span>
             )}
+            {actorDetail.actor.alive &&
+              (actorDetail.actor.id === playerId ? (
+                <span className="muted"> · ◉ you</span>
+              ) : (
+                <button className="play-inline" onClick={() => onPossess(actorDetail.actor.id)}>
+                  ▶ play as
+                </button>
+              ))}
           </h3>
           <p className="muted">
             {actorDetail.actor.species} {actorDetail.actor.profession} ·{' '}

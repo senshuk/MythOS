@@ -15,8 +15,12 @@ import {
   type EventChain,
   type WorldEvent,
   type SettlementView,
+  type PlayerView,
+  type PlayerTargetView,
   DAYS_PER_YEAR,
+  ADULT_AGE,
 } from './model';
+import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { fullActors, summaryActors, fullName, relCount, homeName } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
@@ -36,6 +40,7 @@ import { lifecycleYearly } from '../systems/lifecycle';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
+import { schedulePlayerIntent } from './player';
 
 /**
  * Build a world. With `focus` (default) it materializes settlement 0 to full
@@ -128,6 +133,20 @@ export function runYears(world: World, years: number): void {
 }
 
 /**
+ * One player turn: schedule the player's chosen intent for the next weekly act
+ * tick, then advance the world *exactly* to that tick — so the action resolves and
+ * the sim pauses for the next decision. A no-op if no actor is possessed. The
+ * intent goes through the normal input log, so a played session is still
+ * deterministic & replayable from (seed, playerInputs).
+ */
+export function playerTurn(world: World, intent: Intent): void {
+  if (world.playerId === undefined) return;
+  const nextAct = (Math.floor(world.tick / 7) + 1) * 7; // next tick actWeekly fires
+  schedulePlayerIntent(world, nextAct, intent);
+  runDays(world, nextAct - world.tick);
+}
+
+/**
  * Forge a world with a deep past: run `years` of headless pre-history (cheap,
  * all-aggregate), then drop the player into the greatest surviving settlement —
  * which now carries a chronicle of named ages, legends, ruins, and dynasties.
@@ -204,6 +223,70 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       prices: { ...s.econ.price },
     };
   });
+}
+
+const PLAYER_ACTIONS: PlayerView['actions'] = [
+  { kind: 'work', label: 'Work', hint: 'ply your profession (feeds you)', needsTarget: false },
+  { kind: 'socialize', label: 'Socialize', hint: 'spend time with someone', needsTarget: true },
+  { kind: 'court', label: 'Court', hint: 'pursue a bond toward marriage', needsTarget: true },
+  { kind: 'give', label: 'Give', hint: 'a deliberate kindness', needsTarget: true },
+  { kind: 'provoke', label: 'Provoke', hint: 'a deliberate slight', needsTarget: true },
+  { kind: 'idle', label: 'Rest', hint: 'let the week pass', needsTarget: false },
+];
+
+/** The controlled actor's actionable state, or undefined if no one is possessed
+ *  (or the player has been freed from the world). */
+function buildPlayerView(world: World): PlayerView | undefined {
+  const id = world.playerId;
+  if (id === undefined || !world.identity.has(id)) return undefined;
+  const idn = world.identity.get(id)!;
+  const lc = world.lifecycle.get(id)!;
+  const homeId = world.homeSettlement.get(id);
+
+  // valid targets: living adults in the focused settlement (the player's reach),
+  // with the current bond surfaced; known relations first, then strangers.
+  const myRels = world.rels.get(id)!;
+  const targets: PlayerTargetView[] = [];
+  for (const other of fullActors(world)) {
+    if (other === id) continue;
+    if (world.lifecycle.get(other)!.ageYears < ADULT_AGE) continue;
+    const edge = myRels.get(other);
+    let relation = 'stranger';
+    let valence = 0;
+    if (edge) {
+      valence = Math.round(computeOpinion(edge, world.tick));
+      relation = edge.flags.spouse
+        ? 'spouse'
+        : edge.flags.feud
+          ? 'feud'
+          : edge.flags.friend
+            ? 'friend'
+            : edge.flags.rival
+              ? 'rival'
+              : 'acquaintance';
+    }
+    targets.push({ id: other, name: fullName(world, other), relation, valence });
+  }
+  targets.sort(
+    (a, b) =>
+      (a.relation === 'stranger' ? 1 : 0) - (b.relation === 'stranger' ? 1 : 0) ||
+      Math.abs(b.valence) - Math.abs(a.valence) ||
+      a.id - b.id,
+  );
+
+  return {
+    id,
+    name: fullName(world, id),
+    species: speciesById(idn.speciesId).name,
+    profession: world.profession.get(id)!,
+    ageYears: lc.ageYears,
+    alive: lc.alive,
+    deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
+    settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
+    needs: { ...world.needs.get(id)! },
+    actions: PLAYER_ACTIONS,
+    targets: targets.slice(0, 40),
+  };
 }
 
 export function buildSnapshot(world: World, feedSize = 400): Snapshot {
@@ -353,6 +436,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       options: DIRECTOR_OPTIONS,
     },
     historicalFigures,
+    player: buildPlayerView(world),
   };
 }
 

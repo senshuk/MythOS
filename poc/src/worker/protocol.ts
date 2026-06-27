@@ -6,6 +6,7 @@
  * (eventually) multiplayer.
  */
 import type { Snapshot, ActorDetail, EventChain } from '../engine/model';
+import type { Intent } from '../engine/intent';
 
 export type SimRequest =
   | { kind: 'init'; seed: number }
@@ -15,7 +16,11 @@ export type SimRequest =
   | { kind: 'focusSettlement'; id: number }
   | { kind: 'setStoryteller'; id: string }
   | { kind: 'inspectActor'; id: number }
-  | { kind: 'inspectEvent'; id: number };
+  | { kind: 'inspectEvent'; id: number }
+  // --- player-as-actor control loop ---
+  | { kind: 'possess'; actorId: number }
+  | { kind: 'release' }
+  | { kind: 'playerTurn'; intent: Intent };
 
 export type SimResponse =
   | { kind: 'snapshot'; snapshot: Snapshot }

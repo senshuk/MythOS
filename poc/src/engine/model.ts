@@ -433,6 +433,39 @@ export interface DirectorView {
   options: { id: string; label: string }[]; // selectable personalities
 }
 
+/** An action the player can choose this turn (mirrors the Intent vocabulary). */
+export interface PlayerActionView {
+  kind: 'idle' | 'work' | 'socialize' | 'court' | 'give' | 'provoke';
+  label: string;
+  hint: string;
+  needsTarget: boolean;
+}
+
+/** Someone the player can direct a targeted action at, with the current bond. */
+export interface PlayerTargetView {
+  id: EntityId;
+  name: string;
+  relation: string; // 'spouse' | 'friend' | 'feud' | 'rival' | 'acquaintance' | 'stranger'
+  valence: number;
+}
+
+/** The controlled actor's actionable state: who they are, how they're doing, and
+ *  what they can do right now (and to whom). The affordance view the action bar
+ *  renders — distinct from the read-only ActorDetail inspector. */
+export interface PlayerView {
+  id: EntityId;
+  name: string;
+  species: string;
+  profession: string;
+  ageYears: number;
+  alive: boolean;
+  deathYear?: number;
+  settlement: string;
+  needs: Needs;
+  actions: PlayerActionView[];
+  targets: PlayerTargetView[];
+}
+
 export interface Snapshot {
   seed: number;
   year: number;
@@ -459,6 +492,7 @@ export interface Snapshot {
   eras: EraView[]; // named years ("the Year of …")
   director: DirectorView; // the storyteller's current state
   historicalFigures: FigureView[]; // renowned people of history (founders, rulers)
+  player?: PlayerView; // the controlled actor's actionable state, if any
 }
 
 export interface ActorDetail {

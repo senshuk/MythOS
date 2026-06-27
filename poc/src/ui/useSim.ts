@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Snapshot, ActorDetail, EventChain } from '../engine/model';
+import type { Intent } from '../engine/intent';
 import type { SimRequest, SimResponse } from '../worker/protocol';
 
 export function useSim(initialSeed: number) {
@@ -83,6 +84,21 @@ export function useSim(initialSeed: number) {
     setEventChain(null);
   }, []);
 
+  const possess = useCallback((actorId: number) => {
+    setBusy(true);
+    send({ kind: 'possess', actorId });
+  }, [send]);
+
+  const release = useCallback(() => {
+    setBusy(true);
+    send({ kind: 'release' });
+  }, [send]);
+
+  const playerAct = useCallback((intent: Intent) => {
+    setBusy(true);
+    send({ kind: 'playerTurn', intent });
+  }, [send]);
+
   return {
     snapshot,
     actorDetail,
@@ -96,5 +112,8 @@ export function useSim(initialSeed: number) {
     inspectActor,
     inspectEvent,
     clearInspect,
+    possess,
+    release,
+    playerAct,
   };
 }

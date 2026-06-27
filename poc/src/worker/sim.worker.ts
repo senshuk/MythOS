@@ -13,6 +13,9 @@ import {
   inspectEvent,
   focusSettlement,
   setStoryteller,
+  possess,
+  release,
+  playerTurn,
 } from '../engine/sim';
 import type { SimRequest, SimResponse } from './protocol';
 
@@ -58,6 +61,23 @@ ctx.onmessage = (e: MessageEvent<SimRequest>) => {
     case 'setStoryteller': {
       if (!world) reset(0);
       setStoryteller(world!, msg.id);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'possess': {
+      if (!world) reset(0);
+      possess(world!, msg.actorId);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'release': {
+      if (world) release(world);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'playerTurn': {
+      if (!world) reset(0);
+      playerTurn(world!, msg.intent);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }

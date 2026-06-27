@@ -174,3 +174,49 @@ body {
   padding: 8px 18px; border-top: 1px solid var(--line); color: var(--muted);
   font-size: 12px; background: var(--panel);
 }
+
+/* ---- player-as-actor control panel ---- */
+.player-panel {
+  margin: 12px 18px 0;
+  border: 1px solid var(--accent);
+  background: linear-gradient(180deg, rgba(127,178,255,0.08), var(--panel));
+}
+.player-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.player-tag { color: var(--accent); font-weight: bold; }
+.link.strong { font-weight: bold; font-size: 15px; }
+.player-dead { color: var(--bad); }
+
+.needs { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.need { display: flex; align-items: center; gap: 6px; min-width: 150px; flex: 1; }
+.need-label { color: var(--muted); width: 64px; text-align: right; font-size: 12px; }
+.need-bar {
+  flex: 1; height: 8px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+}
+.need-fill { height: 100%; }
+.need-good { background: var(--good); }
+.need-warn { background: var(--neutral); }
+.need-bad { background: var(--bad); }
+
+.action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.action-bar select {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 8px; font: inherit;
+}
+.act-btn {
+  background: var(--accent); color: #0b1220; border: none; font-weight: bold;
+  border-radius: 4px; padding: 6px 12px; cursor: pointer; font-family: inherit;
+}
+.act-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.action-hint { font-size: 12px; }
+
+.play-btn, .play-inline {
+  background: none; border: 1px solid var(--line); color: var(--accent);
+  border-radius: 4px; cursor: pointer; font: inherit; padding: 0 6px;
+}
+.play-btn:disabled { color: var(--muted); cursor: default; }
+.play-inline { margin-left: 8px; padding: 2px 8px; }
+.play-inline:hover { border-color: var(--accent); }
