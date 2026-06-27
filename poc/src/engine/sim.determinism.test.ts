@@ -27,7 +27,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -354,6 +354,18 @@ describe('economy', () => {
 
 describe('opinion (thoughts)', () => {
   const newEdge = (): RelEdge => ({ thoughts: [], sinceTick: 0, flags: {} });
+
+  it('is thought-AGNOSTIC: a pack can define a thought kind the engine never declared', () => {
+    THOUGHT_SPECS['debtOfHonour'] = { base: 200, stackLimit: 1, mult: 1, label: 'owed a debt' };
+    try {
+      const edge = newEdge();
+      addThought(edge, 'debtOfHonour', 0); // a kind unknown to the engine
+      expect(computeOpinion(edge, 0)).toBe(200); // its pack value flows through
+      expect(opinionReasons(edge, 0)[0].label).toBe('owed a debt'); // …and its pack label
+    } finally {
+      delete THOUGHT_SPECS['debtOfHonour'];
+    }
+  });
 
   it('opinion is the diminishing-returns sum of thoughts (saturates, not linear)', () => {
     const edge = newEdge();

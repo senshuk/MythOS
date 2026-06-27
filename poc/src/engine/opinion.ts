@@ -6,30 +6,8 @@
  * fade unless renewed) — the RimWorld idea, adapted to MythOS and kept fully
  * deterministic (no wall-clock; expiry is by tick).
  */
-import { type RelEdge, type Thought, type ThoughtKind, type EventId, DAYS_PER_YEAR } from './model';
-
-interface ThoughtSpec {
-  base: number; // default opinion delta
-  durationTicks?: number; // undefined => permanent
-  stackLimit: number; // max thoughts of this kind kept on an edge
-  mult: number; // diminishing-returns factor: the i-th stack counts value * mult^i
-  label: string; // shown in the inspector
-}
-
-const Y = DAYS_PER_YEAR;
-
-export const THOUGHTS: Record<ThoughtKind, ThoughtSpec> = {
-  bonded: { base: 30, durationTicks: 4 * Y, stackLimit: 25, mult: 0.95, label: 'spent good time together' },
-  quarrelled: { base: -24, durationTicks: 3 * Y, stackLimit: 25, mult: 0.95, label: 'quarrelled' },
-  kindness: { base: 90, durationTicks: 8 * Y, stackLimit: 6, mult: 0.88, label: 'a kindness' },
-  slighted: { base: -85, durationTicks: 6 * Y, stackLimit: 6, mult: 0.88, label: 'a slight' },
-  wed: { base: 650, stackLimit: 1, mult: 1, label: 'married' },
-  griefShared: { base: 130, durationTicks: 4 * Y, stackLimit: 3, mult: 0.8, label: 'shared a loss' },
-};
-
-export function specOf(kind: ThoughtKind): ThoughtSpec {
-  return THOUGHTS[kind];
-}
+import { type RelEdge, type Thought, type ThoughtKind, type EventId } from './model';
+import { thoughtSpec } from '../content/fixture';
 
 function isActive(t: Thought, tick: number): boolean {
   return t.expiresTick === undefined || t.expiresTick > tick;
@@ -43,7 +21,7 @@ export function addThought(
   tick: number,
   opts?: { value?: number; cause?: EventId },
 ): void {
-  const spec = THOUGHTS[kind];
+  const spec = thoughtSpec(kind);
   // drop expired thoughts of this kind
   edge.thoughts = edge.thoughts.filter((t) => t.kind !== kind || isActive(t, tick));
   // enforce stack limit (evict oldest of this kind)
@@ -76,7 +54,7 @@ export function computeOpinion(edge: RelEdge, tick: number): number {
   let sum = 0;
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick); // newest counts at full weight
-    const mult = THOUGHTS[kind].mult;
+    const mult = thoughtSpec(kind).mult;
     let m = 1;
     for (const t of arr) {
       sum += t.value * m;
@@ -110,7 +88,7 @@ export function opinionReasons(edge: RelEdge, tick: number, limit = 6): { label:
   const rows: { label: string; value: number }[] = [];
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick);
-    const mult = THOUGHTS[kind].mult;
+    const mult = thoughtSpec(kind).mult;
     let total = 0;
     let m = 1;
     for (const t of arr) {
@@ -118,7 +96,7 @@ export function opinionReasons(edge: RelEdge, tick: number, limit = 6): { label:
       m *= mult;
     }
     const count = arr.length;
-    const label = count > 1 ? `${THOUGHTS[kind].label} (×${count})` : THOUGHTS[kind].label;
+    const label = count > 1 ? `${thoughtSpec(kind).label} (×${count})` : thoughtSpec(kind).label;
     rows.push({ label, value: Math.round(total) });
   }
   rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));

@@ -54,7 +54,21 @@ export interface RelFlags {
  * a relationship is legible ("+90 a kindness, −44 two quarrels that are fading")
  * and emergent (many small interactions accrue, stack, and fade).
  */
-export type ThoughtKind = 'bonded' | 'quarrelled' | 'kindness' | 'slighted' | 'wed' | 'griefShared';
+/** An OPEN string id, like EventType: the SET of thought kinds (and what each is worth,
+ *  how long it lasts, how it stacks, its inspector label) is PACK DATA — see
+ *  `content/fixture.ts` THOUGHT_SPECS. The engine's social systems emit a few structural
+ *  kinds (bonded/quarrelled/kindness/slighted/wed/griefShared), but a pack can retune
+ *  those or add its own (a 'debt-of-honour', a 'corporate-betrayal') without engine edits. */
+export type ThoughtKind = string;
+
+/** How a kind of thought behaves — supplied by the pack, read by the opinion engine. */
+export interface ThoughtSpec {
+  base: number; // default opinion delta
+  durationTicks?: number; // undefined => permanent
+  stackLimit: number; // max thoughts of this kind kept on an edge
+  mult: number; // diminishing-returns factor: the i-th stack counts value * mult^i
+  label: string; // shown in the inspector
+}
 
 export interface Thought {
   kind: ThoughtKind;

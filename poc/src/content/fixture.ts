@@ -6,7 +6,8 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
-import type { Sex, ResourceKey } from '../engine/model';
+import { DAYS_PER_YEAR } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec } from '../engine/model';
 import { type Geography, fertilityAt, elevationAt, moistureAt, seaDist } from '../engine/geography';
 
 /**
@@ -453,6 +454,27 @@ export function specializationFromTerrain(geo: Geography, x: number, y: number):
   if (moist > 0.55 && elev > 0.45) return 'forestry';
   if (fert > 0.5) return 'farming';
   return 'mixed';
+}
+
+// ---- relationships: what each kind of thought is worth ----
+// How each kind of opinion-thought behaves (value, decay, stacking, inspector label).
+// PACK DATA: a colder universe could weaken bonds and lengthen grudges, or add its own
+// kinds. The engine's social systems emit the structural kinds below; opinion.ts reads
+// these specs and never hardcodes a value.
+export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
+  bonded: { base: 30, durationTicks: 4 * DAYS_PER_YEAR, stackLimit: 25, mult: 0.95, label: 'spent good time together' },
+  quarrelled: { base: -24, durationTicks: 3 * DAYS_PER_YEAR, stackLimit: 25, mult: 0.95, label: 'quarrelled' },
+  kindness: { base: 90, durationTicks: 8 * DAYS_PER_YEAR, stackLimit: 6, mult: 0.88, label: 'a kindness' },
+  slighted: { base: -85, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 6, mult: 0.88, label: 'a slight' },
+  wed: { base: 650, stackLimit: 1, mult: 1, label: 'married' },
+  griefShared: { base: 130, durationTicks: 4 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.8, label: 'shared a loss' },
+};
+
+// Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
+const NEUTRAL_THOUGHT: ThoughtSpec = { base: 0, stackLimit: 1, mult: 1, label: 'a feeling' };
+
+export function thoughtSpec(kind: string): ThoughtSpec {
+  return THOUGHT_SPECS[kind] ?? NEUTRAL_THOUGHT;
 }
 
 // ----------------------------------------------------------- needs -----------
