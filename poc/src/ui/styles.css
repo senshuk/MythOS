@@ -239,19 +239,32 @@ button { font-family: inherit; }
 /* ----------------------------------------------------------- history feed - */
 .feed h2 { display: flex; align-items: baseline; justify-content: space-between; }
 .feed ul { display: flex; flex-direction: column; gap: 3px; }
-.ev-btn {
-  width: 100%; text-align: left; background: none; border: none; color: var(--ink-dim);
-  cursor: pointer; font: inherit; font-size: 13.5px; padding: 7px 10px;
-  border-radius: 8px; border-left: 3px solid var(--line);
-  transition: background 0.12s;
+.ev-row {
+  display: block; width: 100%; text-align: left; color: var(--ink-dim);
+  cursor: pointer; font-size: 13.5px; padding: 7px 10px;
+  border-radius: 8px; border-left: 3px solid var(--line); transition: background 0.12s;
 }
-.ev-btn:hover { background: var(--panel-2); color: var(--ink); }
-.ev.good .ev-btn { border-left-color: var(--jade); }
-.ev.bad .ev-btn { border-left-color: var(--rose); }
-.ev.neutral .ev-btn { border-left-color: var(--neutral); }
-.ev.focus .ev-btn { border-left-color: var(--gold); background: rgba(233, 196, 106, 0.06); }
-.ev-year { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+.ev-row:hover { background: var(--panel-2); color: var(--ink); }
+.ev.good .ev-row { border-left-color: var(--jade); }
+.ev.bad .ev-row { border-left-color: var(--rose); }
+.ev.neutral .ev-row { border-left-color: var(--neutral); }
+.ev.focus .ev-row { border-left-color: var(--gold); background: rgba(233, 196, 106, 0.06); }
+.ev-year { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-right: 4px; }
 .why { color: var(--cyan); font-size: 12px; }
+
+/* an inspectable history line inside the Inspector (life events, causal chain) */
+.ev-inspect { display: block; cursor: pointer; padding: 4px 0; color: var(--ink-dim); }
+.ev-inspect:hover { color: var(--ink); }
+
+/* clickable entity links inside event prose — places (gold), people (cyan), figures (violet) */
+.ent {
+  background: none; border: none; padding: 0 1px; margin: 0; font: inherit; cursor: pointer;
+  border-radius: 3px; border-bottom: 1px dotted transparent;
+}
+.ent:hover { border-bottom-color: currentColor; }
+.ent-settlement { color: var(--gold); }
+.ent-actor { color: var(--cyan); }
+.ent-figure { color: var(--violet); }
 
 /* ----------------------------------------------------------- inspector ---- */
 .inspector-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

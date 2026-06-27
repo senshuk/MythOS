@@ -15,6 +15,9 @@ import {
   type EventChain,
   type WorldEvent,
   type SettlementView,
+  type SettlementId,
+  type FigureDetail,
+  type SettlementDetail,
   type PlayerView,
   type PlayerTargetView,
   DAYS_PER_YEAR,
@@ -30,7 +33,7 @@ import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OP
 import { figuresYearly, getFigure } from './figures';
 import { focusSettlement } from './lod';
 import { setStoryteller } from './director';
-import { renderEvent } from './render';
+import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
@@ -198,9 +201,47 @@ function eventView(world: World, ev: WorldEvent): EventView {
     year: ev.year,
     type: ev.type,
     text: renderEvent(world, ev),
+    parts: renderEventParts(world, ev),
     subjects: ev.subjects,
     causes: ev.causes,
   };
+}
+
+/** Inspect a remembered historical FIGURE (a record — founder/ruler — not a live
+ *  actor). Returns its dates/role and every event that names it. */
+export function inspectFigure(world: World, id: EntityId): FigureDetail | undefined {
+  const fig = world.figures.find((f) => f.id === id);
+  if (!fig) return undefined;
+  const lifeEvents = world.events.filter((ev) => ev.subjects.includes(id)).map((ev) => eventView(world, ev));
+  return {
+    id: fig.id,
+    name: fig.name,
+    species: speciesById(fig.species).name,
+    role: fig.role,
+    settlement: world.settlements[fig.settlementId]?.name ?? '?',
+    settlementId: fig.settlementId,
+    bornYear: fig.bornYear,
+    deathYear: fig.deathYear,
+    reignStart: fig.reignStart,
+    reignEnd: fig.reignEnd,
+    lifeEvents,
+  };
+}
+
+/** Inspect a SETTLEMENT's whole recorded history: every event that names it (its
+ *  founding, ruler line, wars, famines, ruin), newest first. */
+export function inspectSettlement(world: World, id: SettlementId): SettlementDetail | undefined {
+  const s = world.settlements[id];
+  if (!s) return undefined;
+  const events = world.events
+    .filter(
+      (ev) =>
+        Object.values(ev.data).includes(s.name) ||
+        ev.subjects.some((sid) => world.figures.find((f) => f.id === sid)?.settlementId === id),
+    )
+    .map((ev) => eventView(world, ev))
+    .reverse();
+  return { settlementId: id, events };
 }
 
 function settlementView(world: World, fullCount: number, summariesByHome: Map<number, string[]>): SettlementView[] {

@@ -11,6 +11,8 @@ import {
   buildSnapshot,
   inspectActor,
   inspectEvent,
+  inspectFigure,
+  inspectSettlement,
   focusSettlement,
   setStoryteller,
   possess,
@@ -123,6 +125,20 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       ctx.postMessage({
         kind: 'eventChain',
         chain: world ? inspectEvent(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'inspectFigure': {
+      ctx.postMessage({
+        kind: 'figureDetail',
+        detail: world ? inspectFigure(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'inspectSettlement': {
+      ctx.postMessage({
+        kind: 'settlementDetail',
+        detail: world ? inspectSettlement(world, msg.id) ?? null : null,
       });
       break;
     }

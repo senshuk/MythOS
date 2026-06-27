@@ -333,13 +333,49 @@ export interface ActorView {
   relationshipCount: number;
 }
 
+/** A clickable reference to an entity named in an event's prose. */
+export type EventRef =
+  | { kind: 'actor'; id: EntityId }
+  | { kind: 'figure'; id: EntityId }
+  | { kind: 'settlement'; id: SettlementId };
+
+/** One run of an event's rendered prose — plain text, or a clickable entity ref. */
+export interface EventPart {
+  text: string;
+  ref?: EventRef;
+}
+
 export interface EventView {
   id: EventId;
   year: number;
   type: EventType;
   text: string;
+  /** the prose split into parts, with named settlements/people linkified (clickable). */
+  parts: EventPart[];
   subjects: EntityId[];
   causes: EventId[];
+}
+
+/** Detail for a remembered historical FIGURE (a record, not a live actor). */
+export interface FigureDetail {
+  id: EntityId;
+  name: string;
+  species: string;
+  role: string;
+  settlement: string;
+  settlementId: SettlementId;
+  bornYear: number;
+  deathYear?: number;
+  reignStart: number;
+  reignEnd?: number;
+  lifeEvents: EventView[];
+}
+
+/** Detail for a SETTLEMENT: the id (its present state is already in the snapshot's
+ *  settlement list) plus every event that names it — its whole local history. */
+export interface SettlementDetail {
+  settlementId: SettlementId;
+  events: EventView[];
 }
 
 export interface RelationView {

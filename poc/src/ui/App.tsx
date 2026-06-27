@@ -5,8 +5,8 @@
  *
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
-import { useMemo, useState } from 'react';
-import type { ActorView, EventView, PlayerView, NeedKey } from '../engine/model';
+import { useState } from 'react';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { useSim } from './useSim';
@@ -61,6 +61,31 @@ function foodClass(security: number): string {
   return 'muted';
 }
 
+/** Renders an event's prose with its named settlements & people as clickable links. */
+function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef) => void }) {
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.ref ? (
+          <button
+            key={i}
+            className={`ent ent-${p.ref.kind}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRef(p.ref!);
+            }}
+            title={`inspect this ${p.ref.kind}`}
+          >
+            {p.text}
+          </button>
+        ) : (
+          <span key={i}>{p.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const sim = useSim(123456);
   const [seedInput, setSeedInput] = useState('123456');
@@ -70,9 +95,10 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const stat = sim.snapshot;
-  // tapping an event/villager jumps to the Inspector tab on mobile (harmless on desktop)
+  // tapping an event/villager/place jumps to the Inspector tab on mobile (harmless on desktop)
   const inspectActor = (id: number) => { sim.inspectActor(id); setTab('inspector'); };
   const inspectEvent = (id: number) => { sim.inspectEvent(id); setTab('inspector'); };
+  const inspectRef = (ref: EventRef) => { sim.inspectRef(ref); setTab('inspector'); };
 
   return (
     <div className="app">
@@ -185,18 +211,18 @@ export default function App() {
               onPossess={(id) => sim.possess(id)}
               busy={sim.busy}
             />
-            <HistoryFeed
-              events={stat.recentEvents}
-              onPickEvent={inspectEvent}
-              onPickActor={inspectActor}
-            />
+            <HistoryFeed events={stat.recentEvents} onPickEvent={inspectEvent} onRef={inspectRef} />
             <Inspector
               actorDetail={sim.actorDetail}
               eventChain={sim.eventChain}
-              actorsById={stat.actors}
+              figureDetail={sim.figureDetail}
+              settlementDetail={sim.settlementDetail}
+              settlements={stat.settlements}
               playerId={stat.player?.id}
               onPickActor={inspectActor}
               onPickEvent={inspectEvent}
+              onRef={inspectRef}
+              onFocus={(id) => sim.focusSettlement(id)}
               onPossess={(id) => sim.possess(id)}
               onClose={sim.clearInspect}
             />
@@ -622,10 +648,11 @@ function Stat({ label, value }: { label: string; value: number }) {
 function HistoryFeed({
   events,
   onPickEvent,
+  onRef,
 }: {
   events: EventView[];
   onPickEvent: (id: number) => void;
-  onPickActor: (id: number) => void;
+  onRef: (ref: EventRef) => void;
 }) {
   return (
     <section className="panel feed">
@@ -633,14 +660,11 @@ function HistoryFeed({
       <ul>
         {events.map((ev) => (
           <li key={ev.id} className={`ev ${TYPE_TONE[ev.type] ?? 'neutral'}`}>
-            <button
-              className="ev-btn"
-              onClick={() => onPickEvent(ev.id)}
-              title="trace causes"
-            >
-              <span className="ev-year">y{ev.year}</span> {ev.text}
+            {/* click a name to inspect it · click anywhere else to trace the causes */}
+            <div className="ev-row" onClick={() => onPickEvent(ev.id)} role="button" tabIndex={0} title="trace causes">
+              <span className="ev-year">y{ev.year}</span> <EventText parts={ev.parts} onRef={onRef} />
               {ev.causes.length > 0 && <span className="why"> · why?</span>}
-            </button>
+            </div>
           </li>
         ))}
       </ul>
@@ -651,39 +675,52 @@ function HistoryFeed({
 function Inspector({
   actorDetail,
   eventChain,
-  actorsById,
+  figureDetail,
+  settlementDetail,
+  settlements,
   playerId,
   onPickActor,
   onPickEvent,
+  onRef,
+  onFocus,
   onPossess,
   onClose,
 }: {
   actorDetail: ReturnType<typeof useSim>['actorDetail'];
   eventChain: ReturnType<typeof useSim>['eventChain'];
-  actorsById: ActorView[];
+  figureDetail: ReturnType<typeof useSim>['figureDetail'];
+  settlementDetail: ReturnType<typeof useSim>['settlementDetail'];
+  settlements: SettlementView[];
   playerId?: number;
   onPickActor: (id: number) => void;
   onPickEvent: (id: number) => void;
+  onRef: (ref: EventRef) => void;
+  onFocus: (id: number) => void;
   onPossess: (id: number) => void;
   onClose: () => void;
 }) {
-  const nameMap = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const a of actorsById) m.set(a.id, a.name);
-    return m;
-  }, [actorsById]);
-
-  if (!actorDetail && !eventChain) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail) {
     return (
       <section className="panel inspector empty">
         <h2>Inspector</h2>
         <p className="muted">
-          Click a villager to see their relationships &amp; life, or click an event
-          and follow <em>why?</em> to walk its causal chain.
+          Click any <strong>name</strong> in the history — a person or a place — to inspect it, or
+          click an event and follow <em>why?</em> to walk its causal chain.
         </p>
       </section>
     );
   }
+
+  const settV = settlementDetail ? settlements.find((s) => s.id === settlementDetail.settlementId) : undefined;
+
+  // a clickable history line: click a name to inspect it, click the line to trace its causes
+  const eventLine = (ev: EventView) => (
+    <li key={ev.id}>
+      <span className="ev-inspect" onClick={() => onPickEvent(ev.id)} role="button" tabIndex={0}>
+        <span className="ev-year">y{ev.year}</span> <EventText parts={ev.parts} onRef={onRef} />
+      </span>
+    </li>
+  );
 
   return (
     <section className="panel inspector">
@@ -698,11 +735,7 @@ function Inspector({
         <div>
           <h3>
             {actorDetail.actor.name}{' '}
-            {!actorDetail.actor.alive && (
-              <span className="muted">
-                (died y{actorDetail.actor.deathYear})
-              </span>
-            )}
+            {!actorDetail.actor.alive && <span className="muted">(died y{actorDetail.actor.deathYear})</span>}
             {actorDetail.actor.alive &&
               (actorDetail.actor.id === playerId ? (
                 <span className="muted"> · ◉ you</span>
@@ -713,9 +746,8 @@ function Inspector({
               ))}
           </h3>
           <p className="muted">
-            {actorDetail.actor.species} {actorDetail.actor.profession} ·{' '}
-            {actorDetail.actor.ageYears}y · {actorDetail.actor.sex} · traits:{' '}
-            {actorDetail.actor.traits.join(', ') || 'none'}
+            {actorDetail.actor.species} {actorDetail.actor.profession} · {actorDetail.actor.ageYears}y ·{' '}
+            {actorDetail.actor.sex} · traits: {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
 
           <h4>Relationships</h4>
@@ -747,50 +779,71 @@ function Inspector({
           )}
 
           <h4>Life events</h4>
-          <ul className="rels">
-            {actorDetail.lifeEvents.map((ev) => (
-              <li key={ev.id}>
-                <button className="link" onClick={() => onPickEvent(ev.id)}>
-                  y{ev.year}: {ev.text}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ul className="rels">{actorDetail.lifeEvents.map(eventLine)}</ul>
+        </div>
+      )}
+
+      {figureDetail && (
+        <div>
+          <h3>{figureDetail.name}</h3>
+          <p className="muted">
+            {figureDetail.role} of{' '}
+            <button className="link" onClick={() => onRef({ kind: 'settlement', id: figureDetail.settlementId })}>
+              {figureDetail.settlement}
+            </button>{' '}
+            · {figureDetail.species} · born y{figureDetail.bornYear}
+            {figureDetail.deathYear !== undefined ? `, died y${figureDetail.deathYear}` : ' · still remembered'}
+          </p>
+          <h4>Recorded in history</h4>
+          {figureDetail.lifeEvents.length === 0 ? (
+            <p className="muted">Nothing recorded.</p>
+          ) : (
+            <ul className="rels">{figureDetail.lifeEvents.map(eventLine)}</ul>
+          )}
+        </div>
+      )}
+
+      {settlementDetail && (
+        <div>
+          <h3>{settV?.name ?? 'Settlement'}</h3>
+          {settV && (
+            <p className="muted">
+              {settV.ruinedYear !== undefined
+                ? `a ruin · fell y${settV.ruinedYear}`
+                : `${settV.population} souls · ${settV.dominantSpecies} · ${settV.specialization}`}
+              {' · '}
+              {settV.culture}
+              {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
+            </p>
+          )}
+          {settV && !settV.detailed && settV.ruinedYear === undefined && (
+            <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>
+              ◉ observe in detail
+            </button>
+          )}
+          <h4>Local history</h4>
+          {settlementDetail.events.length === 0 ? (
+            <p className="muted">Nothing recorded yet.</p>
+          ) : (
+            <ul className="rels">{settlementDetail.events.slice(0, 40).map(eventLine)}</ul>
+          )}
         </div>
       )}
 
       {eventChain && (
         <div>
           <h3>Why did this happen?</h3>
-          <p className="ev-root">
-            <strong>
-              y{eventChain.root.year}: {eventChain.root.text}
-            </strong>
-          </p>
+          <div className="ev-root">
+            <span className="ev-year">y{eventChain.root.year}</span> <EventText parts={eventChain.root.parts} onRef={onRef} />
+          </div>
           {eventChain.ancestors.length === 0 ? (
-            <p className="muted">
-              This was an originating event — nothing caused it.
-            </p>
+            <p className="muted">This was an originating event — nothing caused it.</p>
           ) : (
             <>
               <h4>Caused by (most recent first)</h4>
-              <ol className="chain">
-                {eventChain.ancestors.map((ev) => (
-                  <li key={ev.id}>
-                    <button className="link" onClick={() => onPickEvent(ev.id)}>
-                      y{ev.year}: {ev.text}
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              <ol className="chain">{eventChain.ancestors.map(eventLine)}</ol>
             </>
           )}
-          <p className="muted small">
-            subjects:{' '}
-            {eventChain.root.subjects
-              .map((id) => nameMap.get(id) ?? `#${id}`)
-              .join(', ')}
-          </p>
         </div>
       )}
     </section>
