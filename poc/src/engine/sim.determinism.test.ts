@@ -14,14 +14,18 @@ import {
   focusSettlement,
   setStoryteller,
   forgeWorld,
+  possess,
+  schedulePlayerIntent,
 } from './sim';
+import { resolvePlayerIntent } from '../systems/resolve';
 import { fullActors, summaryActors } from './world';
 import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
 import { BASE_PRICE } from '../content/fixture';
-import { DAYS_PER_YEAR, type World, type RelEdge, type WorldEvent, type EventType } from './model';
+import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
+import { type Intent } from './intent';
 
 /** A fixed session: advance, shift focus across settlements, advance again. */
 function scriptedRun(seed: number): World {
@@ -76,6 +80,81 @@ describe('determinism', () => {
     focusSettlement(b, 4);
     runYears(b, 40);
     expect(hashWorld(a)).not.toBe(hashWorld(b));
+  });
+});
+
+// ---- player-as-actor determinism rails ----
+
+/** First two living adults of the focused settlement: the player and a target. */
+function pickPlayerAndTarget(w: World): { player: number; target: number } {
+  const adults = fullActors(w).filter(
+    (id) => w.lifecycle.get(id)!.alive && w.lifecycle.get(id)!.ageYears >= ADULT_AGE,
+  );
+  return { player: adults[0], target: adults[adults.length - 1] };
+}
+
+/** A scripted player session: possess an adult and feed a fixed sequence of
+ *  intents at every weekly act tick for 5 years. With `act = false` the player is
+ *  possessed but only idles (does nothing), so the world differs only by the
+ *  player's actions. */
+function playerRun(seed: number, act: boolean): World {
+  const w = createWorld(seed);
+  const { player, target } = pickPlayerAndTarget(w);
+  possess(w, player);
+  if (act) {
+    for (let tick = 7; tick <= 5 * DAYS_PER_YEAR; tick += 7) {
+      const k = (tick / 7) % 4;
+      const intent: Intent =
+        k === 0
+          ? { kind: 'give', target }
+          : k === 1
+            ? { kind: 'socialize', target }
+            : k === 2
+              ? { kind: 'court', target }
+              : { kind: 'work' };
+      schedulePlayerIntent(w, tick, intent);
+    }
+  }
+  runYears(w, 5);
+  return w;
+}
+
+describe('player-as-actor (determinism rails)', () => {
+  it('a scripted player session is fully reproducible', () => {
+    expect(hashWorld(playerRun(99, true))).toBe(hashWorld(playerRun(99, true)));
+    expect(canonicalize(playerRun(42, true))).toBe(canonicalize(playerRun(42, true)));
+  });
+
+  it('re-feeding the recorded input log reconstructs the world (replay)', () => {
+    const live = playerRun(99, true);
+
+    // a fresh world, same possession, fed ONLY the recorded input log, reproduces
+    // the exact same world — proving the log is sufficient player state for replay.
+    const replay = createWorld(99);
+    const { player } = pickPlayerAndTarget(replay);
+    possess(replay, player);
+    replay.playerInputs = live.playerInputs.map((e) => ({ ...e }));
+    runYears(replay, 5);
+
+    expect(hashWorld(replay)).toBe(hashWorld(live));
+  });
+
+  it('the player actually changes history (inputs matter)', () => {
+    expect(hashWorld(playerRun(99, true))).not.toBe(hashWorld(playerRun(99, false)));
+  });
+
+  it("the player's randomness is isolated from the NPC stream", () => {
+    const w = createWorld(7);
+    runYears(w, 2); // populate adult relationships
+    const { player, target } = pickPlayerAndTarget(w);
+    possess(w, player);
+
+    const worldRngBefore = w.rng.state;
+    const playerRngBefore = w.playerRngState;
+    resolvePlayerIntent(w, player, { kind: 'socialize', target });
+
+    expect(w.rng.state).toBe(worldRngBefore); // shared settlement stream untouched
+    expect(w.playerRngState).not.toBe(playerRngBefore); // player stream advanced
   });
 });
 

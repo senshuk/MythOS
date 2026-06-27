@@ -35,6 +35,7 @@ import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 
 export { focusSettlement } from './lod';
+export { possess, release, schedulePlayerIntent } from './player';
 
 /**
  * Build a world. With `focus` (default) it materializes settlement 0 to full
@@ -74,6 +75,9 @@ export function createWorld(seed: number, focus = true): World {
     directorRngState: mixSeed(seed, 0xd17),
     figures: [],
     figureRngState: mixSeed(seed, 0xf16),
+    playerId: undefined,
+    playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
+    playerInputs: [],
   };
 
   createSettlements(world);
@@ -471,6 +475,7 @@ export function canonicalize(world: World): string {
   for (const f of world.figures) {
     parts.push(`F${f.id}:${f.name}.${f.role}.s${f.settlementId}.b${f.bornYear}.d${f.deathYear ?? -1}.r${f.reignStart}-${f.reignEnd}`);
   }
+  parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   return parts.join('\n');
 }
 

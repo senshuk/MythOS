@@ -6,6 +6,7 @@
  * hierarchy of "Actor" — exactly the inversion of Warsim's global/positional state.
  */
 import { Rng } from './rng';
+import { type Intent } from './intent';
 
 export type EntityId = number;
 export type Sex = 'm' | 'f';
@@ -278,6 +279,21 @@ export interface World {
   figures: HistoricalFigure[];
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
+
+  // ---- player-as-actor rails (an actor the player controls) ----
+  /** The actor the player controls, if any. The ONLY thing that distinguishes a
+   *  player from an NPC — both obey identical rules; only their intent *source*
+   *  differs (UI input vs decideActor). Undefined = a pure spectator world. */
+  playerId?: EntityId;
+  /** Dedicated RNG stream for resolving the player's actions, so player randomness
+   *  never perturbs the shared settlement stream (NPC outcomes stay independent of
+   *  how much randomness the player consumed). Same pattern as the director/geo/
+   *  figure streams. */
+  playerRngState: number;
+  /** Append-only log of the player's intents, stamped with the tick they apply on.
+   *  The world is f(seed, playerInputs): re-feeding this log reproduces the world
+   *  exactly — the basis of save/replay (and, later, multiplayer). */
+  playerInputs: { tick: number; intent: Intent }[];
 }
 
 export interface DirectorState {

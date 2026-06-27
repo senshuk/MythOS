@@ -202,6 +202,10 @@ export function killActor(
  * edges in same-settlement partners are removed in the same pass.)
  */
 export function removeActorCompletely(world: World, id: EntityId): void {
+  // never free the player's actor — it must survive focus shifts & travel, so the
+  // player keeps their identity and history no matter which settlement is focused.
+  if (id === world.playerId) return;
+
   // widow a surviving spouse so no dangling spouse reference remains
   const ties = world.ties.get(id);
   if (ties?.spouse !== undefined) {

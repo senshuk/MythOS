@@ -1,17 +1,21 @@
 /**
  * The RESOLVER — the shared second half of every actor's turn. Given an actor and
- * the Intent it chose (by the NPC decider, or later by player input), apply the
- * effects. This is the ONE rule set: there is no player branch anywhere below.
+ * the Intent it chose (by the NPC decider, or by player input), apply the effects.
+ * This is the ONE rule set: there is no player branch anywhere below.
+ *
+ * Randomness is supplied by the caller as an explicit `Rng`, never read from a
+ * global: NPC turns pass `world.rng` (so behaviour is unchanged), while the player
+ * passes a dedicated stream (resolvePlayerIntent) so player randomness never
+ * perturbs the NPC stream. Same draw order either way.
  *
  * `socialize` reproduces the old `interact()` exactly (the bonded/quarrelled
  * thought, the occasional notable kindness/dispute, then escalation via promote()
  * and the feud brawl). `court` is the same with a positivity bias. `give`/`provoke`
- * apply a guaranteed kindness/slight. `work` grants profession income — currently
- * only reachable once the needs→work loop and the player land (NPC deciders don't
- * emit it yet), so it does not affect the present simulation.
+ * apply a guaranteed kindness/slight. `work` grants profession income.
  */
 import { type World, type EntityId, type RelEdge } from '../engine/model';
 import { type Intent } from '../engine/intent';
+import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity } from '../content/fixture';
@@ -32,8 +36,9 @@ const PROFESSION_INCOME: Record<string, number> = {
   hunter: 4,
 };
 
-/** Apply a chosen intent's effects. ONE rule set — no `if (isPlayer)` below. */
-export function resolveIntent(world: World, a: EntityId, intent: Intent): void {
+/** Apply a chosen intent's effects, drawing randomness from `rng`. ONE rule set —
+ *  no `if (isPlayer)` below. */
+export function resolveIntent(world: World, a: EntityId, intent: Intent, rng: Rng): void {
   if (!isAlive(world, a)) return; // may have died earlier this turn (e.g. a brawl)
   switch (intent.kind) {
     case 'idle':
@@ -41,14 +46,26 @@ export function resolveIntent(world: World, a: EntityId, intent: Intent): void {
     case 'work':
       return resolveWork(world, a);
     case 'socialize':
-      return resolveInteract(world, a, intent.target, 0);
+      return resolveInteract(world, a, intent.target, 0, rng);
     case 'court':
-      return resolveInteract(world, a, intent.target, 0.15);
+      return resolveInteract(world, a, intent.target, 0.15, rng);
     case 'give':
-      return resolveGift(world, a, intent.target);
+      return resolveGift(world, a, intent.target, rng);
     case 'provoke':
-      return resolveProvoke(world, a, intent.target);
+      return resolveProvoke(world, a, intent.target, rng);
   }
+}
+
+/**
+ * Resolve the player's intent against the dedicated player RNG stream, so the
+ * player's randomness is isolated from the shared settlement stream. Loads the
+ * stream cursor, resolves, then writes it back — the same load/run/store pattern
+ * the director/geo/figure passes use.
+ */
+export function resolvePlayerIntent(world: World, a: EntityId, intent: Intent): void {
+  const prng = new Rng(world.playerRngState);
+  resolveIntent(world, a, intent, prng);
+  world.playerRngState = prng.state;
 }
 
 /**
@@ -66,12 +83,11 @@ function resolveWork(world: World, a: EntityId): void {
 
 /**
  * A social encounter. `bias` tilts the odds of it going well (0 = ambient
- * chitchat, >0 = courting). With `bias = 0` this is byte-for-byte the old
- * `interact()`, so the NPC simulation is unchanged.
+ * chitchat, >0 = courting). With `bias = 0` and `rng = world.rng` this is
+ * byte-for-byte the old `interact()`, so the NPC simulation is unchanged.
  */
-function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number): void {
+function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, rng: Rng): void {
   if (!isAlive(world, b)) return;
-  const rng = world.rng;
   const edge = getRel(world, a, b);
   pruneThoughts(edge, world.tick);
   const affinity = pairAffinity(world.traits.get(a)!, world.traits.get(b)!);
@@ -96,32 +112,32 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number): 
     }
   }
 
-  promote(world, a, b, edge);
+  promote(world, a, b, edge, rng);
 
   // a feud can erupt into violence
   if (edge.flags.feud && rng.chance(0.06)) {
-    brawl(world, a, b, edge);
+    brawl(world, a, b, edge, rng);
   }
 }
 
 /** A deliberate kindness: a guaranteed positive thought, sourced to an event. */
-function resolveGift(world: World, a: EntityId, b: EntityId): void {
+function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   addThought(edge, 'kindness', world.tick, { cause: emit(world, 'kindness', [a, b]) });
-  promote(world, a, b, edge);
+  promote(world, a, b, edge, rng);
 }
 
 /** A deliberate slight: a guaranteed negative thought, sourced to an event. */
-function resolveProvoke(world: World, a: EntityId, b: EntityId): void {
+function resolveProvoke(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   addThought(edge, 'slighted', world.tick, { cause: emit(world, 'dispute', [a, b]) });
-  promote(world, a, b, edge);
+  promote(world, a, b, edge, rng);
 }
 
 // --------------------------------------------- relationship escalation -------
-// (moved verbatim from social.ts; unchanged behaviour)
+// (moved verbatim from social.ts; unchanged behaviour, rng now passed in)
 
 /** Causes for a relationship-milestone event: the recorded thoughts of the
  *  matching sign, so "why are they friends/enemies" traces to real moments. */
@@ -134,11 +150,11 @@ function thoughtCauses(edge: RelEdge, positive: boolean): number[] {
   return out;
 }
 
-function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
+function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng): void {
   if (edge.flags.spouse) return;
   const v = computeOpinion(edge, world.tick);
 
-  if (v >= MARRY_AT && eligibleToMarry(world, a, b)) {
+  if (v >= MARRY_AT && eligibleToMarry(world, a, b, rng)) {
     marry(world, a, b, edge);
     return;
   }
@@ -159,14 +175,14 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
   }
 }
 
-function eligibleToMarry(world: World, a: EntityId, b: EntityId): boolean {
+function eligibleToMarry(world: World, a: EntityId, b: EntityId, rng: Rng): boolean {
   const ia = world.identity.get(a)!;
   const ib = world.identity.get(b)!;
   if (ia.sex === ib.sex) return false; // PoC simplification: opposite-sex for reproduction
   if (world.ties.get(a)!.spouse !== undefined) return false;
   if (world.ties.get(b)!.spouse !== undefined) return false;
   if (isKin(world, a, b)) return false;
-  return world.rng.chance(0.4);
+  return rng.chance(0.4);
 }
 
 function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
@@ -180,12 +196,12 @@ function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
   emit(world, 'married', [a, b], {}, thoughtCauses(edge, true));
 }
 
-function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
+function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng): void {
   const brawlId = emit(world, 'brawl', [a, b], {}, thoughtCauses(edge, false));
 
   // someone may die; most brawls are non-lethal
-  if (!world.rng.chance(0.45)) return;
-  const victim = world.rng.chance(0.5) ? a : b;
+  if (!rng.chance(0.45)) return;
+  const victim = rng.chance(0.5) ? a : b;
   const killer = victim === a ? b : a;
   killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
 }
