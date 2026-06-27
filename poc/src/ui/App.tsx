@@ -11,7 +11,7 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKe
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, DEFAULT_MAP_STYLE, type MapStyle } from '../content/mapstyles';
-import { createSubstrate, SurfaceSubstrate } from '../engine/substrate';
+import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield } from './terrain';
 import { useSim } from './useSim';
 
@@ -284,6 +284,10 @@ export default function App() {
 }
 
 const MAP_VB = { x: -8, y: -9, w: 116, h: 118 };
+// fallbacks so the backdrop always matches the WORLD's substrate, whatever skin is picked:
+// a galaxy renders as a starfield, a surface world as terrain.
+const STAR_FIELD = (MAP_STYLES.find((s) => s.style.kind === 'starfield')?.style as Extract<MapStyle, { kind: 'starfield' }> | undefined)?.field;
+const SURF_THEME = (MAP_STYLES.find((s) => s.style.kind === 'surface')?.style as Extract<MapStyle, { kind: 'surface' }> | undefined)?.theme;
 
 function RegionMap({
   map,
@@ -315,11 +319,16 @@ function RegionMap({
     if (!c) return;
     c.width = 540;
     c.height = 549;
-    // render the SAME world the simulation generated (regenerated from the seed). For a
-    // surface substrate, paint its geography; a space setting paints a starfield.
+    // render the SAME world the simulation generated (regenerated from the seed) — the
+    // SUBSTRATE decides the backdrop: a galaxy is a starfield, a surface world is terrain.
     const sub = createSubstrate(seed);
-    if (style.kind === 'starfield') paintStarfield(c, seed, style.field);
-    else if (sub instanceof SurfaceSubstrate) paintTerrain(c, sub.geography, MAP_VB, style.theme);
+    if (sub instanceof StarfieldSubstrate) {
+      const field = style.kind === 'starfield' ? style.field : STAR_FIELD;
+      if (field) paintStarfield(c, seed, field);
+    } else if (sub instanceof SurfaceSubstrate) {
+      const theme = style.kind === 'surface' ? style.theme : SURF_THEME;
+      if (theme) paintTerrain(c, sub.geography, MAP_VB, theme);
+    }
     // the backdrop depends only on seed + style
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, style]);

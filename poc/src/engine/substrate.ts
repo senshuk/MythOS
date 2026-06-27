@@ -104,11 +104,73 @@ export class SurfaceSubstrate implements Substrate {
   }
 }
 
+// -------------------------------------------------------------- starfield ----
+
+/**
+ * A SPACE world: a scattering of star systems instead of a land surface. The A4 capstone
+ * — it satisfies the SAME Substrate interface with no terrain at all, proving the engine
+ * founds, feeds, connects and renders a galaxy exactly as it does a continent. Each system
+ * reports its space qualities (habitability, mineral wealth, trade-lane access) THROUGH
+ * the generic attribute vector the pack economy reads, so a habitable system feeds its
+ * people, a mineral-rich one mines, and a well-connected one trades — no engine change.
+ * (A real sci-fi pack would supply space species/cultures/resources; the fixture's are
+ * reused here, so the proof is architectural, not thematic.)
+ */
+export class StarfieldSubstrate implements Substrate {
+  readonly kind = 'starfield';
+  constructor(
+    readonly settlements: number,
+    private readonly pool: number,
+  ) {}
+
+  private system(rng: Rng): Site {
+    const x = 4 + rng.next() * 92;
+    const y = 4 + rng.next() * 92;
+    const habitability = rng.next(); // can it support a population?
+    const minerals = rng.next(); // asteroid / ore wealth
+    const lanes = rng.next(); // trade-lane access (a system's "coastline")
+    return {
+      pos: { x, y },
+      // map space qualities onto the generic quality vector: habitability → can feed
+      // people (fertility/freshWater); mineral wealth → can mine (elevation); lane access
+      // → can trade & is reachable (coast).
+      attributes: {
+        fertility: 0.28 + habitability * 0.68,
+        freshWater: habitability,
+        moisture: 0.3 + habitability * 0.4,
+        elevation: 0.45 + minerals * 0.5,
+        coast: lanes,
+      },
+      suitability: habitability * 2.4 + lanes * 1.4 + minerals * 0.8,
+      capacity: 0.6 + habitability * 1.1 + lanes * 0.3,
+      epithet:
+        lanes > 0.66 ? 'a core system' : minerals > 0.6 ? 'a mining colony' : habitability > 0.6 ? 'a garden world' : 'a frontier outpost',
+    };
+  }
+
+  candidates(rng: Rng): Site[] {
+    const out: Site[] = [];
+    for (let i = 0; i < this.pool; i++) out.push(this.system(rng));
+    return out;
+  }
+
+  fallbackSite(rng: Rng): Site | undefined {
+    return this.system(rng);
+  }
+
+  /** Sub-light distance between systems. (A jump-lane graph could replace this — the
+   *  engine only ever asks the substrate, so it would not notice.) */
+  distance(a: Vec2, b: Vec2): number {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+}
+
 // ----------------------------------------------------- world shape & factory --
 
 /** How a world is shaped — chosen from the seed so worlds differ. For a surface world
- *  this is mostly sea level (how wet) and noise frequency (how broken-up the land is). */
+ *  this is mostly sea level (how wet) and noise frequency; a starfield ignores those. */
 export interface WorldShape {
+  kind: 'surface' | 'starfield';
   archetype: string;
   seaLevel: number;
   freq: number;
@@ -119,7 +181,7 @@ export interface WorldShape {
 // Sea levels are spread across the steep middle of the elevation distribution, so the
 // archetypes look genuinely different yet all keep enough coast/fresh water to be viable
 // (a near-waterless world starves — no fishing, little fertile ground).
-const ARCHETYPES: Omit<WorldShape, 'settlements'>[] = [
+const ARCHETYPES: Omit<WorldShape, 'settlements' | 'kind'>[] = [
   { archetype: 'pangaea', seaLevel: 0.4, freq: 0.045, tries: 700 }, // one vast landmass, rivers & lakes
   { archetype: 'continents', seaLevel: 0.46, freq: 0.05, tries: 850 }, // land & sea in balance
   { archetype: 'inland-sea', seaLevel: 0.5, freq: 0.052, tries: 1000 }, // continents around a great sea
@@ -132,12 +194,19 @@ export function worldShapeFor(seed: number): WorldShape {
   const r = new Rng(mixSeed(seed, 0x5ade));
   const a = ARCHETYPES[r.int(ARCHETYPES.length)];
   const settlements = 11 + r.int(7); // 11..17 — richer, varied-size regions
-  return { ...a, settlements };
+  // ~1 in 5 worlds is a GALAXY instead. The draw is taken AFTER the surface draws, so
+  // surface worlds are byte-identical to before; this only diverts some seeds to space.
+  if (r.int(5) === 0) {
+    // pool sized so the land-scaling cap (cands/24) still seats the full set of systems
+    return { kind: 'starfield', archetype: 'starfield', seaLevel: 0, freq: 0, settlements, tries: settlements * 26 };
+  }
+  return { kind: 'surface', ...a, settlements };
 }
 
-/** Build a world's substrate from its seed (the surface heightmap is shaped per archetype). */
+/** Build a world's substrate from its seed (a surface heightmap, or a scattering of stars). */
 export function createSubstrate(seed: number): Substrate {
   const shape = worldShapeFor(seed);
+  if (shape.kind === 'starfield') return new StarfieldSubstrate(shape.settlements, shape.tries);
   const geo = generateGeography(seed, GEO_SIZE, shape.seaLevel, shape.freq);
   return new SurfaceSubstrate(geo, shape.settlements, shape.tries);
 }

@@ -311,7 +311,10 @@ describe('region geography', () => {
 
 describe('economy', () => {
   it('local food production drives prices: rich-farmland towns have cheaper food', () => {
-    const w = createWorld(42);
+    // a surface world, where farmland varies enough to spread food prices (a galaxy's
+    // systems are uniformly food-rich, so this scarcity property doesn't apply there).
+    let w = createWorld(42);
+    for (let seed = 42; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed);
     runYears(w, 30);
     const live = w.settlements.filter((s) => !s.detailed && s.macro.population > 0);
     const byFood = [...live].sort((a, b) => b.econ.production.food - a.econ.production.food);
@@ -696,6 +699,18 @@ describe('the world is a SUBSTRATE (geography is one kind); worlds are diverse',
     expect(a.settlements.map((s) => s.name)).toEqual(b.settlements.map((s) => s.name));
     expect(a.settlements.map((s) => s.pos.x)).toEqual(b.settlements.map((s) => s.pos.x));
   });
+
+  it('CAPSTONE: a STARFIELD world founds, feeds & connects with no land at all', () => {
+    let seed = 1;
+    while (worldShapeFor(seed).kind !== 'starfield') seed++; // find a galaxy
+    const w = createWorld(seed, false);
+    expect(w.substrate.kind).toBe('starfield'); // a space world, same engine
+    expect(w.settlements.length).toBeGreaterThanOrEqual(8); // a galaxy of star systems
+    expect(w.edges.length).toBeGreaterThan(w.settlements.length); // linked by jump routes
+    runYears(w, 120);
+    const alive = w.settlements.filter((s) => s.macro.population > 0).length;
+    expect(alive).toBeGreaterThanOrEqual(Math.ceil(w.settlements.length / 2)); // a viable galaxy
+  });
 });
 
 describe('geography is the world substrate (drives where civilizations are founded)', () => {
@@ -711,6 +726,7 @@ describe('geography is the world substrate (drives where civilizations are found
   it('settlements are founded on land near water — not at random in the void', () => {
     for (const seed of [1, 7, 42, 1492, 2024]) {
       const w = createWorld(seed, false);
+      if (w.substrate.kind !== 'surface') continue; // this invariant is about land worlds
       const geo = geoOf(w);
       for (const s of w.settlements) {
         expect(isLand(geo, s.pos.x, s.pos.y)).toBe(true); // never in the sea
@@ -722,7 +738,8 @@ describe('geography is the world substrate (drives where civilizations are found
   });
 
   it('the land sets a settlement’s trade and how great it can grow', () => {
-    const w = createWorld(7, false);
+    let w = createWorld(7, false);
+    for (let seed = 7; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed, false); // a land world
     const geo = geoOf(w);
     // a coastal site trades (goods) more than the most landlocked one
     const bySea = [...w.settlements].sort(
