@@ -63,6 +63,7 @@ export default function App() {
   const sim = useSim(123456);
   const [seedInput, setSeedInput] = useState('123456');
   const [historyYears, setHistoryYears] = useState(200);
+  const [saveName, setSaveName] = useState('quicksave');
 
   const stat = sim.snapshot;
 
@@ -114,6 +115,50 @@ export default function App() {
           <button onClick={() => sim.advance(60)} disabled={sim.busy}>
             +60 years
           </button>
+
+          <span className="ctl-sep" />
+          <input
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            size={9}
+            title="save slot name"
+            aria-label="save name"
+          />
+          <button
+            onClick={() => sim.save(saveName.trim() || 'quicksave')}
+            disabled={sim.busy || !stat}
+            title="save the world to this slot"
+          >
+            Save
+          </button>
+          <button
+            onClick={() => sim.load(saveName.trim() || 'quicksave')}
+            disabled={sim.busy || !sim.saves.some((s) => s.name === (saveName.trim() || 'quicksave'))}
+            title="load this slot"
+          >
+            Load
+          </button>
+          {sim.saves.length > 0 && (
+            <select
+              value=""
+              disabled={sim.busy}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSaveName(e.target.value);
+                  sim.load(e.target.value);
+                }
+              }}
+              title="load an existing save"
+            >
+              <option value="">load save…</option>
+              {sim.saves.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name} (y{s.year}, seed {s.seed})
+                </option>
+              ))}
+            </select>
+          )}
+
           {sim.busy && <span className="busy">simulating…</span>}
         </div>
       </header>

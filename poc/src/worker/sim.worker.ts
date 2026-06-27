@@ -3,7 +3,7 @@
  * is the ONLY place the sim mutates. The main thread never touches sim state —
  * it asks via messages and renders the snapshots it gets back.
  */
-import { type World } from '../engine/model';
+import { type World, DAYS_PER_YEAR } from '../engine/model';
 import {
   createWorld,
   forgeWorld,
@@ -17,6 +17,8 @@ import {
   release,
   playerTurn,
 } from '../engine/sim';
+import { serializeWorld, deserializeWorld } from '../engine/persistence';
+import { putSave, getSave, listSaves } from '../engine/idb';
 import type { SimRequest, SimResponse } from './protocol';
 
 // `self` typed loosely to avoid pulling in the conflicting WebWorker lib.
@@ -31,7 +33,7 @@ function reset(seed: number): void {
   world = createWorld(seed);
 }
 
-ctx.onmessage = (e: MessageEvent<SimRequest>) => {
+ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
   const msg = e.data;
   switch (msg.kind) {
     case 'init':
@@ -79,6 +81,31 @@ ctx.onmessage = (e: MessageEvent<SimRequest>) => {
       if (!world) reset(0);
       playerTurn(world!, msg.intent);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'save': {
+      if (world) {
+        await putSave({
+          name: msg.name,
+          savedAt: Date.now(),
+          year: Math.floor(world.tick / DAYS_PER_YEAR),
+          seed: world.seed,
+          data: serializeWorld(world),
+        });
+      }
+      ctx.postMessage({ kind: 'saveList', saves: await listSaves() });
+      break;
+    }
+    case 'load': {
+      const rec = await getSave(msg.name);
+      if (rec) {
+        world = deserializeWorld(rec.data);
+        ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world) });
+      }
+      break;
+    }
+    case 'listSaves': {
+      ctx.postMessage({ kind: 'saveList', saves: await listSaves() });
       break;
     }
     case 'inspectActor': {

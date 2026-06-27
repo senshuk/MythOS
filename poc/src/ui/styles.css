@@ -220,3 +220,6 @@ body {
 .play-btn:disabled { color: var(--muted); cursor: default; }
 .play-inline { margin-left: 8px; padding: 2px 8px; }
 .play-inline:hover { border-color: var(--accent); }
+
+/* topbar save/load separator */
+.ctl-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; display: inline-block; }

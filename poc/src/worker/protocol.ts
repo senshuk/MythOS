@@ -7,6 +7,7 @@
  */
 import type { Snapshot, ActorDetail, EventChain } from '../engine/model';
 import type { Intent } from '../engine/intent';
+import type { SaveMeta } from '../engine/idb';
 
 export type SimRequest =
   | { kind: 'init'; seed: number }
@@ -20,9 +21,14 @@ export type SimRequest =
   // --- player-as-actor control loop ---
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
-  | { kind: 'playerTurn'; intent: Intent };
+  | { kind: 'playerTurn'; intent: Intent }
+  // --- persistence (save/load) ---
+  | { kind: 'save'; name: string }
+  | { kind: 'load'; name: string }
+  | { kind: 'listSaves' };
 
 export type SimResponse =
   | { kind: 'snapshot'; snapshot: Snapshot }
   | { kind: 'actorDetail'; detail: ActorDetail | null }
-  | { kind: 'eventChain'; chain: EventChain | null };
+  | { kind: 'eventChain'; chain: EventChain | null }
+  | { kind: 'saveList'; saves: SaveMeta[] };

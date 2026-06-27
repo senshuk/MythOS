@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Snapshot, ActorDetail, EventChain } from '../engine/model';
 import type { Intent } from '../engine/intent';
+import type { SaveMeta } from '../engine/idb';
 import type { SimRequest, SimResponse } from '../worker/protocol';
 
 export function useSim(initialSeed: number) {
@@ -12,6 +13,7 @@ export function useSim(initialSeed: number) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [actorDetail, setActorDetail] = useState<ActorDetail | null>(null);
   const [eventChain, setEventChain] = useState<EventChain | null>(null);
+  const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -28,9 +30,12 @@ export function useSim(initialSeed: number) {
         setActorDetail(msg.detail);
       } else if (msg.kind === 'eventChain') {
         setEventChain(msg.chain);
+      } else if (msg.kind === 'saveList') {
+        setSaves(msg.saves);
       }
     };
     worker.postMessage({ kind: 'init', seed: initialSeed } satisfies SimRequest);
+    worker.postMessage({ kind: 'listSaves' } satisfies SimRequest);
     return () => worker.terminate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -99,10 +104,22 @@ export function useSim(initialSeed: number) {
     send({ kind: 'playerTurn', intent });
   }, [send]);
 
+  const save = useCallback((name: string) => {
+    send({ kind: 'save', name });
+  }, [send]);
+
+  const load = useCallback((name: string) => {
+    setBusy(true);
+    setActorDetail(null);
+    setEventChain(null);
+    send({ kind: 'load', name });
+  }, [send]);
+
   return {
     snapshot,
     actorDetail,
     eventChain,
+    saves,
     busy,
     reset,
     genesis,
@@ -115,5 +132,7 @@ export function useSim(initialSeed: number) {
     possess,
     release,
     playerAct,
+    save,
+    load,
   };
 }

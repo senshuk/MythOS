@@ -560,6 +560,7 @@ export function canonicalize(world: World): string {
     parts.push(`F${f.id}:${f.name}.${f.role}.s${f.settlementId}.b${f.bornYear}.d${f.deathYear ?? -1}.r${f.reignStart}-${f.reignEnd}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
+  parts.push(`figrng=${world.figureRngState}`);
   return parts.join('\n');
 }
 
