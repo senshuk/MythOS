@@ -311,10 +311,16 @@ describe('region geography', () => {
 
 describe('economy', () => {
   it('local food production drives prices: rich-farmland towns have cheaper food', () => {
-    // a surface world, where farmland varies enough to spread food prices (a galaxy's
-    // systems are uniformly food-rich, so this scarcity property doesn't apply there).
+    // a CLIMATICALLY MIXED surface world — some lush (food-surplus) towns and some poor
+    // ones — so prices actually spread; a uniformly desert or grassland world (or a galaxy)
+    // floors or ceilings every food price, where this scarcity property doesn't apply.
     let w = createWorld(42);
-    for (let seed = 42; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed);
+    for (let seed = 42; seed < 400; seed++) {
+      w = createWorld(seed);
+      if (w.substrate.kind !== 'surface') continue;
+      const foods = w.settlements.map((s) => s.econ.production.food);
+      if (Math.max(...foods) > 1.1 && Math.min(...foods) < 0.85) break;
+    }
     runYears(w, 30);
     const live = w.settlements.filter((s) => !s.detailed && s.macro.population > 0);
     const byFood = [...live].sort((a, b) => b.econ.production.food - a.econ.production.food);

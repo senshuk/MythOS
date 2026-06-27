@@ -85,7 +85,7 @@ const FREQ = 0.05; // world-units → noise scale (smaller = larger landmasses)
 /** Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
  *  wet the world is (dry/desert → low, water world → high); `freq` sets the noise scale
  *  (smaller = larger, smoother landmasses; larger = broken-up, island-y terrain). */
-export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL, freq = FREQ, baseTemp = 0): Geography {
+export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL, freq = FREQ, baseTemp = 0, wetness = 0): Geography {
   const N = size;
   const NN = N * N;
   const elevation = new Float32Array(NN);
@@ -109,9 +109,14 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
       const k = j * N + i;
       const elev = e < 0 ? 0 : e > 1 ? 1 : e;
       elevation[k] = elev;
-      moisture[k] = fbm(wx * freq * 0.85 + 40, wy * freq * 0.85 + 40, seed + 7, 3);
+      // moisture is shifted by the world's WETNESS (an arid world vs a rainforest world)
+      const m = fbm(wx * freq * 0.85 + 40, wy * freq * 0.85 + 40, seed + 7, 3) + wetness;
+      moisture[k] = m < 0 ? 0 : m > 1 ? 1 : m;
+      // temperature: the world's CLIMATE (baseTemp) dominates; the in-map latitude band is
+      // gentle (a region, not a whole hemisphere) so a world reads as one climate — frozen,
+      // temperate, or scorching — instead of every world having the same cold→hot stripe.
       const tNoise = fbm(wx * freq * 1.3 + 90, wy * freq * 1.3 + 90, seed + 23, 2);
-      const t = baseTemp + 0.12 + lat * 0.72 - elev * 0.5 + (tNoise - 0.5) * 0.22;
+      const t = baseTemp + 0.42 + lat * 0.34 - elev * 0.42 + (tNoise - 0.5) * 0.2;
       temperature[k] = t < 0 ? 0 : t > 1 ? 1 : t;
     }
   }

@@ -5,12 +5,12 @@
  *
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
 import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
-import { MAP_STYLES, DEFAULT_MAP_STYLE, type MapStyle } from '../content/mapstyles';
+import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield } from './terrain';
 import { useSim } from './useSim';
@@ -117,7 +117,6 @@ export default function App() {
   const [saveName, setSaveName] = useState('quicksave');
   const [tab, setTab] = useState<'world' | 'chronicle' | 'inspector'>('world');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mapStyleId, setMapStyleId] = useState(DEFAULT_MAP_STYLE);
 
   const stat = sim.snapshot;
   // tapping an event/villager/place jumps to the Inspector tab on mobile (harmless on desktop)
@@ -235,8 +234,6 @@ export default function App() {
               onInspectSettlement={(id) => inspectRef({ kind: 'settlement', id })}
               onSetStoryteller={(id) => sim.setStoryteller(id)}
               onPossess={(id) => sim.possess(id)}
-              mapStyleId={mapStyleId}
-              onSetMapStyle={setMapStyleId}
               busy={sim.busy}
             />
             <HistoryFeed events={stat.recentEvents} onPickEvent={inspectEvent} onRef={inspectRef} />
@@ -292,14 +289,12 @@ const SURF_THEME = (MAP_STYLES.find((s) => s.style.kind === 'surface')?.style as
 function RegionMap({
   map,
   seed,
-  style,
   focusedId,
   onInspect,
   busy,
 }: {
   map: NonNullable<ReturnType<typeof useSim>['snapshot']>['map'];
   seed: number;
-  style: MapStyle;
   focusedId: number;
   onInspect: (id: number) => void;
   busy: boolean;
@@ -312,29 +307,26 @@ function RegionMap({
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
   const [hover, setHover] = useState<{ name: string; sub: string; cx: number; cy: number } | null>(null);
 
-  // paint the backdrop per the pack's map style — deterministic from the seed. A
-  // surface theme paints terrain; 'starfield' paints space. (Presentation only.)
+  // the world IS its substrate (regenerated from the seed); the SUBSTRATE decides the
+  // backdrop — a galaxy paints space, a surface world paints its biome terrain. There is
+  // no "skin" to pick: how a world looks is what it physically is.
+  const sub = useMemo(() => createSubstrate(seed), [seed]);
+  const isStarfield = sub instanceof StarfieldSubstrate;
+
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
     c.width = 540;
     c.height = 549;
-    // render the SAME world the simulation generated (regenerated from the seed) — the
-    // SUBSTRATE decides the backdrop: a galaxy is a starfield, a surface world is terrain.
-    const sub = createSubstrate(seed);
     if (sub instanceof StarfieldSubstrate) {
-      const field = style.kind === 'starfield' ? style.field : STAR_FIELD;
-      if (field) paintStarfield(c, seed, field);
+      if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
     } else if (sub instanceof SurfaceSubstrate) {
-      const theme = style.kind === 'surface' ? style.theme : SURF_THEME;
-      if (theme) paintTerrain(c, sub.geography, MAP_VB, theme);
+      if (SURF_THEME) paintTerrain(c, sub.geography, MAP_VB, SURF_THEME);
     }
-    // the backdrop depends only on seed + style
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, style]);
+  }, [seed, sub]);
 
   // reset the explored view when the world or skin changes
-  useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed, style]);
+  useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed]);
 
   const clampView = (v: { s: number; x: number; y: number }) => {
     const r = wrapRef.current?.getBoundingClientRect();
@@ -406,7 +398,7 @@ function RegionMap({
   return (
     <div
       ref={wrapRef}
-      className={`map-wrap${style.kind === 'starfield' ? ' starfield' : ''}`}
+      className={`map-wrap${isStarfield ? ' starfield' : ''}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -512,8 +504,6 @@ function Dashboard({
   onInspectSettlement,
   onSetStoryteller,
   onPossess,
-  mapStyleId,
-  onSetMapStyle,
   busy,
 }: {
   stat: NonNullable<ReturnType<typeof useSim>['snapshot']>;
@@ -522,11 +512,8 @@ function Dashboard({
   onInspectSettlement: (id: number) => void;
   onSetStoryteller: (id: string) => void;
   onPossess: (id: number) => void;
-  mapStyleId: string;
-  onSetMapStyle: (id: string) => void;
   busy: boolean;
 }) {
-  const mapStyle = MAP_STYLES.find((s) => s.id === mapStyleId)?.style ?? MAP_STYLES[0].style;
   return (
     <section className="panel dashboard">
       <h2>Year {stat.year}</h2>
@@ -615,13 +602,8 @@ function Dashboard({
 
       <div className="map-head">
         <h3>Region map — click a settlement to read its story</h3>
-        <select className="skin-select" value={mapStyleId} onChange={(e) => onSetMapStyle(e.target.value)} title="world skin (presentation only)">
-          {MAP_STYLES.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
       </div>
-      <RegionMap map={stat.map} seed={stat.seed} style={mapStyle} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
+      <RegionMap map={stat.map} seed={stat.seed} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
       <div className="legend">
         <span><i className="sw good" /> trade</span>
         <span><i className="sw bad" /> war</span>

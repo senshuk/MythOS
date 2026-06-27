@@ -178,6 +178,7 @@ export interface WorldShape {
   seaLevel: number;
   freq: number;
   baseTemp: number; // the world's overall climate (an ice world vs a hot one)
+  wetness: number; // the world's overall moisture (an arid world vs a rainforest one)
   settlements: number;
   tries: number; // candidate samples (more for island-y worlds, where viable land is rarer)
 }
@@ -185,7 +186,7 @@ export interface WorldShape {
 // Sea levels are spread across the steep middle of the elevation distribution, so the
 // archetypes look genuinely different yet all keep enough coast/fresh water to be viable
 // (a near-waterless world starves — no fishing, little fertile ground).
-const ARCHETYPES: Omit<WorldShape, 'settlements' | 'kind' | 'baseTemp'>[] = [
+const ARCHETYPES: Omit<WorldShape, 'settlements' | 'kind' | 'baseTemp' | 'wetness'>[] = [
   { archetype: 'pangaea', seaLevel: 0.4, freq: 0.045, tries: 700 }, // one vast landmass, rivers & lakes
   { archetype: 'continents', seaLevel: 0.46, freq: 0.05, tries: 850 }, // land & sea in balance
   { archetype: 'inland-sea', seaLevel: 0.5, freq: 0.052, tries: 1000 }, // continents around a great sea
@@ -202,18 +203,21 @@ export function worldShapeFor(seed: number): WorldShape {
   // surface worlds are byte-identical to before; this only diverts some seeds to space.
   if (r.int(5) === 0) {
     // pool sized so the land-scaling cap (cands/24) still seats the full set of systems
-    return { kind: 'starfield', archetype: 'starfield', seaLevel: 0, freq: 0, baseTemp: 0, settlements, tries: settlements * 26 };
+    return { kind: 'starfield', archetype: 'starfield', seaLevel: 0, freq: 0, baseTemp: 0, wetness: 0, settlements, tries: settlements * 26 };
   }
-  // a surface world's overall climate — drawn LAST so the starfield set & surface
-  // placement are unchanged; an icy world skews tundra, a hot one desert.
-  const baseTemp = (r.next() - 0.5) * 0.34; // ≈ −0.17 (cold) … +0.17 (hot)
-  return { kind: 'surface', ...a, baseTemp, settlements };
+  // a surface world's CLIMATE — drawn LAST so the starfield set & archetype/count are
+  // unchanged. A wide temperature range makes each world its own climate zone (frozen →
+  // scorching); wetness is the orthogonal axis (a hot-dry world is desert, a hot-wet one
+  // is jungle), so worlds look dramatically different instead of all the same.
+  const baseTemp = (r.next() - 0.5) * 0.85; // ≈ −0.42 (frozen) … +0.42 (scorching)
+  const wetness = (r.next() - 0.5) * 0.5; // ≈ −0.25 (arid) … +0.25 (lush)
+  return { kind: 'surface', ...a, baseTemp, wetness, settlements };
 }
 
 /** Build a world's substrate from its seed (a surface heightmap, or a scattering of stars). */
 export function createSubstrate(seed: number): Substrate {
   const shape = worldShapeFor(seed);
   if (shape.kind === 'starfield') return new StarfieldSubstrate(shape.settlements, shape.tries);
-  const geo = generateGeography(seed, GEO_SIZE, shape.seaLevel, shape.freq, shape.baseTemp);
+  const geo = generateGeography(seed, GEO_SIZE, shape.seaLevel, shape.freq, shape.baseTemp, shape.wetness);
   return new SurfaceSubstrate(geo, shape.settlements, shape.tries);
 }
