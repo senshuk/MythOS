@@ -74,6 +74,12 @@ If the player dies:
 
 The simulation continues.
 
+There is no win state and no lose state.
+
+Death is a transition, not a game over — inherit an heir, or follow another life.
+
+The world is the point, not the player's survival.
+
 ---
 
 ## Every Character Is Equal
@@ -114,6 +120,32 @@ Create systems for:
 * Memory
 
 Interesting stories should emerge naturally.
+
+---
+
+## Legibility
+
+A simulation is only as good as what the player can understand of it.
+
+A world that generates deep history no one can follow has failed.
+
+This is the opposite failure from scripting, and just as fatal.
+
+The player must always be able to ask "why did this happen?" and trace the answer.
+
+The player has no privileged status — but their Actor must always have a legible goal.
+
+That goal is emergent, derived from their situation (a rivalry, a courtship, an inheritance).
+
+It is never a scripted quest.
+
+"World before player" and "do not lose the player" are reconciled here, not in tension.
+
+A living world is overwhelming. Bound the player's attention so depth is felt, not drowned.
+
+The simulation produces events. Presentation must narrate them into stories the player can follow and care about.
+
+Prefer surfaced affordances over free-text parsing. Show the player what they can do.
 
 ---
 
@@ -268,7 +300,12 @@ AI may assist with:
 * Content generation
 * Dialogue
 * Flavor text
+* Onboarding and narration
 * Modding tools
+
+AI belongs to the presentation layer — narration, flavor, teaching the player.
+
+It must never touch the deterministic core.
 
 The simulation itself should always be deterministic.
 
@@ -438,6 +475,10 @@ Understand their design principles.
 
 Success is not measured by graphics.
 
+But legible visualization of the simulation — maps, relationships, timelines — is essential.
+
+Graphics are not the goal. Comprehension is.
+
 Success is when players say:
 
 "I've never seen this happen before."
@@ -454,7 +495,8 @@ Before implementing any feature, ask:
 2. Is this generic enough to work across multiple universes?
 3. Can this be data-driven?
 4. Does it create new emergent gameplay?
-5. Does it introduce unnecessary special cases?
-6. Will this architecture still make sense five years from now?
+5. Can the player understand the result, and trace why it happened?
+6. Does it introduce unnecessary special cases?
+7. Will this architecture still make sense five years from now?
 
 If the answer to these questions is "no", reconsider the implementation.
