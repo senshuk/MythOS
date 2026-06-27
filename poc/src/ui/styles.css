@@ -207,11 +207,23 @@ button { font-family: inherit; }
 }
 
 /* region map — the hero */
-.map {
-  width: 100%; height: auto; display: block;
-  background: radial-gradient(120% 120% at 50% 30%, #13161f, var(--bg-2));
-  border: 1px solid var(--line); border-radius: var(--radius-sm); margin: 8px 0;
+.map-wrap {
+  position: relative; margin: 8px 0; aspect-ratio: 116 / 118;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45);
 }
+.map-terrain {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  image-rendering: auto;
+}
+.map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: none; }
+/* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
+.edge.trade { stroke-dasharray: 2.2 2.4; animation: flow 2.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -4.6; } }
+.edge.hostile { stroke-dasharray: 1.6 1.1; animation: bristle 2s ease-in-out infinite; }
+@keyframes bristle { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
+.focus-ring { animation: ring 2.6s ease-in-out infinite; }
+@keyframes ring { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
 .mnode text { pointer-events: none; user-select: none; font-family: var(--sans); }
 .mnode.clickable { cursor: pointer; }
 .mnode.clickable:hover circle { stroke: var(--cyan); stroke-width: 1.5; }

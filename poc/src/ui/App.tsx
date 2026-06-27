@@ -5,10 +5,11 @@
  *
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
+import { paintTerrain } from './terrain';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -273,23 +274,46 @@ export default function App() {
   );
 }
 
+const MAP_VB = { x: -8, y: -9, w: 116, h: 118 };
+
 function RegionMap({
   map,
+  seed,
   focusedId,
   onInspect,
   busy,
 }: {
   map: NonNullable<ReturnType<typeof useSim>['snapshot']>['map'];
+  seed: number;
   focusedId: number;
   onInspect: (id: number) => void;
   busy: boolean;
 }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // paint procedural terrain once per world (deterministic from the seed)
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    c.width = 300;
+    c.height = 305;
+    paintTerrain(
+      c,
+      seed,
+      map.nodes.map((n) => ({ x: n.x, y: n.y, ruined: n.ruined })),
+      MAP_VB,
+    );
+    // positions are fixed per world, so terrain depends only on the seed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed]);
+
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
   const radius = (pop: number) => 2.4 + 4.6 * Math.sqrt(pop / maxPop);
 
   return (
-    <svg className="map" viewBox="-8 -9 116 118" preserveAspectRatio="xMidYMid meet">
+    <div className="map-wrap">
+      <canvas ref={canvasRef} className="map-terrain" />
+      <svg className="map" viewBox="-8 -9 116 118" preserveAspectRatio="xMidYMid meet">
       {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
       {map.edges.map((e, i) => {
         const a = nodeById.get(e.a)!;
@@ -299,13 +323,13 @@ function RegionMap({
         return (
           <line
             key={i}
+            className={`edge ${hostile ? 'hostile' : trade ? 'trade' : 'quiet'}`}
             x1={a.x}
             y1={a.y}
             x2={b.x}
             y2={b.y}
             stroke={hostile ? 'var(--rose)' : trade ? 'var(--jade)' : 'var(--line)'}
             strokeWidth={hostile ? 0.5 : trade ? 0.5 + Math.min(1.7, e.tradeVolume / 6) : 0.35}
-            strokeDasharray={hostile ? '1.6 1.1' : undefined}
             opacity={hostile ? 0.7 : trade ? 0.9 : 0.4}
           />
         );
@@ -317,7 +341,7 @@ function RegionMap({
         const color = cultureColor(n.cultureId);
         return (
           <g key={n.id} className={busy ? 'mnode' : 'mnode clickable'} onClick={() => !busy && onInspect(n.id)}>
-            {focused && <circle cx={n.x} cy={n.y} r={r + 1.8} fill="none" stroke="var(--gold)" strokeWidth={0.7} opacity={0.85} />}
+            {focused && <circle className="focus-ring" cx={n.x} cy={n.y} r={r + 1.8} fill="none" stroke="var(--gold)" strokeWidth={0.7} />}
             <circle
               cx={n.x}
               cy={n.y}
@@ -341,7 +365,8 @@ function RegionMap({
           </g>
         );
       })}
-    </svg>
+      </svg>
+    </div>
   );
 }
 
@@ -449,7 +474,7 @@ function Dashboard({
       )}
 
       <h3>Region map — click a settlement to read its story</h3>
-      <RegionMap map={stat.map} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
+      <RegionMap map={stat.map} seed={stat.seed} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
       <div className="legend">
         <span><i className="sw good" /> trade</span>
         <span><i className="sw bad" /> war</span>
