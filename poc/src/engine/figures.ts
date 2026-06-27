@@ -12,12 +12,11 @@ import {
   type HistoricalFigure,
   type FigureId,
   type EntityId,
-  ADULT_AGE,
   DAYS_PER_YEAR,
 } from './model';
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
-import { generateGiven, generateFamily } from '../content/fixture';
+import { generateGiven, generateFamily, maturityOf } from '../content/fixture';
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
  *  founders (worldgen stream) and successions (figure stream) stay deterministic. */
@@ -61,7 +60,7 @@ function chooseHeir(world: World, settlementId: number): EntityId | undefined {
   let bestTies = -1;
   for (const id of fullActors(world)) {
     if (world.homeSettlement.get(id) !== settlementId) continue;
-    if (world.lifecycle.get(id)!.ageYears < ADULT_AGE) continue;
+    if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
     const proud = world.traits.get(id)!.includes('proud') ? 1 : 0;
     const ties = relCount(world, id);
     if (proud > bestProud || (proud === bestProud && ties > bestTies)) {

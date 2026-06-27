@@ -123,14 +123,19 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   **logistically** toward a soft carrying capacity: they breed fast when there's room
   (so they **recover from shocks** instead of spiralling to ruin) and taper when full.
   This is what lets a world survive *centuries* of war, plague, and famine with most
-  of its settlements intact (≈8/10 at 200 years, ≈6/10 at 500), instead of grinding
-  itself to extinction.
+  of its settlements intact (averaging ≈6/10 at 200 years and ≈4–5/10 at 500 across
+  seeds), instead of grinding itself to extinction.
 - **Structured history** (`src/engine/model.ts` + `render.ts`) — events store
   type/subjects/data/**causes**; prose is rendered on demand, never stored. A
   persistent **name registry** (`world.names`) renders actors that demotion freed,
   so history outlives the entity.
 - **Worker isolation** (`src/worker`) — the sim runs entirely in a Web Worker;
   the UI sends **intents** (advance, focus, inspect) and renders **snapshots**.
+- **Per-species aging is data, not a global calendar** — adulthood, elderhood, and
+  the fertility window live on each `Species` (`maturity`/`elderhood`/`fertileFrom`/
+  `fertileTo`), and aggregate mortality scales with lifespan. A long-lived people and
+  a short-lived one mature, reproduce, and die on their **own** schedules instead of
+  one hardcoded human calendar — a step toward the engine being truly universe-agnostic.
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
   species/professions/traits. In the real engine this becomes a Universe Pack.
 
@@ -148,7 +153,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety gate (49 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species gate (72 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

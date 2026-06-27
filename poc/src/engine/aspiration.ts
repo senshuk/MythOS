@@ -12,9 +12,10 @@
  * desync; as the world changes, an actor's aspiration changes with it (find a
  * spouse → start a family → be remembered), which is the sense of progress.
  */
-import { type World, type EntityId, ADULT_AGE, ELDER_AGE } from './model';
+import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, fullName, emit } from './world';
+import { maturityOf, elderhoodOf, fertileWindowOf } from '../content/fixture';
 
 export type AspirationKind =
   | 'survive'
@@ -34,21 +35,26 @@ export interface Aspiration {
   action: 'work' | 'court' | 'socialize' | 'idle';
 }
 
-const FERTILE_MAX = 48; // matches the lifecycle birth window
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
 
-/** Whether two ages are a plausible marriage match (both adult; wider gaps allowed
- *  later in life). Shared by courtship (who you pine for) and the wedding gate, so
- *  actors only pursue partners they could actually marry. */
-export function ageCompatible(ageA: number, ageB: number): boolean {
-  if (ageA < ADULT_AGE || ageB < ADULT_AGE) return false;
-  return Math.abs(ageA - ageB) <= 12 + Math.round((Math.min(ageA, ageB) - ADULT_AGE) * 0.4);
+/** Whether two actors are a plausible marriage match (each adult by THEIR OWN
+ *  species' maturity; wider gaps allowed later in life). Shared by courtship (who
+ *  you pine for) and the wedding gate, so actors only pursue partners they could
+ *  actually marry. */
+export function ageCompatible(world: World, a: EntityId, b: EntityId): boolean {
+  const ageA = world.lifecycle.get(a)!.ageYears;
+  const ageB = world.lifecycle.get(b)!.ageYears;
+  const matA = maturityOf(world.identity.get(a)!.speciesId);
+  const matB = maturityOf(world.identity.get(b)!.speciesId);
+  if (ageA < matA || ageB < matB) return false;
+  // slack scales with how far past their OWN maturity the younger partner is.
+  const youngerSlack = Math.min(ageA - matA, ageB - matB);
+  return Math.abs(ageA - ageB) <= 12 + Math.round(youngerSlack * 0.4);
 }
 
 /** The warmest eligible match this actor already knows — their emergent "crush". */
 function bestSuitor(world: World, id: EntityId): EntityId | undefined {
   const me = world.identity.get(id)!;
-  const myAge = world.lifecycle.get(id)!.ageYears;
   if (world.ties.get(id)!.spouse !== undefined) return undefined;
   let best: EntityId | undefined;
   let bestOpinion = CRUSH_WARMTH;
@@ -58,7 +64,7 @@ function bestSuitor(world: World, id: EntityId): EntityId | undefined {
     const oi = world.identity.get(other);
     if (!oi || oi.sex === me.sex) continue; // PoC: opposite-sex marriage
     if (world.ties.get(other)!.spouse !== undefined) continue;
-    if (!ageCompatible(myAge, olc.ageYears)) continue; // only pine for the marriageable
+    if (!ageCompatible(world, id, other)) continue; // only pine for the marriageable
     if (isKin(world, id, other)) continue;
     const op = computeOpinion(edge, world.tick);
     if (op > bestOpinion) {
@@ -108,14 +114,14 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   if (needs.food < 300) return { kind: 'survive', action: 'work' };
   if (needs.wealth < 250) return { kind: 'prosper', action: 'work' };
 
-  if (lc.ageYears >= ADULT_AGE && ties.spouse === undefined) {
+  if (lc.ageYears >= maturityOf(idn.speciesId) && ties.spouse === undefined) {
     const crush = bestSuitor(world, id);
     return crush !== undefined
       ? { kind: 'wed', target: crush, action: 'court' }
       : { kind: 'wed', action: 'socialize' };
   }
 
-  if (ties.spouse !== undefined && ties.children.length === 0 && lc.ageYears <= FERTILE_MAX) {
+  if (ties.spouse !== undefined && ties.children.length === 0 && lc.ageYears <= fertileWindowOf(idn.speciesId)[1]) {
     return { kind: 'family', target: ties.spouse, action: 'socialize' };
   }
 
@@ -129,7 +135,7 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
     return { kind: 'belonging', action: 'socialize' };
   }
 
-  if (lc.ageYears >= ELDER_AGE) return { kind: 'legacy', action: 'socialize' };
+  if (lc.ageYears >= elderhoodOf(idn.speciesId)) return { kind: 'legacy', action: 'socialize' };
 
   return { kind: 'content', action: 'socialize' };
 }

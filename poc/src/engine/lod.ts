@@ -25,8 +25,6 @@ import {
   type ResourceKey,
   type EntityId,
   RESOURCE_KEYS,
-  ADULT_AGE,
-  ELDER_AGE,
   DAYS_PER_YEAR,
 } from './model';
 import { Rng, mixSeed } from './rng';
@@ -51,6 +49,8 @@ import {
   pickTraits,
   pickProfession,
   pickSpecialization,
+  maturityOf,
+  elderhoodOf,
   PRODUCTION,
   CONSUMPTION,
   BASE_PRICE,
@@ -59,6 +59,10 @@ import { deathProbability } from '../systems/lifecycle';
 
 const SETTLEMENT_COUNT = 10;
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
+/** The humanlike lifespan the aggregate mortality baselines were tuned against;
+ *  a species' attrition is scaled by REF_LIFESPAN / its own lifespan, so longer-
+ *  lived peoples die more slowly in aggregate (matching their slower maturation). */
+const REF_LIFESPAN = 72;
 const NAME_A = ['Stone', 'Ash', 'Oak', 'Fen', 'Briar', 'Grey', 'Wend', 'Mire', 'Hollow', 'Black', 'Rill', 'Thorn'];
 const NAME_B = ['reach', 'ford', 'hollow', 'mere', 'barrow', 'gate', 'wick', 'fell', 'haven', 'crest', 'moor', 'bury'];
 
@@ -186,11 +190,19 @@ function initEconomy(gen: Rng, pop: number): Economy {
 
 // --------------------------------------------------- promote / demote --------
 
-const BAND_RANGE: Array<[number, number]> = [
-  [0, ADULT_AGE - 1],
-  [ADULT_AGE, ELDER_AGE - 1],
-  [ELDER_AGE, Math.round(ELDER_AGE * 1.6)],
-];
+/** Age ranges for the three demographic bands [children, adults, elders] of a
+ *  given species, derived from ITS maturity/elderhood — so materializing an
+ *  aggregate of long-lived people yields plausibly older actors than a short-lived
+ *  one. */
+function bandRanges(speciesId: string): Array<[number, number]> {
+  const mat = maturityOf(speciesId);
+  const eld = elderhoodOf(speciesId);
+  return [
+    [0, mat - 1],
+    [mat, eld - 1],
+    [eld, Math.round(eld * 1.6)],
+  ];
+}
 
 /** Materialize a settlement into full actors. Caller must have set
  *  world.focusedSettlementId = s.id and pointed world.rng at s's stream. */
@@ -209,8 +221,8 @@ export function promote(world: World, s: Settlement): void {
   const bandW = [Math.max(0, m.children), Math.max(0, m.adults), Math.max(0, m.elders)];
   const weights = bandW.some((w) => w > 0) ? bandW : [1, 1, 1];
   for (let i = 0; i < remaining; i++) {
-    const [lo, hi] = BAND_RANGE[rng.weightedIndex(weights)];
     const species = rng.chance(0.7) ? m.dominantSpecies : SPECIES[rng.int(SPECIES.length)].id;
+    const [lo, hi] = bandRanges(species)[rng.weightedIndex(weights)];
     made.push(
       createActor(world, {
         given: generateGiven(rng, species),
@@ -232,7 +244,7 @@ function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
   const males: EntityId[] = [];
   const females: EntityId[] = [];
   for (const id of ids) {
-    if (world.lifecycle.get(id)!.ageYears < ADULT_AGE) continue;
+    if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
     if (world.ties.get(id)!.spouse !== undefined) continue;
     (world.identity.get(id)!.sex === 'm' ? males : females).push(id);
   }
@@ -267,10 +279,10 @@ export function demote(world: World, s: Settlement): void {
   const tally = new Map<string, number>();
   for (const id of full) {
     const age = world.lifecycle.get(id)!.ageYears;
-    if (age < ADULT_AGE) children++;
-    else if (age < ELDER_AGE) adults++;
-    else elders++;
     const sp = world.identity.get(id)!.speciesId;
+    if (age < maturityOf(sp)) children++;
+    else if (age < elderhoodOf(sp)) adults++;
+    else elders++;
     tally.set(sp, (tally.get(sp) ?? 0) + 1);
   }
   let dominant = s.macro.dominantSpecies;
@@ -350,8 +362,10 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   if (m.population <= 0) return;
   const before = m.population;
 
-  const matured = Math.round(m.children / ADULT_AGE);
-  const aged = Math.round(m.adults / (ELDER_AGE - ADULT_AGE));
+  const mat = maturityOf(m.dominantSpecies);
+  const eld = elderhoodOf(m.dominantSpecies);
+  const matured = Math.round(m.children / mat);
+  const aged = Math.round(m.adults / (eld - mat));
   m.children = Math.max(0, m.children - matured);
   m.adults = Math.max(0, m.adults + matured - aged);
   m.elders += aged;
@@ -364,10 +378,16 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // capacity. This is what keeps a world sustainable over many centuries.
   const CAPACITY = 260;
   const room = Math.max(0, 1 - m.population / CAPACITY);
-  const births = Math.max(0, Math.round(m.adults * (0.022 + 0.05 * room) * (1 + m.stability / 300)));
+  const births = Math.max(0, Math.round(m.adults * (0.024 + 0.07 * room) * (1 + m.stability / 300)));
   m.children += births;
 
-  let deaths = Math.round(m.children * 0.004 + m.adults * 0.008 + m.elders * 0.06);
+  // Mortality scales with the dominant species' OWN lifespan — consistent with the
+  // per-species maturation above — so long-lived peoples also die more slowly in
+  // aggregate and demographics stay balanced instead of long-lived ones bleeding out.
+  const lifespan = speciesById(m.dominantSpecies).lifespan;
+  const lifeScale = REF_LIFESPAN / lifespan; // <1 for long-lived, >1 for short-lived
+  const elderMort = Math.min(0.12, 1 / Math.max(4, lifespan - eld)); // elders live out their remaining span
+  let deaths = Math.round(m.children * 0.004 * lifeScale + m.adults * 0.008 * lifeScale + m.elders * elderMort);
   if (rng.chance(0.05)) {
     const toll = rng.range(3, 14) + Math.round(Math.max(0, -m.stability) / 12);
     deaths += toll;
@@ -662,7 +682,10 @@ export function migrationYearly(world: World): void {
   // involuntarily.
   const rulerId = world.settlements[focusedId].currentRulerId;
   const leavers = fullActors(world).filter(
-    (id) => id !== world.playerId && id !== rulerId && world.lifecycle.get(id)!.ageYears >= ADULT_AGE,
+    (id) =>
+      id !== world.playerId &&
+      id !== rulerId &&
+      world.lifecycle.get(id)!.ageYears >= maturityOf(world.identity.get(id)!.speciesId),
   );
   const emigrants = Math.min(rng.int(3), leavers.length); // 0..2
   for (let i = 0; i < emigrants; i++) {

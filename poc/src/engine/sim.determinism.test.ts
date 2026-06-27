@@ -18,12 +18,13 @@ import {
   schedulePlayerIntent,
 } from './sim';
 import { resolvePlayerIntent } from '../systems/resolve';
-import { fullActors, summaryActors } from './world';
+import { fullActors, summaryActors, createActor } from './world';
+import { ageCompatible } from './aspiration';
 import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -587,8 +588,21 @@ describe('historical figures', () => {
     expect(founding.subjects.length).toBe(1); // the founder
     expect(w.events.some((e) => e.type === 'ruler_died')).toBe(true);
     expect(w.events.some((e) => e.type === 'ascension')).toBe(true);
-    // a ruin names its last ruler
-    expect(w.events.some((e) => e.type === 'ruined' && e.subjects.length === 1)).toBe(true);
+    // Invariant: whenever a settlement falls to (attrition) ruin, the event names its
+    // last ruler. Searched across seeds/centuries so at least one ruin reliably occurs
+    // regardless of demographic balance (a healthy world may have none for a while).
+    let sawRuin = false;
+    for (const seed of [1492, 7, 42, 99, 2024]) {
+      const w2 = createWorld(seed, false);
+      runYears(w2, 600);
+      for (const e of w2.events) {
+        if (e.type === 'ruined') {
+          sawRuin = true;
+          expect(e.subjects.length).toBe(1); // its last ruler
+        }
+      }
+    }
+    expect(sawRuin).toBe(true);
   });
 
   it('figures are records, not actors — they never enter the entity systems', () => {
@@ -609,6 +623,32 @@ describe('historical figures', () => {
     expect(snap.historicalFigures.length).toBeGreaterThan(0);
     expect(snap.historicalFigures.some((f) => f.role === 'founder')).toBe(true);
     expect(snap.historicalFigures.every((f) => f.name.length > 0 && f.settlement.length > 0)).toBe(true);
+  });
+});
+
+describe('per-species life stages (aging is species DATA, not a global constant)', () => {
+  it('maturity, elderhood, and fertility scale with each species lifespan', () => {
+    // lifespans: grok 54 < tamar 72 < vael 95 — life stages must follow, so a
+    // long-lived and short-lived people do NOT age on one hardcoded human calendar.
+    expect(maturityOf('grok')).toBeLessThan(maturityOf('tamar'));
+    expect(maturityOf('tamar')).toBeLessThan(maturityOf('vael'));
+    expect(elderhoodOf('grok')).toBeLessThan(elderhoodOf('vael'));
+    expect(fertileWindowOf('grok')[1]).toBeLessThan(fertileWindowOf('vael')[1]);
+  });
+
+  it('marriage eligibility reads each actor’s OWN species maturity (real wiring)', () => {
+    // Two 15-year-olds. A Grok matures at 13 → already an adult; a Vael matures at
+    // 20 → not yet. Under the old GLOBAL adult age (16) the Grok pair would be
+    // ineligible too, so this discriminates that aging now reads per-species data.
+    const w = createWorld(1);
+    const mk = (sex: 'm' | 'f', sp: string, age: number) =>
+      createActor(w, { given: 'X', family: 'Y', sex, speciesId: sp, profession: 'farmer', traits: [], ageYears: age });
+    const grokF = mk('f', 'grok', 15);
+    const grokM = mk('m', 'grok', 15);
+    const vaelF = mk('f', 'vael', 15);
+    const vaelM = mk('m', 'vael', 15);
+    expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
+    expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
   });
 });
 

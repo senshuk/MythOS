@@ -159,9 +159,9 @@ export type SettlementId = number;
  */
 export interface MacroPop {
   population: number;
-  children: number; // age < ADULT_AGE
-  adults: number; // ADULT_AGE..ELDER_AGE
-  elders: number; // >= ELDER_AGE
+  children: number; // age < dominant species' maturity
+  adults: number; // maturity..elderhood (of the dominant species)
+  elders: number; // >= dominant species' elderhood
   stability: number; // -100..100, drives prosperity/hardship
   dominantSpecies: string;
 }
@@ -311,6 +311,13 @@ export interface DirectorState {
 }
 
 export const DAYS_PER_YEAR = 365;
+/**
+ * TYPICAL adulthood/elderhood ages — a humanlike default. The simulation no longer
+ * uses these for aging: life stages are SPECIES DATA (`Species.maturity`/`elderhood`/
+ * fertility in the pack), read via the fixture accessors, so a long-lived and a
+ * short-lived species age on their own schedules. These remain only as a neutral
+ * reference (e.g. for tests) and a sensible fallback magnitude.
+ */
 export const ADULT_AGE = 16;
 export const ELDER_AGE = 55;
 export const MEMORY_LIMIT = 12;

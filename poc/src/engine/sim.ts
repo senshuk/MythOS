@@ -18,7 +18,6 @@ import {
   type PlayerView,
   type PlayerTargetView,
   DAYS_PER_YEAR,
-  ADULT_AGE,
 } from './model';
 import { type Intent } from './intent';
 import { currentAspiration, aspirationLabel } from './aspiration';
@@ -34,7 +33,7 @@ import { setStoryteller } from './director';
 import { renderEvent } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById } from '../content/fixture';
+import { speciesById, maturityOf } from '../content/fixture';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -251,7 +250,7 @@ function buildPlayerView(world: World): PlayerView | undefined {
   const targets: PlayerTargetView[] = [];
   for (const other of fullActors(world)) {
     if (other === id) continue;
-    if (world.lifecycle.get(other)!.ageYears < ADULT_AGE) continue;
+    if (world.lifecycle.get(other)!.ageYears < maturityOf(world.identity.get(other)!.speciesId)) continue;
     const edge = myRels.get(other);
     let relation = 'stranger';
     let valence = 0;

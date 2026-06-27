@@ -12,13 +12,14 @@
  * (resolve.ts), so actors settle into working only when they must and spending the
  * rest of their time on relationships — the source of marriages, feuds, and births.
  */
-import { type World, type EntityId, ADULT_AGE } from '../engine/model';
+import { type World, type EntityId } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { currentAspiration } from '../engine/aspiration';
 import { isAlive } from '../engine/world';
+import { maturityOf } from '../content/fixture';
 
 export function isAdult(world: World, id: EntityId): boolean {
-  return world.lifecycle.get(id)!.ageYears >= ADULT_AGE;
+  return world.lifecycle.get(id)!.ageYears >= maturityOf(world.identity.get(id)!.speciesId);
 }
 
 /** Strongly prefer existing acquaintances so relationships actually DEEPEN into

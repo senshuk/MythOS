@@ -12,6 +12,7 @@ import {
   pickSex,
   pickTraits,
   pickProfession,
+  fertileWindowOf,
 } from '../content/fixture';
 
 export function deathProbability(age: number, lifespan: number): number {
@@ -46,7 +47,8 @@ export function lifecycleYearly(world: World): void {
     const spouse = world.ties.get(id)!.spouse;
     if (spouse === undefined) continue;
     if (!world.lifecycle.get(spouse)!.alive) continue;
-    if (lc.ageYears < 16 || lc.ageYears > 48) continue;
+    const [fertileFrom, fertileTo] = fertileWindowOf(idn.speciesId);
+    if (lc.ageYears < fertileFrom || lc.ageYears > fertileTo) continue;
     mothers.push(id);
   }
 

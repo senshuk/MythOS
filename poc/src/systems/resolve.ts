@@ -197,7 +197,7 @@ function eligibleToMarry(world: World, a: EntityId, b: EntityId, rng: Rng): bool
   if (world.ties.get(b)!.spouse !== undefined) return false;
   if (isKin(world, a, b)) return false;
   // age compatibility (shared with courtship) — stops teenagers wedding elders
-  if (!ageCompatible(world.lifecycle.get(a)!.ageYears, world.lifecycle.get(b)!.ageYears)) return false;
+  if (!ageCompatible(world, a, b)) return false;
   return rng.chance(0.4);
 }
 

@@ -12,6 +12,17 @@ export interface Species {
   id: string;
   name: string;
   lifespan: number; // mean years
+  /**
+   * Life-stage ages, in years. These are SPECIES DATA, not engine constants: the
+   * simulation reads adulthood/elderhood/fertility from here so a long-lived and a
+   * short-lived species mature, reproduce, and age on their OWN schedules instead
+   * of a single hardcoded human calendar. (A pack could add a non-aging machine
+   * species with elderhood far above its lifespan, etc.)
+   */
+  maturity: number; // age one becomes an adult (can work, wed, be counted as adult)
+  elderhood: number; // age one becomes an elder
+  fertileFrom: number; // youngest age that can bear/sire
+  fertileTo: number; // oldest age that can bear/sire
   /** Syllable banks for a tiny phonetic name grammar (Warsim-style). */
   onset: string[];
   nucleus: string[];
@@ -23,6 +34,10 @@ export const SPECIES: Species[] = [
     id: 'vael',
     name: 'Vael',
     lifespan: 95,
+    maturity: 20,
+    elderhood: 68,
+    fertileFrom: 20,
+    fertileTo: 58,
     onset: ['Ae', 'Sy', 'Th', 'El', 'Va', 'Ny', 'Lor', 'Cae'],
     nucleus: ['ri', 'la', 'we', 'no', 'ae', 'ly', 'sa'],
     coda: ['n', 'l', 'th', 'r', 's', 'ndor', 'wyn'],
@@ -31,6 +46,10 @@ export const SPECIES: Species[] = [
     id: 'tamar',
     name: 'Tamar',
     lifespan: 72,
+    maturity: 16,
+    elderhood: 54,
+    fertileFrom: 16,
+    fertileTo: 46,
     onset: ['Bar', 'Hal', 'Dun', 'Ros', 'Mer', 'Gar', 'Wend', 'Tor'],
     nucleus: ['o', 'a', 'e', 'ic', 'um', 'ad'],
     coda: ['d', 'k', 'rin', 'son', 'wick', 'mund', 'ric'],
@@ -39,11 +58,31 @@ export const SPECIES: Species[] = [
     id: 'grok',
     name: 'Grok',
     lifespan: 54,
+    maturity: 13,
+    elderhood: 40,
+    fertileFrom: 13,
+    fertileTo: 34,
     onset: ['Gr', 'Mok', 'Zar', 'Ugg', 'Brak', 'Sno', 'Dru', 'Kaz'],
     nucleus: ['o', 'u', 'a', 'og', 'uk', 'ar'],
     coda: ['g', 'k', 'z', 'nak', 'tuk', 'rok', 'mash'],
   },
 ];
+
+// --- Per-species life-stage accessors (the engine reads aging from species DATA) ---
+
+/** Age at which a member of this species is an adult. */
+export function maturityOf(speciesId: string): number {
+  return speciesById(speciesId).maturity;
+}
+/** Age at which a member of this species becomes an elder. */
+export function elderhoodOf(speciesId: string): number {
+  return speciesById(speciesId).elderhood;
+}
+/** [youngest, oldest] age this species can reproduce. */
+export function fertileWindowOf(speciesId: string): [number, number] {
+  const s = speciesById(speciesId);
+  return [s.fertileFrom, s.fertileTo];
+}
 
 export const FAMILY_ROOTS = [
   'Ash', 'Stone', 'Briar', 'Vale', 'Holt', 'Marsh', 'Fenn', 'Crow', 'Dunn',
