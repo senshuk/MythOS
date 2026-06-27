@@ -40,7 +40,7 @@ import {
   clamp,
 } from './world';
 import { addThought } from './opinion';
-import { mintFigure } from './figures';
+import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
   SPECIES,
   speciesById,
@@ -226,7 +226,10 @@ export function createSettlements(world: World): void {
     };
     world.settlements.push(s);
     const founder = mintFigure(world, s, d.foundedYear, gen, 'founder');
-    if (hasLeader(s.governmentId)) s.currentRulerId = founder.id;
+    if (hasLeader(s.governmentId)) {
+      s.currentRulerId = founder.id;
+      foundHouse(world, founder, s.id, d.foundedYear); // the founding family becomes a House
+    }
     emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop });
   }
 
@@ -241,6 +244,7 @@ export function createSettlements(world: World): void {
     s.macro = { population: 0, children: 0, adults: 0, elders: 0, stability: 0, dominantSpecies: d.people.species };
     if (d.razedBy) emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) });
     else emit(world, 'ruined', [], { name: s.name });
+    endHouseAt(world, s, d.ruinedYear!); // the ruling line falls with the city
   }
 
   world.tick = PREHISTORY_YEARS * DAYS_PER_YEAR; // the world is "now" at the end of pre-history
@@ -716,6 +720,8 @@ export function geographyYearly(world: World): void {
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
         emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) });
+        houseConquers(world, strong); // the victor's House gains prestige (the loser's line
+        //                               falls when recordRuins registers the emptied town)
       } else {
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);

@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -49,6 +49,7 @@ export interface SaveFile {
   annals: World['annals'];
   director: World['director'];
   figures: World['figures'];
+  houses: World['houses'];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -117,6 +118,7 @@ export function serializeWorld(world: World): SaveFile {
     annals: world.annals,
     director: world.director,
     figures: world.figures,
+    houses: world.houses,
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -185,6 +187,7 @@ export function deserializeWorld(s: SaveFile): World {
     director: s.director,
     directorRngState: s.directorRngState,
     figures: s.figures,
+    houses: s.houses ?? [],
     figureRngState: s.figureRngState,
     playerId: s.playerId ?? undefined,
     playerRngState: s.playerRngState,

@@ -31,7 +31,7 @@ import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse 
 import { computeOpinion, opinionReasons } from './opinion';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
-import { figuresYearly, getFigure } from './figures';
+import { figuresYearly, getFigure, houseById } from './figures';
 import { focusSettlement } from './lod';
 import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
@@ -88,6 +88,7 @@ export function createWorld(seed: number, focus = true): World {
     director: initialDirector(),
     directorRngState: mixSeed(seed, 0xd17),
     figures: [],
+    houses: [],
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -196,6 +197,7 @@ function actorView(world: World, id: EntityId): ActorView {
     profession: world.profession.get(id)!,
     traits: world.traits.get(id)!,
     nature: natureOf(personalityOf(world, id)),
+    house: idn.family, // their lineage — the surname carried down their family line
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
   };
@@ -230,6 +232,7 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
     deathYear: fig.deathYear,
     reignStart: fig.reignStart,
     reignEnd: fig.reignEnd,
+    house: houseById(world, fig.houseId)?.name,
     lifeEvents,
   };
 }
@@ -455,6 +458,31 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       deathYear: f.deathYear,
       reignStart: f.reignStart,
       reignEnd: f.deathYear === undefined ? f.reignEnd : undefined,
+      house: houseById(world, f.houseId)?.name,
+    }));
+
+  // the great Houses, ranked by prestige — how many of each line's members held a seat
+  // gives the depth of the dynasty.
+  // distinct figures per house (an actor re-crowned leaves duplicate figure records that
+  // share an id, so count by id, not by record).
+  const houseRulers = new Map<number, Set<number>>();
+  for (const f of world.figures) {
+    if (f.houseId === undefined) continue;
+    let set = houseRulers.get(f.houseId);
+    if (!set) houseRulers.set(f.houseId, (set = new Set()));
+    set.add(f.id);
+  }
+  const houses = [...world.houses]
+    .sort((a, b) => b.prestige - a.prestige || a.id - b.id)
+    .slice(0, 12)
+    .map((h) => ({
+      name: h.name,
+      foundedYear: h.foundedYear,
+      prestige: Math.round(h.prestige),
+      origin: world.settlements[h.originSettlementId]?.name ?? '?',
+      seat: h.seatSettlementId !== undefined ? world.settlements[h.seatSettlementId]?.name : undefined,
+      rulers: houseRulers.get(h.id)?.size ?? 1,
+      extinctYear: h.extinctYear,
     }));
 
   return {
@@ -507,6 +535,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       options: DIRECTOR_OPTIONS,
     },
     historicalFigures,
+    houses,
     player: buildPlayerView(world),
   };
 }
@@ -628,7 +657,10 @@ export function canonicalize(world: World): string {
     parts.push(`*${t.eventId}:y${t.year}.i${t.interest}.l${t.landmark ? 1 : 0}`);
   }
   for (const f of world.figures) {
-    parts.push(`F${f.id}:${f.name}.${f.role}.s${f.settlementId}.b${f.bornYear}.d${f.deathYear ?? -1}.r${f.reignStart}-${f.reignEnd}`);
+    parts.push(`F${f.id}:${f.name}.${f.role}.s${f.settlementId}.b${f.bornYear}.d${f.deathYear ?? -1}.r${f.reignStart}-${f.reignEnd}.h${f.houseId ?? -1}`);
+  }
+  for (const h of world.houses) {
+    parts.push(`H${h.id}:${h.name}.f${h.founderId}.y${h.foundedYear}.p${Math.round(h.prestige)}.seat${h.seatSettlementId ?? -1}.x${h.extinctYear ?? -1}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

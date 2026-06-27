@@ -38,7 +38,11 @@ const overReason = (d: Record<string, number | string>): string =>
 export const EVENT_RENDER: Record<string, RenderFn> = {
   settlement_founded: (n, d, c) =>
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
-  ascension: (n, d) => `${n(0)} became ${d.title || 'ruler'} of ${d.settlement}.`,
+  ascension: (n, d) =>
+    `${n(0)}${d.house ? ` of House ${d.house}` : ''} became ${d.title || 'ruler'} of ${d.settlement}.`,
+  dynasty: (n, d) =>
+    `${n(0)} of House ${d.house} seized ${d.settlement}${d.old ? `, ending the rule of House ${d.old}` : ''}, founding a new dynasty.`,
+  house_fallen: (_n, d) => `House ${d.house} fell with ${d.settlement} — its line ended.`,
   ruler_died: (n, d) => `${n(0)}, ${d.title || 'ruler'} of ${d.settlement}, passed away.`,
   prosperity: (_n, d) => `${d.name} enjoyed a prosperous year (now ${d.population} souls).`,
   hardship: (_n, d) => `${d.name} suffered hardship — ${d.toll} souls lost.`,
@@ -111,6 +115,10 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 40; // a ruler's passing is remembered
     case 'ascension':
       return 18; // a new ruler rising is minor news
+    case 'dynasty':
+      return 44; // a new dynasty seizing a seat — a turn of the age
+    case 'house_fallen':
+      return 48; // a great house ending — long remembered
     case 'figure_passed':
       return 40;
     case 'milestone':

@@ -234,8 +234,17 @@ button { font-family: inherit; }
 .figs { color: var(--ink-faint); font-style: italic; }
 .ruin { color: var(--rose); font-style: italic; opacity: 0.85; }
 .ruler { color: var(--violet); }
-.figures-hist li { padding: 4px 0; font-size: 13.5px; border-bottom: 1px solid var(--line-soft); }
+.figures-hist li { padding: 4px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--line-soft); }
 .fig-name { color: var(--gold); font-family: var(--serif); }
+
+/* great houses — the dynasties panel */
+.houses { list-style: none; margin: 0; padding: 0; }
+.houses li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line-soft); }
+.houses li.house-fallen { opacity: 0.6; }
+.house-name { font-family: var(--serif); color: var(--violet); font-weight: 600; }
+.house-status { margin-left: var(--space-2); font-size: var(--fs-xs); color: var(--ink-dim); }
+.houses li.house-fallen .house-status { color: var(--rose); }
+.house-meta { display: block; font-size: var(--fs-xs); margin-top: 2px; }
 .away { color: var(--cyan); font-style: italic; }
 .food-good { color: var(--jade); }
 .food-warn { color: var(--neutral); }

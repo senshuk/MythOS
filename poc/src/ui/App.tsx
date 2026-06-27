@@ -38,6 +38,8 @@ const TYPE_TONE: Record<string, string> = {
   settlement_founded: 'neutral',
   figure_passed: 'neutral',
   ascension: 'neutral',
+  dynasty: 'focus',
+  house_fallen: 'bad',
   ruler_died: 'neutral',
   focus_shift: 'focus',
   emigrated: 'focus',
@@ -605,7 +607,8 @@ function Dashboard({
                     <span className="fig-name">{f.name}</span>
                     <span className="muted">
                       {' '}
-                      — {f.role} of {f.settlement},{' '}
+                      — {f.role}
+                      {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
                       {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
                     </span>
                   </li>
@@ -613,6 +616,29 @@ function Dashboard({
               </ul>
             </>
           )}
+        </>
+      )}
+
+      {stat.houses.length > 0 && (
+        <>
+          <h3>Great Houses — the dynasties of the age</h3>
+          <ul className="houses">
+            {stat.houses.slice(0, 8).map((h, i) => (
+              <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
+                <span className="house-name">House {h.name}</span>
+                <span className="house-status">
+                  {h.extinctYear !== undefined
+                    ? `fell with its seat, y${h.extinctYear}`
+                    : h.seat
+                      ? `rules ${h.seat}`
+                      : 'out of power'}
+                </span>
+                <span className="muted house-meta">
+                  founded y{h.foundedYear} in {h.origin} · {h.rulers} {h.rulers === 1 ? 'ruler' : 'rulers'} · {h.prestige} renown
+                </span>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -961,7 +987,8 @@ function Inspector({
           </h3>
           <p className="muted">
             {actorDetail.actor.species} {actorDetail.actor.profession} · {actorDetail.actor.ageYears}y ·{' '}
-            {actorDetail.actor.sex} · traits: {actorDetail.actor.traits.join(', ') || 'none'}
+            {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
+            {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}</p>
 
@@ -1002,7 +1029,8 @@ function Inspector({
         <div>
           <h3>{figureDetail.name}</h3>
           <p className="muted">
-            {figureDetail.role} of{' '}
+            {figureDetail.role}
+            {figureDetail.house ? ` of House ${figureDetail.house}` : ''} of{' '}
             <button className="link" onClick={() => onRef({ kind: 'settlement', id: figureDetail.settlementId })}>
               {figureDetail.settlement}
             </button>{' '}

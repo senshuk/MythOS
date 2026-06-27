@@ -117,6 +117,33 @@ export interface HistoricalFigure {
   deathYear?: number;
   reignStart: number;
   reignEnd: number; // the year this figure's rule is fated to end
+  /** the House (lineage) this figure belongs to, if any — see House. */
+  houseId?: HouseId;
+}
+
+export type HouseId = EntityId; // shares the id space (monotonic), but never named in the registry
+
+/**
+ * A HOUSE — a named lineage that endures across generations (a noble house, clan, or
+ * dynasty; a sci-fi pack might read them as Great Families). Generic and universe-agnostic:
+ * the engine knows only that figures belong to a line that holds seats, accrues prestige
+ * from its members' deeds, and can rise, fall from power, or end. This is what turns a
+ * string of rulers into a *dynasty* the player can follow as a family saga.
+ */
+export interface House {
+  id: HouseId;
+  name: string; // the house surname, carried by its rulers across the generations
+  founderId: FigureId;
+  foundedYear: number;
+  originSettlementId: SettlementId;
+  /** standing accrued from its members' deeds (founding, ruling, conquest) — ranks the
+   *  great houses and decays only by losing power. */
+  prestige: number;
+  /** the settlement it currently rules, if any (undefined once it has fallen from power). */
+  seatSettlementId?: SettlementId;
+  /** the year the line ended — fell with a razed seat. Absent while it endures, even out
+   *  of power (a former dynasty lingers in the rankings). */
+  extinctYear?: number;
 }
 
 /**
@@ -334,6 +361,8 @@ export interface World {
 
   /** Named people the world remembers (founders, rulers) — the legends database. */
   figures: HistoricalFigure[];
+  /** The great Houses — lineages that hold seats and endure across generations. */
+  houses: House[];
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -408,6 +437,8 @@ export interface ActorView {
   /** a short, legible reading of this actor's personality (their strongest value
    *  leanings) — e.g. "honourable, peaceable". Derived from their value profile. */
   nature: string;
+  /** this actor's House — their family lineage (surname). */
+  house: string;
   spouse?: EntityId;
   relationshipCount: number;
 }
@@ -447,6 +478,7 @@ export interface FigureDetail {
   deathYear?: number;
   reignStart: number;
   reignEnd?: number;
+  house?: string; // the lineage this figure belongs to
   lifeEvents: EventView[];
 }
 
@@ -534,6 +566,18 @@ export interface FigureView {
   deathYear?: number;
   reignStart: number;
   reignEnd?: number; // for the living; undefined once dead
+  house?: string; // the lineage this figure belongs to
+}
+
+/** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */
+export interface HouseView {
+  name: string;
+  foundedYear: number;
+  prestige: number;
+  origin: string; // the settlement where the line began
+  seat?: string; // the settlement it rules now (absent if out of power)
+  rulers: number; // how many of its members have held a seat — the depth of the dynasty
+  extinctYear?: number; // the year it fell with its seat
 }
 
 export interface DirectorView {
@@ -610,6 +654,7 @@ export interface Snapshot {
   eras: EraView[]; // named years ("the Year of …")
   director: DirectorView; // the storyteller's current state
   historicalFigures: FigureView[]; // renowned people of history (founders, rulers)
+  houses: HouseView[]; // the great Houses, ranked by prestige — dynasties as family sagas
   player?: PlayerView; // the controlled actor's actionable state, if any
 }
 

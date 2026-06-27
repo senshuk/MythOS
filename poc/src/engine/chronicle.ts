@@ -8,6 +8,7 @@
  */
 import { type World, type WorldEvent, type Tale, DAYS_PER_YEAR } from './model';
 import { fullName, emit } from './world';
+import { endHouseAt } from './figures';
 import { renderEvent } from './render';
 import { Rng, mixSeed } from './rng';
 import { expand } from './grammar';
@@ -73,6 +74,7 @@ function recordRuins(world: World): void {
       // name the last ruler under whom the settlement fell, if any
       const subjects = s.currentRulerId !== undefined ? [s.currentRulerId] : [];
       emit(world, 'ruined', subjects, { name: s.name });
+      endHouseAt(world, s, year); // the ruling line falls with the city
     }
   }
 }
