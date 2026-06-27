@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -59,7 +59,7 @@ export interface SaveFile {
   lifecycle: [number, Lifecycle][];
   needs: [number, Needs][];
   traits: [number, string[]][];
-  personality: [number, Record<string, number>][];
+  personality: [number, { values: Record<string, number>; temperament: Record<string, number> }][];
   profession: [number, string][];
   ties: [number, SocialTies][];
   memory: [number, number[]][];

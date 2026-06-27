@@ -31,7 +31,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS, valueProfile, valueAlignment, natureOf } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS, valueProfile, valueAlignment, natureOf, TEMPERAMENTS, temperamentProfile, temperamentAffinity, TRAITS, TRAIT_SPECTRA, pickTraits } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -947,18 +947,39 @@ describe('culture/values drive relations (wars have reasons, not dice)', () => {
   });
 });
 
-describe('every actor has a PERSONALITY (per-individual value profile, not a culture clone)', () => {
-  it('a profile is deterministic, bounded, and shaped by culture + traits + deviation', () => {
-    const rng1 = new Rng(12345);
-    const rng2 = new Rng(12345);
-    const a = valueProfile('martial', ['proud', 'bold'], rng1);
-    const b = valueProfile('martial', ['proud', 'bold'], rng2); // same seed ⇒ identical
+describe('every actor has a PERSONALITY (values + temperament, not a culture clone)', () => {
+  it('a value profile is deterministic, bounded, and shaped by culture + traits + deviation', () => {
+    const a = valueProfile('martial', ['proud', 'bold'], new Rng(12345));
+    const b = valueProfile('martial', ['proud', 'bold'], new Rng(12345)); // same seed ⇒ identical
     expect(a).toEqual(b);
     for (const axis of VALUES) expect(Math.abs(a[axis])).toBeLessThanOrEqual(100);
     // the 'gentle' soul of a war-creed leans far less warlike than a 'cruel' one
     const gentle = valueProfile('martial', ['gentle'], new Rng(7));
     const cruel = valueProfile('martial', ['cruel'], new Rng(7)); // same deviation, traits differ
     expect(gentle.war).toBeLessThan(cruel.war);
+  });
+
+  it('TEMPERAMENT is a SECOND, individual dimension — owes nothing to culture', () => {
+    // same culture, same seed, but the temperament generator never reads culture at all,
+    // so two people of one creed with different traits diverge in disposition.
+    const t1 = temperamentProfile(['volcanic', 'gregarious'], new Rng(8));
+    const t2 = temperamentProfile(['serene', 'shy'], new Rng(8)); // same deviation, opposite traits
+    expect(t1.temper).toBeGreaterThan(t2.temper); // hot-blooded vs serene
+    expect(t1.sociability).toBeGreaterThan(t2.sociability); // gregarious vs solitary
+    for (const axis of TEMPERAMENTS) expect(Math.abs(t1[axis])).toBeLessThanOrEqual(100);
+    // deterministic
+    expect(temperamentProfile(['bold'], new Rng(3))).toEqual(temperamentProfile(['bold'], new Rng(3)));
+  });
+
+  it('traits are SPECTRA — an actor never holds two from one family (no kind AND cruel)', () => {
+    const spectrumOf = (id: string) => TRAITS.find((t) => t.id === id)!.spectrum;
+    for (let seed = 1; seed < 200; seed++) {
+      const traits = pickTraits(new Rng(seed));
+      const families = traits.map(spectrumOf);
+      expect(new Set(families).size).toBe(families.length); // all distinct spectra
+      expect(traits.length).toBeGreaterThanOrEqual(1);
+    }
+    expect(TRAIT_SPECTRA.length).toBeGreaterThan(5); // a rich set of facets
   });
 
   it('two souls of the SAME people still differ — individuals, not clones', () => {
@@ -986,14 +1007,28 @@ describe('every actor has a PERSONALITY (per-individual value profile, not a cul
     expect(valueAlignment(a, kin)).toBeGreaterThan(valueAlignment(a, foe));
   });
 
-  it('natureOf renders a legible reading of who someone is', () => {
-    const warlike = valueProfile('martial', ['cruel', 'bold'], new Rng(9));
-    expect(typeof natureOf(warlike)).toBe('string');
-    expect(natureOf(warlike).length).toBeGreaterThan(0);
+  it('warm dispositions raise affinity; two volatile tempers grate (chemistry, not just values)', () => {
+    const warmA = temperamentProfile(['gregarious', 'kind'], new Rng(11));
+    const warmB = temperamentProfile(['gregarious', 'gentle'], new Rng(12));
+    const hotA = temperamentProfile(['volcanic'], new Rng(13));
+    const hotB = temperamentProfile(['volcanic'], new Rng(14));
+    expect(temperamentAffinity(warmA, warmB)).toBeGreaterThan(temperamentAffinity(hotA, hotB));
+  });
+
+  it('natureOf reads disposition AND values into a legible sketch', () => {
+    const p = {
+      values: valueProfile('martial', ['cruel', 'proud'], new Rng(9)),
+      temperament: temperamentProfile(['volcanic', 'shy'], new Rng(9)),
+    };
+    const sketch = natureOf(p);
+    expect(typeof sketch).toBe('string');
+    expect(sketch.length).toBeGreaterThan(0);
+    // a volcanic, solitary soul should read as hot-blooded and/or solitary
+    expect(/hot-blooded|solitary|warlike|honourable|dishonourable|timid|bold/.test(sketch)).toBe(true);
   });
 
   it('some souls DEVIATE from their own people — outsiders arise', () => {
-    // across a focused town, at least one actor opposes their culture on some axis
+    // across a focused town, at least one actor opposes their culture on some VALUE axis
     const w = createWorld(2);
     focusSettlement(w, 0);
     runYears(w, 8);
@@ -1002,10 +1037,10 @@ describe('every actor has a PERSONALITY (per-individual value profile, not a cul
     let sawOutsider = false;
     for (const id of w.entities) {
       if (w.homeSettlement.get(id) !== 0 || !w.lifecycle.get(id)?.alive) continue;
-      const p = personalityOf(w, id);
+      const v = personalityOf(w, id).values;
       for (const axis of VALUES) {
         const cv = cultureVals[axis] ?? 0;
-        if (Math.sign(p[axis]) !== Math.sign(cv) && Math.abs(p[axis]) > 20 && Math.abs(cv) > 20) sawOutsider = true;
+        if (Math.sign(v[axis]) !== Math.sign(cv) && Math.abs(v[axis]) > 20 && Math.abs(cv) > 20) sawOutsider = true;
       }
     }
     expect(sawOutsider).toBe(true);

@@ -15,7 +15,7 @@ import {
   DAYS_PER_YEAR,
   MEMORY_LIMIT,
 } from './model';
-import { NEEDS, monogamousOf, valueProfile } from '../content/fixture';
+import { NEEDS, monogamousOf, valueProfile, temperamentProfile } from '../content/fixture';
 import { Rng, mixSeed } from './rng';
 
 export interface ActorProps {
@@ -90,11 +90,15 @@ export function createActor(world: World, p: ActorProps): EntityId {
   // new actors are born/created at full fidelity in the focused settlement
   world.fidelity.set(id, 'full');
   world.homeSettlement.set(id, world.focusedSettlementId);
-  // INNATE personality: a value profile fixed at birth from the culture they are born
-  // into + their traits + a deviation seeded from their id. Stored (not re-derived from
-  // a mutable home) so it is stable for life, observation-independent, and reload-safe.
+  // INNATE personality, fixed at birth: cultural VALUES (from the culture they are born
+  // into + their traits) and individual TEMPERAMENT (traits + a wide deviation, no culture).
+  // Both seeded from their id and stored (not re-derived from a mutable home) so they are
+  // stable for life, observation-independent, and reload-safe.
   const cultureId = world.settlements[world.focusedSettlementId]?.cultureId ?? '';
-  world.personality.set(id, valueProfile(cultureId, p.traits, new Rng(mixSeed(world.seed, id, 0x9e1d))));
+  world.personality.set(id, {
+    values: valueProfile(cultureId, p.traits, new Rng(mixSeed(world.seed, id, 0x9e1d))),
+    temperament: temperamentProfile(p.traits, new Rng(mixSeed(world.seed, id, 0x7c0d))),
+  });
   return id;
 }
 

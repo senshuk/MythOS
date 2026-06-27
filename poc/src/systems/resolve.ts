@@ -19,7 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible } from '../engine/social';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity, valueAlignment, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
@@ -98,11 +98,15 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   pruneThoughts(edge, world.tick);
-  // affinity = clashing/kindred TRAITS (specific frictions) + aligned/opposed VALUES
-  // (shared or opposed worldview) — so bonds and grudges have a *character* reason.
+  // affinity = clashing/kindred TRAITS (specific frictions) + aligned/opposed VALUES (shared
+  // worldview) + TEMPERAMENT chemistry (warmth, clashing tempers) — so bonds and grudges have
+  // a *character* reason rooted in both what they believe and how they are.
+  const pa = personalityOf(world, a);
+  const pb = personalityOf(world, b);
   const affinity =
     pairAffinity(world.traits.get(a)!, world.traits.get(b)!) +
-    valueAlignment(personalityOf(world, a), personalityOf(world, b));
+    valueAlignment(pa.values, pb.values) +
+    temperamentAffinity(pa.temperament, pb.temperament);
   const opinion = computeOpinion(edge, world.tick);
 
   // probability the encounter goes well rises with affinity & existing warmth.

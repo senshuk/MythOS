@@ -151,33 +151,69 @@ export const PROFESSIONS: Profession[] = [
 
 export interface Trait {
   id: string;
+  /** the mutually-exclusive FAMILY this trait belongs to — pickTraits draws at most one
+   *  trait per spectrum, so no soul is both 'kind' and 'cruel', and combinations stay
+   *  coherent while remaining hugely varied. */
+  spectrum: string;
   /**
    * Drive to seek power/standing (to rule a settlement). The engine reads this as
    * DATA — it never hardcodes which trait is "ambitious", so a pack can declare its
-   * own ambitious traits (and to varying degrees) without touching engine code.
+   * own ambitious traits (and to varying degrees) without touching engine code. Default 0.
    */
-  ambition: number;
-  /** how this trait shifts the person's VALUE profile away from their culture's baseline
-   *  (per axis) — so a 'cruel' soul leans warlike, a 'gentle' one toward nature, giving
-   *  every individual a distinct character that may even oppose their own people. */
+  ambition?: number;
+  /** how this trait bends the person's cultural VALUE profile (per axis) — so a 'cruel'
+   *  soul leans warlike, a 'gentle' one toward nature; a person can even oppose their kin. */
   values?: Partial<Record<ValueAxis, number>>;
+  /** how this trait sets the person's individual TEMPERAMENT (per axis) — disposition that
+   *  owes nothing to culture, so two devout farmers still differ in nerve, warmth, drive. */
+  temperament?: Partial<Record<TemperamentAxis, number>>;
 }
 
+// Traits are organised into SPECTRA — mutually-exclusive families. An actor gets at most
+// one trait from each, so personalities are coherent (never kind AND cruel) yet vary across
+// many independent facets. Each trait bends VALUES (what they care about) and/or TEMPERAMENT
+// (how they behave). Degrees within a spectrum give intensity (hot-tempered vs volcanic).
 export const TRAITS: Trait[] = [
-  { id: 'kind', ambition: 0, values: { honor: 12, war: -10, nature: 8 } },
-  { id: 'proud', ambition: 1, values: { honor: 18, freedom: -6 } },
-  { id: 'hot-tempered', ambition: 0, values: { war: 14, honor: -6 } },
-  { id: 'loyal', ambition: 0, values: { tradition: 16, honor: 8 } },
-  { id: 'greedy', ambition: 0, values: { craft: 12, honor: -12 } },
-  { id: 'curious', ambition: 0, values: { freedom: 14, craft: 10, tradition: -10 } },
-  { id: 'devout', ambition: 0, values: { tradition: 18, honor: 8 } },
-  { id: 'cruel', ambition: 0, values: { war: 16, honor: -14, nature: -8 } },
-  { id: 'gentle', ambition: 0, values: { nature: 16, war: -14, honor: 6 } },
-  { id: 'bold', ambition: 1, values: { war: 12, freedom: 12 } },
-  { id: 'wise', ambition: 0, values: { tradition: 10, craft: 12, war: -8 } },
-  { id: 'restless', ambition: 0, values: { freedom: 18, tradition: -14 } },
-  { id: 'stoic', ambition: 0, values: { honor: 12, freedom: -10 } },
+  // — temper: how readily they flare —
+  { id: 'serene', spectrum: 'temper', values: { war: -5 }, temperament: { temper: -50 } },
+  { id: 'hot-tempered', spectrum: 'temper', values: { war: 14, honor: -6 }, temperament: { temper: 48 } },
+  { id: 'volcanic', spectrum: 'temper', values: { war: 22, honor: -12 }, temperament: { temper: 82 } },
+  // — warmth: how they treat others —
+  { id: 'cruel', spectrum: 'warmth', values: { war: 16, honor: -14, nature: -8 }, temperament: { warmth: -58 } },
+  { id: 'cold', spectrum: 'warmth', temperament: { warmth: -42 } },
+  { id: 'kind', spectrum: 'warmth', values: { honor: 12, war: -10, nature: 8 }, temperament: { warmth: 46 } },
+  { id: 'gentle', spectrum: 'warmth', values: { nature: 16, war: -14, honor: 6 }, temperament: { warmth: 38 } },
+  // — drive: appetite for work —
+  { id: 'lazy', spectrum: 'drive', temperament: { drive: -48 } },
+  { id: 'diligent', spectrum: 'drive', values: { craft: 12 }, temperament: { drive: 44 } },
+  { id: 'driven', spectrum: 'drive', ambition: 1, values: { craft: 10 }, temperament: { drive: 72 } },
+  // — bravery: nerve in the face of danger —
+  { id: 'meek', spectrum: 'bravery', values: { war: -6 }, temperament: { boldness: -48 } },
+  { id: 'bold', spectrum: 'bravery', ambition: 1, values: { war: 12, freedom: 12 }, temperament: { boldness: 52 } },
+  { id: 'fearless', spectrum: 'bravery', values: { war: 10 }, temperament: { boldness: 82 } },
+  // — honesty: how straight they deal —
+  { id: 'honest', spectrum: 'honesty', values: { honor: 15 }, temperament: { warmth: 6 } },
+  { id: 'greedy', spectrum: 'honesty', values: { craft: 12, honor: -12 }, temperament: { warmth: -6 } },
+  { id: 'scheming', spectrum: 'honesty', values: { honor: -16 }, temperament: { warmth: -8, curiosity: 10 } },
+  // — faith: stance toward the old ways —
+  { id: 'devout', spectrum: 'faith', values: { tradition: 18, honor: 8 } },
+  { id: 'skeptic', spectrum: 'faith', values: { tradition: -16 }, temperament: { curiosity: 14 } },
+  // — mind: hunger to know —
+  { id: 'incurious', spectrum: 'mind', values: { tradition: 8 }, temperament: { curiosity: -34 } },
+  { id: 'curious', spectrum: 'mind', values: { freedom: 14, craft: 10, tradition: -10 }, temperament: { curiosity: 42 } },
+  { id: 'wise', spectrum: 'mind', values: { tradition: 10, craft: 12, war: -8 }, temperament: { curiosity: 18, temper: -16 } },
+  // — spirit: where their allegiance bends —
+  { id: 'loyal', spectrum: 'spirit', values: { tradition: 16, honor: 8 }, temperament: { sociability: 8 } },
+  { id: 'proud', spectrum: 'spirit', ambition: 1, values: { honor: 18, freedom: -6 }, temperament: { sociability: -6 } },
+  { id: 'restless', spectrum: 'spirit', values: { freedom: 18, tradition: -14 }, temperament: { drive: 8 } },
+  { id: 'stoic', spectrum: 'spirit', values: { honor: 12, freedom: -10 }, temperament: { temper: -22 } },
+  // — social: appetite for company —
+  { id: 'shy', spectrum: 'social', temperament: { sociability: -48 } },
+  { id: 'gregarious', spectrum: 'social', temperament: { sociability: 50, warmth: 10 } },
 ];
+
+/** The mutually-exclusive trait families, in declaration order (deterministic). */
+export const TRAIT_SPECTRA: string[] = [...new Set(TRAITS.map((t) => t.spectrum))];
 
 /** Wealth a profession yields per work action. Neutral fallback for unknown ids, so
  *  the engine never needs to know the pack's profession names. */
@@ -285,6 +321,20 @@ export function reignSpan(id: string, rng: Rng): number {
 export const VALUES = ['honor', 'war', 'tradition', 'freedom', 'nature', 'craft'] as const;
 export type ValueAxis = (typeof VALUES)[number];
 
+// TEMPERAMENT is the OTHER half of personality: how a soul behaves, independent of what
+// their culture taught them to value. Two devout farmers share values yet one is a bold,
+// hot-blooded loner and the other a warm, idle gossip. These axes are universal (they fit
+// elves or a starship crew alike) and purely individual — culture does NOT set them.
+export const TEMPERAMENTS = ['boldness', 'temper', 'warmth', 'drive', 'sociability', 'curiosity'] as const;
+export type TemperamentAxis = (typeof TEMPERAMENTS)[number];
+
+/** A whole personality: cultural VALUES (what they care about) + individual TEMPERAMENT
+ *  (how they behave). Built once at birth (see world.createActor) and read everywhere. */
+export interface Personality {
+  values: Record<ValueAxis, number>;
+  temperament: Record<TemperamentAxis, number>;
+}
+
 export interface Culture {
   id: string;
   name: string;
@@ -360,6 +410,23 @@ export function valueProfile(cultureId: string, traitIds: string[], rng: Rng): R
   return p;
 }
 
+/** Build one actor's TEMPERAMENT from their traits + a wide personal deviation. There is
+ *  NO cultural baseline — disposition is the individual half of a personality, so it spreads
+ *  people out even within one creed. */
+export function temperamentProfile(traitIds: string[], rng: Rng): Record<TemperamentAxis, number> {
+  const p = {} as Record<TemperamentAxis, number>;
+  for (const axis of TEMPERAMENTS) {
+    let v = 0;
+    for (const t of traitIds) {
+      const shift = TRAITS.find((d) => d.id === t)?.temperament?.[axis];
+      if (shift !== undefined) v += shift;
+    }
+    v += rng.range(-35, 35);
+    p[axis] = v < -100 ? -100 : v > 100 ? 100 : v;
+  }
+  return p;
+}
+
 /** How two value profiles relate: positive when like-minded, negative when opposed —
  *  fed into social affinity so kindred spirits bond and clashing worldviews grate. */
 export function valueAlignment(a: Record<ValueAxis, number>, b: Record<ValueAxis, number>): number {
@@ -369,8 +436,22 @@ export function valueAlignment(a: Record<ValueAxis, number>, b: Record<ValueAxis
   return (32 - dist) / 11; // kindred ≈ +2 … opposed ≈ -8
 }
 
-/** The two strongest leanings in a profile, as universe-specific adjectives — the
- *  legible face of a personality the player reads in the inspector. */
+/** How two TEMPERAMENTS get on, beyond shared values: warmth lifts any encounter, two
+ *  hot tempers grate hardest, sociable folk engage more warmly. Kept gentle so disposition
+ *  colours relationships without overwhelming who-values-what. */
+export function temperamentAffinity(
+  a: Record<TemperamentAxis, number>,
+  b: Record<TemperamentAxis, number>,
+): number {
+  const warm = ((a.warmth ?? 0) + (b.warmth ?? 0)) / 70; // both warm ≈ +2.8, both cold ≈ −2.8
+  const clash = -(Math.max(0, a.temper ?? 0) * Math.max(0, b.temper ?? 0)) / 3500; // both volcanic ≈ −1.9
+  const social = ((a.sociability ?? 0) + (b.sociability ?? 0)) / 220; // both gregarious ≈ +0.9
+  return warm + clash + social;
+}
+
+/** The strongest leanings in a personality, as universe-specific adjectives — the legible
+ *  face the player reads in the inspector. Disposition first (how they come across), then
+ *  their defining value: "hot-blooded, solitary, honourable". */
 const VALUE_WORDS: Record<ValueAxis, [string, string]> = {
   honor: ['honourable', 'dishonourable'],
   war: ['warlike', 'peaceable'],
@@ -379,13 +460,32 @@ const VALUE_WORDS: Record<ValueAxis, [string, string]> = {
   nature: ['wild at heart', 'worldly'],
   craft: ['industrious', 'unworldly'],
 };
-export function natureOf(p: Record<ValueAxis, number>): string {
-  const ranked = VALUES.map((axis) => ({ axis, v: p[axis] ?? 0 })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
-  const words = ranked
-    .filter((r) => Math.abs(r.v) >= 25)
-    .slice(0, 2)
-    .map((r) => VALUE_WORDS[r.axis][r.v >= 0 ? 0 : 1]);
-  return words.length ? words.join(', ') : 'even-tempered';
+const TEMPERAMENT_WORDS: Record<TemperamentAxis, [string, string]> = {
+  boldness: ['bold', 'timid'],
+  temper: ['hot-blooded', 'serene'],
+  warmth: ['warm', 'cold'],
+  drive: ['driven', 'indolent'],
+  sociability: ['gregarious', 'solitary'],
+  curiosity: ['inquisitive', 'incurious'],
+};
+export function natureOf(p: Personality): string {
+  const top = <K extends string>(
+    axes: readonly K[],
+    vals: Record<K, number>,
+    words: Record<K, [string, string]>,
+    thresh: number,
+    n: number,
+  ) =>
+    axes
+      .map((axis) => ({ axis, v: vals[axis] ?? 0 }))
+      .filter((r) => Math.abs(r.v) >= thresh)
+      .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+      .slice(0, n)
+      .map((r) => words[r.axis][r.v >= 0 ? 0 : 1]);
+  const disposition = top(TEMPERAMENTS, p.temperament, TEMPERAMENT_WORDS, 32, 2);
+  const value = top(VALUES, p.values, VALUE_WORDS, 28, 1);
+  const words = [...disposition, ...value];
+  return words.length ? words.join(', ') : 'unremarkable';
 }
 
 export function speciesById(id: string): Species {
@@ -457,11 +557,15 @@ export function unionViable(spA: string, sexA: string, spB: string, sexB: string
 }
 
 export function pickTraits(rng: Rng): string[] {
-  const count = rng.range(1, 3);
-  const pool = [...TRAITS];
+  // pick a handful of FACETS — at most one trait per spectrum, so the result is coherent
+  // (never kind AND cruel) yet drawn from an enormous combinatorial space.
+  const spectra = [...TRAIT_SPECTRA];
+  const count = rng.range(3, 5);
   const out: string[] = [];
-  for (let i = 0; i < count && pool.length; i++) {
-    out.push(pool.splice(rng.int(pool.length), 1)[0].id);
+  for (let i = 0; i < count && spectra.length; i++) {
+    const sp = spectra.splice(rng.int(spectra.length), 1)[0];
+    const options = TRAITS.filter((t) => t.spectrum === sp);
+    out.push(options[rng.int(options.length)].id);
   }
   return out;
 }

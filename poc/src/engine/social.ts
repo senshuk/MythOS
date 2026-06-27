@@ -10,24 +10,28 @@ import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, canTakeSpouse } from './world';
 import { Rng, mixSeed } from './rng';
-import { maturityOf, unionViable, hasLeader, valueProfile, type ValueAxis } from '../content/fixture';
+import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, type Personality } from '../content/fixture';
 
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
 
 /**
- * An actor's PERSONALITY as a value profile — the values they were born into (their
- * culture's), bent by their own traits and a deviation seeded from their id, so every
- * soul is unique and some drift to oppose their own kin. This is the per-INDIVIDUAL
- * counterpart to a culture's values: the pack owns the axes and the shaping. It is fixed
- * at birth (createActor) and stored, so it is stable for life and identical after a load.
- * The fallback only covers actors minted before this existed (e.g. an old save).
+ * An actor's PERSONALITY: the cultural VALUES they were born into (bent by their traits)
+ * plus an individual TEMPERAMENT (traits + a wide personal deviation, owing nothing to
+ * culture). So every soul is unique — two of one creed still differ in nerve and warmth —
+ * and some even oppose their kin. Fixed at birth (createActor) and stored, so it is stable
+ * for life and identical after a load. The fallback only covers actors minted before this
+ * existed (e.g. an old save).
  */
-export function personalityOf(world: World, id: EntityId): Record<ValueAxis, number> {
+export function personalityOf(world: World, id: EntityId): Personality {
   const stored = world.personality.get(id);
-  if (stored) return stored as Record<ValueAxis, number>;
+  if (stored) return stored as Personality;
   const home = world.homeSettlement.get(id);
   const cultureId = home !== undefined ? world.settlements[home]?.cultureId ?? '' : world.settlements[0]?.cultureId ?? '';
-  const p = valueProfile(cultureId, world.traits.get(id) ?? [], new Rng(mixSeed(world.seed, id, 0x9e1d)));
+  const traits = world.traits.get(id) ?? [];
+  const p: Personality = {
+    values: valueProfile(cultureId, traits, new Rng(mixSeed(world.seed, id, 0x9e1d))),
+    temperament: temperamentProfile(traits, new Rng(mixSeed(world.seed, id, 0x7c0d))),
+  };
   world.personality.set(id, p);
   return p;
 }

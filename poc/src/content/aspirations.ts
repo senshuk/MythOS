@@ -108,8 +108,8 @@ export const ASPIRATIONS: AspirationDef[] = [
     applies: (w, id) => {
       if (!canSeekRule(w, id) || isRuler(w, id)) return false;
       if (ambitionOf(w.traits.get(id) ?? []) > 0) return true;
-      const p = personalityOf(w, id);
-      return p.honor + p.war > 130; // a rare, commanding, status-driven nature
+      const v = personalityOf(w, id).values;
+      return v.honor + v.war > 130; // a rare, commanding, status-driven nature
     },
     action: () => 'work',
     label: (w, id) => {
