@@ -17,7 +17,7 @@
  */
 import { type World, type EntityId, type Aspiration, type AspirationDef } from '../engine/model';
 import { fullName, isWed, primarySpouse, canTakeSpouse } from '../engine/world';
-import { bestSuitor, strongestFeud, isRuler, canSeekRule } from '../engine/social';
+import { bestSuitor, strongestFeud, isRuler, canSeekRule, personalityOf } from '../engine/social';
 import {
   maturityOf,
   elderhoodOf,
@@ -99,11 +99,18 @@ export const ASPIRATIONS: AspirationDef[] = [
       return !!edge && !edge.flags.feud && w.lifecycle.get(t)?.alive === true;
     },
   },
-  // seek standing — those whose traits carry a drive to lead, in a polity that HAS a
-  // leadership seat, strive for it unless they already hold it (all data-driven)
+  // seek standing — those with a drive to lead (an ambitious trait, OR a temperament
+  // that prizes honour & dominance), in a polity that HAS a leadership seat, strive for
+  // it unless they already hold it. The ambition can spring from CHARACTER, not just a
+  // named trait, so power-hungry souls arise even from humble cultures (all data-driven).
   {
     kind: 'rule',
-    applies: (w, id) => ambitionOf(w.traits.get(id) ?? []) > 0 && canSeekRule(w, id) && !isRuler(w, id),
+    applies: (w, id) => {
+      if (!canSeekRule(w, id) || isRuler(w, id)) return false;
+      if (ambitionOf(w.traits.get(id) ?? []) > 0) return true;
+      const p = personalityOf(w, id);
+      return p.honor + p.war > 130; // a rare, commanding, status-driven nature
+    },
     action: () => 'work',
     label: (w, id) => {
       const h = w.homeSettlement.get(id);

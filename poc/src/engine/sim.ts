@@ -37,7 +37,8 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { personalityOf } from './social';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
@@ -75,6 +76,7 @@ export function createWorld(seed: number, focus = true): World {
     lifecycle: new Map(),
     needs: new Map(),
     traits: new Map(),
+    personality: new Map(),
     profession: new Map(),
     ties: new Map(),
     memory: new Map(),
@@ -193,6 +195,7 @@ function actorView(world: World, id: EntityId): ActorView {
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
     profession: world.profession.get(id)!,
     traits: world.traits.get(id)!,
+    nature: natureOf(personalityOf(world, id)),
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
   };

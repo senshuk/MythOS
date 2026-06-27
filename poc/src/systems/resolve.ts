@@ -19,7 +19,8 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible } from '../engine/social';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { pairAffinity, valueAlignment, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
@@ -97,7 +98,11 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   pruneThoughts(edge, world.tick);
-  const affinity = pairAffinity(world.traits.get(a)!, world.traits.get(b)!);
+  // affinity = clashing/kindred TRAITS (specific frictions) + aligned/opposed VALUES
+  // (shared or opposed worldview) — so bonds and grudges have a *character* reason.
+  const affinity =
+    pairAffinity(world.traits.get(a)!, world.traits.get(b)!) +
+    valueAlignment(personalityOf(world, a), personalityOf(world, b));
   const opinion = computeOpinion(edge, world.tick);
 
   // probability the encounter goes well rises with affinity & existing warmth.

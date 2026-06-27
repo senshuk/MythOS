@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -59,6 +59,7 @@ export interface SaveFile {
   lifecycle: [number, Lifecycle][];
   needs: [number, Needs][];
   traits: [number, string[]][];
+  personality: [number, Record<string, number>][];
   profession: [number, string][];
   ties: [number, SocialTies][];
   memory: [number, number[]][];
@@ -125,6 +126,7 @@ export function serializeWorld(world: World): SaveFile {
     lifecycle: [...world.lifecycle],
     needs: [...world.needs],
     traits: [...world.traits],
+    personality: [...world.personality],
     profession: [...world.profession],
     ties: [...world.ties],
     memory: [...world.memory],
@@ -171,6 +173,7 @@ export function deserializeWorld(s: SaveFile): World {
     lifecycle: new Map(s.lifecycle),
     needs: new Map(s.needs),
     traits: new Map(s.traits),
+    personality: new Map(s.personality ?? []), // innate value profiles, fixed at birth
     profession: new Map(s.profession),
     ties: new Map(s.ties),
     memory: new Map(s.memory),

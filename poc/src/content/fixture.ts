@@ -157,17 +157,26 @@ export interface Trait {
    * own ambitious traits (and to varying degrees) without touching engine code.
    */
   ambition: number;
+  /** how this trait shifts the person's VALUE profile away from their culture's baseline
+   *  (per axis) — so a 'cruel' soul leans warlike, a 'gentle' one toward nature, giving
+   *  every individual a distinct character that may even oppose their own people. */
+  values?: Partial<Record<ValueAxis, number>>;
 }
 
 export const TRAITS: Trait[] = [
-  { id: 'kind', ambition: 0 },
-  { id: 'proud', ambition: 1 },
-  { id: 'hot-tempered', ambition: 0 },
-  { id: 'loyal', ambition: 0 },
-  { id: 'greedy', ambition: 0 },
-  { id: 'curious', ambition: 0 },
-  { id: 'devout', ambition: 0 },
-  { id: 'cruel', ambition: 0 },
+  { id: 'kind', ambition: 0, values: { honor: 12, war: -10, nature: 8 } },
+  { id: 'proud', ambition: 1, values: { honor: 18, freedom: -6 } },
+  { id: 'hot-tempered', ambition: 0, values: { war: 14, honor: -6 } },
+  { id: 'loyal', ambition: 0, values: { tradition: 16, honor: 8 } },
+  { id: 'greedy', ambition: 0, values: { craft: 12, honor: -12 } },
+  { id: 'curious', ambition: 0, values: { freedom: 14, craft: 10, tradition: -10 } },
+  { id: 'devout', ambition: 0, values: { tradition: 18, honor: 8 } },
+  { id: 'cruel', ambition: 0, values: { war: 16, honor: -14, nature: -8 } },
+  { id: 'gentle', ambition: 0, values: { nature: 16, war: -14, honor: 6 } },
+  { id: 'bold', ambition: 1, values: { war: 12, freedom: 12 } },
+  { id: 'wise', ambition: 0, values: { tradition: 10, craft: 12, war: -8 } },
+  { id: 'restless', ambition: 0, values: { freedom: 18, tradition: -14 } },
+  { id: 'stoic', ambition: 0, values: { honor: 12, freedom: -10 } },
 ];
 
 /** Wealth a profession yields per work action. Neutral fallback for unknown ids, so
@@ -327,6 +336,56 @@ export function mostOpposedValue(aId: string, bId: string): ValueAxis {
     }
   }
   return worst;
+}
+
+// ------------------------------------------------------- personality ---------
+// An INDIVIDUAL's values: their culture's baseline, bent by their traits, plus a
+// personal deviation — so two souls of the same people still differ, and some drift
+// far enough to oppose their own kin. The engine seeds `rng` per-actor (stable), then
+// reads this profile to drive who bonds with whom and who reaches for power.
+
+/** Build one actor's value profile from their culture + traits + a seeded deviation. */
+export function valueProfile(cultureId: string, traitIds: string[], rng: Rng): Record<ValueAxis, number> {
+  const base = cultureById(cultureId).values;
+  const p = {} as Record<ValueAxis, number>;
+  for (const axis of VALUES) {
+    let v = base[axis] ?? 0;
+    for (const t of traitIds) {
+      const shift = TRAITS.find((d) => d.id === t)?.values?.[axis];
+      if (shift !== undefined) v += shift;
+    }
+    v += rng.range(-22, 22);
+    p[axis] = v < -100 ? -100 : v > 100 ? 100 : v;
+  }
+  return p;
+}
+
+/** How two value profiles relate: positive when like-minded, negative when opposed —
+ *  fed into social affinity so kindred spirits bond and clashing worldviews grate. */
+export function valueAlignment(a: Record<ValueAxis, number>, b: Record<ValueAxis, number>): number {
+  let dist = 0;
+  for (const axis of VALUES) dist += Math.abs((a[axis] ?? 0) - (b[axis] ?? 0));
+  dist /= VALUES.length; // ~0 (identical) … ~120 (utterly opposed)
+  return (32 - dist) / 11; // kindred ≈ +2 … opposed ≈ -8
+}
+
+/** The two strongest leanings in a profile, as universe-specific adjectives — the
+ *  legible face of a personality the player reads in the inspector. */
+const VALUE_WORDS: Record<ValueAxis, [string, string]> = {
+  honor: ['honourable', 'dishonourable'],
+  war: ['warlike', 'peaceable'],
+  tradition: ['traditional', 'free-thinking'],
+  freedom: ['freedom-loving', 'dutiful'],
+  nature: ['wild at heart', 'worldly'],
+  craft: ['industrious', 'unworldly'],
+};
+export function natureOf(p: Record<ValueAxis, number>): string {
+  const ranked = VALUES.map((axis) => ({ axis, v: p[axis] ?? 0 })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+  const words = ranked
+    .filter((r) => Math.abs(r.v) >= 25)
+    .slice(0, 2)
+    .map((r) => VALUE_WORDS[r.axis][r.v >= 0 ? 0 : 1]);
+  return words.length ? words.join(', ') : 'even-tempered';
 }
 
 export function speciesById(id: string): Species {

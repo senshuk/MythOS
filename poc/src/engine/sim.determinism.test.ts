@@ -17,20 +17,21 @@ import {
   possess,
   schedulePlayerIntent,
 } from './sim';
+import { serializeWorld, deserializeWorld } from './persistence';
 import { resolveIntent, resolvePlayerIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
 import { fullActors, summaryActors, createActor, emit, canTakeSpouse } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { SurfaceSubstrate, worldShapeFor } from './substrate';
 const geoOf = (w: World) => (w.substrate as SurfaceSubstrate).geography;
-import { ageCompatible } from './social';
+import { ageCompatible, personalityOf } from './social';
 import { renderEvent } from './render';
 import { EVENT_RENDER, eventInterest } from '../content/narrative';
 import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue, THOUGHT_SPECS, valueProfile, valueAlignment, natureOf } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -327,7 +328,7 @@ describe('region geography', () => {
 describe('economy', () => {
   it('local food production drives prices: rich-farmland towns have cheaper food', () => {
     // a CLIMATICALLY MIXED surface world — some lush (food-surplus) towns and some poor
-    // ones — so prices actually spread; a uniformly desert or grassland world (or a galaxy)
+    // ones — so prices actually spread; a uniformly desert/grassland world (or a galaxy)
     // floors or ceilings every food price, where this scarcity property doesn't apply.
     let w = createWorld(42);
     for (let seed = 42; seed < 400; seed++) {
@@ -338,12 +339,20 @@ describe('economy', () => {
     }
     runYears(w, 30);
     const live = w.settlements.filter((s) => !s.detailed && s.macro.population > 0);
-    const byFood = [...live].sort((a, b) => b.econ.production.food - a.econ.production.food);
-    const n = Math.max(1, Math.floor(byFood.length / 3));
-    const avg = (arr: typeof live) => arr.reduce((s, x) => s + x.econ.price.food, 0) / arr.length;
-    const high = avg(byFood.slice(0, n)); // the best farmland
-    const low = avg(byFood.slice(-n)); // the poorest soil
-    expect(high).toBeLessThan(low); // surplus → cheap, scarcity → dear
+    // The PROPERTY is "more local food production ⇒ cheaper food". Measured as the
+    // correlation between production and price across ALL towns — robust to a few towns
+    // nudged either way by trade (comparing only extreme thirds can flip on one seed).
+    const prod = live.map((s) => s.econ.production.food);
+    const price = live.map((s) => s.econ.price.food);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const mp = mean(prod), mq = mean(price);
+    let cov = 0, vp = 0;
+    for (let i = 0; i < live.length; i++) {
+      cov += (prod[i] - mp) * (price[i] - mq);
+      vp += (prod[i] - mp) ** 2;
+    }
+    expect(vp).toBeGreaterThan(0); // production really does vary in this world
+    expect(cov / vp).toBeLessThan(0); // negative slope: surplus → cheap, scarcity → dear
 
     // prices always stay within the clamp bounds
     for (const s of w.settlements) {
@@ -935,6 +944,71 @@ describe('culture/values drive relations (wars have reasons, not dice)', () => {
       }
     }
     expect(sawReason).toBe(true);
+  });
+});
+
+describe('every actor has a PERSONALITY (per-individual value profile, not a culture clone)', () => {
+  it('a profile is deterministic, bounded, and shaped by culture + traits + deviation', () => {
+    const rng1 = new Rng(12345);
+    const rng2 = new Rng(12345);
+    const a = valueProfile('martial', ['proud', 'bold'], rng1);
+    const b = valueProfile('martial', ['proud', 'bold'], rng2); // same seed ⇒ identical
+    expect(a).toEqual(b);
+    for (const axis of VALUES) expect(Math.abs(a[axis])).toBeLessThanOrEqual(100);
+    // the 'gentle' soul of a war-creed leans far less warlike than a 'cruel' one
+    const gentle = valueProfile('martial', ['gentle'], new Rng(7));
+    const cruel = valueProfile('martial', ['cruel'], new Rng(7)); // same deviation, traits differ
+    expect(gentle.war).toBeLessThan(cruel.war);
+  });
+
+  it('two souls of the SAME people still differ — individuals, not clones', () => {
+    const w = createWorld(1);
+    focusSettlement(w, 0);
+    runYears(w, 5);
+    const same = w.entities.filter((id) => {
+      const h = w.homeSettlement.get(id);
+      return h === 0 && w.lifecycle.get(id)?.alive;
+    });
+    expect(same.length).toBeGreaterThan(3);
+    const profiles = same.map((id) => JSON.stringify(personalityOf(w, id)));
+    expect(new Set(profiles).size).toBeGreaterThan(1); // not one shared culture profile
+    // and a personality is INNATE — fixed at birth and saved, so it survives a load intact
+    const before = personalityOf(w, same[0]);
+    const reloaded = deserializeWorld(serializeWorld(w));
+    expect(reloaded.personality.size).toBeGreaterThan(0); // carried in the save
+    expect(personalityOf(reloaded, same[0])).toEqual(before);
+  });
+
+  it('kindred values raise social affinity; opposed values lower it (bonds have reasons)', () => {
+    const a = valueProfile('martial', ['bold', 'proud'], new Rng(3));
+    const kin = valueProfile('martial', ['bold', 'stoic'], new Rng(4)); // like-minded warriors
+    const foe = valueProfile('sylvan', ['gentle', 'restless'], new Rng(5)); // opposite worldview
+    expect(valueAlignment(a, kin)).toBeGreaterThan(valueAlignment(a, foe));
+  });
+
+  it('natureOf renders a legible reading of who someone is', () => {
+    const warlike = valueProfile('martial', ['cruel', 'bold'], new Rng(9));
+    expect(typeof natureOf(warlike)).toBe('string');
+    expect(natureOf(warlike).length).toBeGreaterThan(0);
+  });
+
+  it('some souls DEVIATE from their own people — outsiders arise', () => {
+    // across a focused town, at least one actor opposes their culture on some axis
+    const w = createWorld(2);
+    focusSettlement(w, 0);
+    runYears(w, 8);
+    const cultureId = w.settlements[0].cultureId;
+    const cultureVals = CULTURES.find((c) => c.id === cultureId)!.values;
+    let sawOutsider = false;
+    for (const id of w.entities) {
+      if (w.homeSettlement.get(id) !== 0 || !w.lifecycle.get(id)?.alive) continue;
+      const p = personalityOf(w, id);
+      for (const axis of VALUES) {
+        const cv = cultureVals[axis] ?? 0;
+        if (Math.sign(p[axis]) !== Math.sign(cv) && Math.abs(p[axis]) > 20 && Math.abs(cv) > 20) sawOutsider = true;
+      }
+    }
+    expect(sawOutsider).toBe(true);
   });
 });
 

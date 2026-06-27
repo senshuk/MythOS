@@ -305,6 +305,11 @@ export interface World {
   lifecycle: Map<EntityId, Lifecycle>;
   needs: Map<EntityId, Needs>;
   traits: Map<EntityId, string[]>;
+  /** per-actor INNATE value profile (personality): fixed at birth from the culture an
+   *  actor is born into + their traits + an id-seeded deviation (see world.createActor).
+   *  Stored — not re-derived from a mutable home — so it is stable for life and survives
+   *  a save/load identically. Read via social.personalityOf. */
+  personality: Map<EntityId, Record<string, number>>;
   profession: Map<EntityId, string>;
   ties: Map<EntityId, SocialTies>;
   memory: Map<EntityId, EventId[]>; // bounded recent events per actor
@@ -400,6 +405,9 @@ export interface ActorView {
   deathYear?: number;
   profession: string;
   traits: string[];
+  /** a short, legible reading of this actor's personality (their strongest value
+   *  leanings) — e.g. "honourable, peaceable". Derived from their value profile. */
+  nature: string;
   spouse?: EntityId;
   relationshipCount: number;
 }

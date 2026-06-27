@@ -937,6 +937,7 @@ function Inspector({
             {actorDetail.actor.species} {actorDetail.actor.profession} · {actorDetail.actor.ageYears}y ·{' '}
             {actorDetail.actor.sex} · traits: {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
+          <p className="muted">Nature: {actorDetail.actor.nature}</p>
 
           <h4>Relationships</h4>
           {actorDetail.relationships.length === 0 ? (

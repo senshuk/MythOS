@@ -9,9 +9,28 @@
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, canTakeSpouse } from './world';
-import { maturityOf, unionViable, hasLeader } from '../content/fixture';
+import { Rng, mixSeed } from './rng';
+import { maturityOf, unionViable, hasLeader, valueProfile, type ValueAxis } from '../content/fixture';
 
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
+
+/**
+ * An actor's PERSONALITY as a value profile — the values they were born into (their
+ * culture's), bent by their own traits and a deviation seeded from their id, so every
+ * soul is unique and some drift to oppose their own kin. This is the per-INDIVIDUAL
+ * counterpart to a culture's values: the pack owns the axes and the shaping. It is fixed
+ * at birth (createActor) and stored, so it is stable for life and identical after a load.
+ * The fallback only covers actors minted before this existed (e.g. an old save).
+ */
+export function personalityOf(world: World, id: EntityId): Record<ValueAxis, number> {
+  const stored = world.personality.get(id);
+  if (stored) return stored as Record<ValueAxis, number>;
+  const home = world.homeSettlement.get(id);
+  const cultureId = home !== undefined ? world.settlements[home]?.cultureId ?? '' : world.settlements[0]?.cultureId ?? '';
+  const p = valueProfile(cultureId, world.traits.get(id) ?? [], new Rng(mixSeed(world.seed, id, 0x9e1d)));
+  world.personality.set(id, p);
+  return p;
+}
 
 /** Whether two actors are a plausible marriage match (each adult by THEIR OWN species'
  *  maturity; wider age gaps allowed later in life). Shared by courtship (who you pine
