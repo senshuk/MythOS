@@ -26,7 +26,7 @@ import { type Intent } from './intent';
 import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
-import { generateGeography } from './geography';
+import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
@@ -58,7 +58,7 @@ import { schedulePlayerIntent } from './player';
 export function createWorld(seed: number, focus = true): World {
   const world: World = {
     seed,
-    geography: generateGeography(seed),
+    substrate: createSubstrate(seed),
     tick: 0,
     rng: new Rng(mixSeed(seed, 0xf0c)), // neutral stream until a settlement is focused
     settlements: [],

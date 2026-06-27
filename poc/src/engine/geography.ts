@@ -82,8 +82,9 @@ function fbm(x: number, y: number, seed: number, octaves: number): number {
 const FREQ = 0.05; // world-units → noise scale (smaller = larger landmasses)
 
 /** Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
- *  wet the world is (dry/desert → low, water world → high). */
-export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL): Geography {
+ *  wet the world is (dry/desert → low, water world → high); `freq` sets the noise scale
+ *  (smaller = larger, smoother landmasses; larger = broken-up, island-y terrain). */
+export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL, freq = FREQ): Geography {
   const N = size;
   const NN = N * N;
   const elevation = new Float32Array(NN);
@@ -99,11 +100,11 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
     const wy = wOf(j);
     for (let i = 0; i < N; i++) {
       const wx = wOf(i);
-      let e = fbm(wx * FREQ, wy * FREQ, seed, 5);
-      e = e * 0.82 + (0.5 - Math.abs(fbm(wx * FREQ * 2.4, wy * FREQ * 2.4, seed + 99, 3) - 0.5)) * 0.36;
+      let e = fbm(wx * freq, wy * freq, seed, 5);
+      e = e * 0.82 + (0.5 - Math.abs(fbm(wx * freq * 2.4, wy * freq * 2.4, seed + 99, 3) - 0.5)) * 0.36;
       const k = j * N + i;
       elevation[k] = e < 0 ? 0 : e > 1 ? 1 : e;
-      moisture[k] = fbm(wx * FREQ * 0.85 + 40, wy * FREQ * 0.85 + 40, seed + 7, 3);
+      moisture[k] = fbm(wx * freq * 0.85 + 40, wy * freq * 0.85 + 40, seed + 7, 3);
     }
   }
 

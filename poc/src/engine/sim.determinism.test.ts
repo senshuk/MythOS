@@ -21,6 +21,8 @@ import { resolveIntent, resolvePlayerIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
 import { fullActors, summaryActors, createActor, emit, canTakeSpouse } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
+import { SurfaceSubstrate, worldShapeFor } from './substrate';
+const geoOf = (w: World) => (w.substrate as SurfaceSubstrate).geography;
 import { ageCompatible } from './social';
 import { renderEvent } from './render';
 import { EVENT_RENDER, eventInterest } from '../content/narrative';
@@ -167,7 +169,7 @@ describe('level-of-detail / scale', () => {
   it('world population vastly exceeds the count simulated in detail', () => {
     const w = runHeadless(42, 30);
     const snap = buildSnapshot(w);
-    expect(snap.settlements.length).toBe(10);
+    expect(snap.settlements.length).toBeGreaterThanOrEqual(6); // a region of several settlements
     expect(snap.settlements.filter((s) => s.detailed).length).toBe(1);
     expect(snap.worldPopulation).toBeGreaterThan(snap.simulatedInDetail * 3);
     // live entities stay bounded to the focused settlement only
@@ -675,6 +677,27 @@ describe('per-species life stages (aging is species DATA, not a global constant)
   });
 });
 
+describe('the world is a SUBSTRATE (geography is one kind); worlds are diverse', () => {
+  it('different seeds yield different archetypes and sizes — not one samey world', () => {
+    const archetypes = new Set<string>();
+    const sizes = new Set<number>();
+    for (let seed = 1; seed <= 48; seed++) {
+      archetypes.add(worldShapeFor(seed).archetype);
+      sizes.add(createWorld(seed, false).settlements.length);
+    }
+    expect(archetypes.size).toBeGreaterThanOrEqual(3); // several world archetypes appear
+    expect(sizes.size).toBeGreaterThanOrEqual(4); // and regions vary in size (richness)
+  });
+
+  it('the substrate is deterministic (regenerated from the seed, never serialized)', () => {
+    const a = createWorld(7, false);
+    const b = createWorld(7, false);
+    expect(a.substrate.kind).toBe(b.substrate.kind);
+    expect(a.settlements.map((s) => s.name)).toEqual(b.settlements.map((s) => s.name));
+    expect(a.settlements.map((s) => s.pos.x)).toEqual(b.settlements.map((s) => s.pos.x));
+  });
+});
+
 describe('geography is the world substrate (drives where civilizations are founded)', () => {
   it('geography is deterministic from the seed', () => {
     const a = generateGeography(123);
@@ -688,20 +711,22 @@ describe('geography is the world substrate (drives where civilizations are found
   it('settlements are founded on land near water — not at random in the void', () => {
     for (const seed of [1, 7, 42, 1492, 2024]) {
       const w = createWorld(seed, false);
+      const geo = geoOf(w);
       for (const s of w.settlements) {
-        expect(isLand(w.geography, s.pos.x, s.pos.y)).toBe(true); // never in the sea
+        expect(isLand(geo, s.pos.x, s.pos.y)).toBe(true); // never in the sea
       }
       // most sit within reach of fresh water (a few relaxed fallbacks may not)
-      const watered = w.settlements.filter((s) => freshWaterDist(w.geography, s.pos.x, s.pos.y) <= 8).length;
-      expect(watered).toBeGreaterThanOrEqual(7);
+      const watered = w.settlements.filter((s) => freshWaterDist(geo, s.pos.x, s.pos.y) <= 8).length;
+      expect(watered).toBeGreaterThanOrEqual(Math.ceil(w.settlements.length * 0.6));
     }
   });
 
   it('the land sets a settlement’s trade and how great it can grow', () => {
     const w = createWorld(7, false);
+    const geo = geoOf(w);
     // a coastal site trades (goods) more than the most landlocked one
     const bySea = [...w.settlements].sort(
-      (a, b) => seaDist(w.geography, a.pos.x, a.pos.y) - seaDist(w.geography, b.pos.x, b.pos.y),
+      (a, b) => seaDist(geo, a.pos.x, a.pos.y) - seaDist(geo, b.pos.x, b.pos.y),
     );
     expect(bySea[0].econ.production.goods).toBeGreaterThan(bySea[bySea.length - 1].econ.production.goods);
     // carrying capacity varies with the land — generous ground breeds great cities

@@ -53,14 +53,21 @@ describe('aspirations', () => {
   it('a well-provided unmarried adult seeks to wed', () => {
     const w = createWorld(1);
     runYears(w, 8);
-    const id = fullActors(w).find(
-      (i) => w.ties.get(i)!.spouses.length === 0 && w.lifecycle.get(i)!.ageYears >= ADULT_AGE,
-    )!;
-    const n = w.needs.get(id)!;
-    n.food = 900;
-    n.wealth = 900;
-    n.belonging = 900;
-    expect(currentAspiration(w, id).kind).toBe('wed');
+    // a well-provided unmarried adult of a PAIR-BONDING species seeks a partner (asexual
+    // peoples never wed, so we find one whose isolated goal actually becomes 'wed').
+    let id = -1;
+    for (const i of fullActors(w)) {
+      if (w.ties.get(i)!.spouses.length > 0) continue;
+      const n = w.needs.get(i)!;
+      n.food = 900;
+      n.wealth = 900;
+      n.belonging = 900;
+      if (currentAspiration(w, i).kind === 'wed') {
+        id = i;
+        break;
+      }
+    }
+    expect(id).toBeGreaterThanOrEqual(0);
   });
 
   it('is a pure function of state (same world ⇒ same aspiration)', () => {

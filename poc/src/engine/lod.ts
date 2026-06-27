@@ -23,10 +23,11 @@ import {
   type RegionEdge,
   type Economy,
   type EntityId,
+  type Vec2,
   DAYS_PER_YEAR,
 } from './model';
 import { Rng, mixSeed } from './rng';
-import { type Geography, siteSuitability, isLand, terrainCapacity } from './geography';
+import { type Site } from './substrate';
 import {
   fullActors,
   summaryActors,
@@ -69,7 +70,6 @@ import {
 } from '../content/fixture';
 import { deathProbability } from '../systems/lifecycle';
 
-const SETTLEMENT_COUNT = 10;
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
 /** The humanlike lifespan the aggregate mortality baselines were tuned against;
  *  a species' attrition is scaled by REF_LIFESPAN / its own lifespan, so longer-
@@ -82,64 +82,64 @@ const NAME_B = ['reach', 'ford', 'hollow', 'mere', 'barrow', 'gate', 'wick', 'fe
 
 export function createSettlements(world: World): void {
   const gen = new Rng(mixSeed(world.seed, 0x5e77));
-  const geo = world.geography;
+  const sub = world.substrate;
 
-  // 1) WHERE to found — geography decides. Score many random land sites by suitability
-  //    (fresh water, fertile soil, coast, defensible ground) and greedily pick the best
-  //    that are well-spaced, so towns cluster on good land near water, not in voids.
-  const cands: { x: number; y: number; score: number }[] = [];
-  for (let t = 0; t < 600; t++) {
-    const x = 3 + gen.next() * 94;
-    const y = 3 + gen.next() * 94;
-    const score = siteSuitability(geo, x, y);
-    if (score > 0.4) cands.push({ x, y, score });
-  }
-  cands.sort((a, b) => b.score - a.score || a.x - b.x || a.y - b.y);
-  const sites: { x: number; y: number; score: number }[] = [];
+  // 1) WHERE to found — the SUBSTRATE decides. It scores a pool of viable candidate sites
+  //    (by whatever "habitable" means for this kind of world); we greedily pick the best
+  //    that are well-spaced, relax spacing where good sites are scarce, then fall back to
+  //    any habitable spot. No land/water assumption lives here — that's the substrate's.
+  const cands = sub.candidates(gen);
+  cands.sort((a, b) => b.suitability - a.suitability || a.pos.x - b.pos.x || a.pos.y - b.pos.y);
+  // richness tracks how much GOOD ground the world actually offers: a land-rich pangaea
+  // seats many settlements, a sparse archipelago only a few — so towns sit on viable
+  // sites, not barren fallbacks that would starve the whole region.
+  const target = Math.min(sub.settlements, Math.max(6, Math.round(cands.length / 24)));
+  const sites: Site[] = [];
+  const spaced = (c: Site, min: number) => sites.every((p) => sub.distance(p.pos, c.pos) >= min);
   for (const c of cands) {
-    if (sites.length >= SETTLEMENT_COUNT) break;
-    if (sites.every((p) => Math.hypot(p.x - c.x, p.y - c.y) >= 13)) sites.push(c);
+    if (sites.length >= target) break;
+    if (spaced(c, 13)) sites.push(c);
   }
-  // relax spacing where good land is scarce, then fall back to any land
-  for (let relax = 10; sites.length < SETTLEMENT_COUNT && relax >= 0; relax -= 2) {
+  for (let relax = 10; sites.length < target && relax >= 0; relax -= 2) {
     for (const c of cands) {
-      if (sites.length >= SETTLEMENT_COUNT) break;
+      if (sites.length >= target) break;
       if (sites.includes(c)) continue;
-      if (sites.every((p) => Math.hypot(p.x - c.x, p.y - c.y) >= relax)) sites.push(c);
+      if (spaced(c, relax)) sites.push(c);
     }
   }
-  for (let guard = 0; sites.length < SETTLEMENT_COUNT && guard < 4000; guard++) {
-    const x = 3 + gen.next() * 94;
-    const y = 3 + gen.next() * 94;
-    if (isLand(geo, x, y)) sites.push({ x, y, score: 0 });
+  for (let guard = 0; sites.length < target && guard < 4000; guard++) {
+    const f = sub.fallbackSite(gen);
+    if (f) sites.push(f);
+    else break; // no habitable ground left — found however many we have
   }
+  const count = Math.min(target, sites.length);
 
-  // 2) FOUND a settlement at each site — the more generous the land, the larger the founding.
+  // 2) FOUND a settlement at each site — the more generous the site, the larger the founding.
   const used = new Set<string>();
-  for (let i = 0; i < SETTLEMENT_COUNT; i++) {
+  for (let i = 0; i < count; i++) {
     const site = sites[i];
     let name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     while (used.has(name)) name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     used.add(name);
 
     const dominant = SPECIES[gen.int(SPECIES.length)].id;
-    const pop = Math.round(clamp(60 + site.score * 26 + gen.next() * 40, 40, 340));
+    const pop = Math.round(clamp(60 + site.suitability * 26 + gen.next() * 40, 40, 340));
     const macro = freshBands(pop, dominant, gen);
     macro.stability = gen.range(-10, 50);
 
     const s: Settlement = {
       id: i,
       name,
-      pos: { x: site.x, y: site.y },
+      pos: { ...site.pos },
       foundedYear: 0,
       detailed: false,
       epoch: 0,
       rngState: mixSeed(world.seed, i + 1),
       governmentId: pickGovernment(gen),
       cultureId: pickCulture(gen, dominant),
-      capacity: terrainCapacity(geo, site.x, site.y),
+      capacity: site.capacity,
       macro,
-      econ: initEconomy(gen, pop, geo, site.x, site.y),
+      econ: initEconomy(gen, pop, site),
     };
     world.settlements.push(s);
     // mint the founder so the founding has a named person. In a polity with a leader
@@ -154,14 +154,12 @@ export function createSettlements(world: World): void {
   world.geoRngState = mixSeed(world.seed, 0x6e0);
 }
 
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/** Build a connected proximity graph: each settlement links to its nearest
- *  neighbours (trade routes), then any disconnected components are joined. */
+/** Build a connected graph: each settlement links to its nearest neighbours (trade
+ *  routes), then any disconnected components are joined. "Nearest" is the SUBSTRATE's
+ *  distance, so a non-euclidean world (jump lanes, districts) connects on its own terms. */
 function buildRegionGraph(world: World, gen: Rng): void {
   const ss = world.settlements;
+  const dist = (a: Vec2, b: Vec2) => world.substrate.distance(a, b);
   const K = 3;
   const have = new Set<string>();
   const key = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
@@ -230,10 +228,10 @@ function computePrices(e: Economy, pop: number): void {
   }
 }
 
-function initEconomy(gen: Rng, pop: number, geo: Geography, x: number, y: number): Economy {
-  // production and trade come from the LAND, not a random roll
-  const production = terrainYields(geo, x, y);
-  const specialization = specializationFromTerrain(geo, x, y);
+function initEconomy(gen: Rng, pop: number, site: Site): Economy {
+  // production and trade come from the SITE's physical qualities, not a random roll
+  const production = terrainYields(site.attributes);
+  const specialization = specializationFromTerrain(site.attributes);
   const stock: Record<string, number> = {};
   const price: Record<string, number> = {};
   for (const r of RESOURCES) {
@@ -754,7 +752,7 @@ function pickMigrationTarget(world: World, focusedId: number, rng: Rng): number 
   const focused = world.settlements[focusedId];
   const weights = world.settlements.map((s) => {
     if (s.id === focusedId) return 0;
-    const d = dist(focused.pos, s.pos);
+    const d = world.substrate.distance(focused.pos, s.pos);
     const e = edgeBetween(world, focusedId, s.id);
     const rel = e ? e.relation : 0;
     const proximity = 1 / (1 + d / 15);

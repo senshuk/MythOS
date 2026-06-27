@@ -11,7 +11,7 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKe
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, DEFAULT_MAP_STYLE, type MapStyle } from '../content/mapstyles';
-import { generateGeography } from '../engine/geography';
+import { createSubstrate, SurfaceSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield } from './terrain';
 import { useSim } from './useSim';
 
@@ -315,9 +315,11 @@ function RegionMap({
     if (!c) return;
     c.width = 540;
     c.height = 549;
-    // render the SAME geography the simulation generated (regenerated from the seed)
+    // render the SAME world the simulation generated (regenerated from the seed). For a
+    // surface substrate, paint its geography; a space setting paints a starfield.
+    const sub = createSubstrate(seed);
     if (style.kind === 'starfield') paintStarfield(c, seed, style.field);
-    else paintTerrain(c, generateGeography(seed), MAP_VB, style.theme);
+    else if (sub instanceof SurfaceSubstrate) paintTerrain(c, sub.geography, MAP_VB, style.theme);
     // the backdrop depends only on seed + style
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, style]);

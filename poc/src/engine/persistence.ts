@@ -17,7 +17,7 @@
 import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge } from './model';
 import { type Intent } from './intent';
 import { Rng } from './rng';
-import { generateGeography } from './geography';
+import { createSubstrate } from './substrate';
 
 export const SAVE_VERSION = 1;
 
@@ -154,7 +154,7 @@ export function deserializeWorld(s: SaveFile): World {
 
   return {
     seed: s.seed,
-    geography: generateGeography(s.seed), // not serialized — regenerated identically from seed
+    substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
     tick: s.tick,
     rng,
     settlements: s.settlements,

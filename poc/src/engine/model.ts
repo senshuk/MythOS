@@ -7,7 +7,7 @@
  */
 import { Rng } from './rng';
 import { type Intent } from './intent';
-import { type Geography } from './geography';
+import { type Substrate } from './substrate';
 
 export type EntityId = number;
 /** A sex label. NOT a fixed 'm'|'f': the set of sexes is SPECIES DATA (a species
@@ -265,10 +265,10 @@ export interface Settlement {
 /** The whole world state. Everything needed to reconstruct the sim lives here. */
 export interface World {
   seed: number;
-  /** the physical world — elevation, water, rivers, fertility. The substrate that
-   *  drives settlement placement, resources, economy & development. Deterministic from
-   *  the seed (regenerated on load, never serialized). */
-  geography: Geography;
+  /** the physical world (a `Substrate` — a 2D surface today, but the engine assumes
+   *  nothing of the kind). Drives settlement placement, resources, economy & development.
+   *  Deterministic from the seed (regenerated on load, never serialized). */
+  substrate: Substrate;
   tick: number; // base unit = 1 day
   /** The ACTIVE stream — always the focused settlement's own RNG. */
   rng: Rng;
