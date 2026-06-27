@@ -6,17 +6,22 @@
    ========================================================================= */
 
 :root {
+  color-scheme: dark; /* native scrollbars/controls render dark, not a flash of white */
+
   --bg: #101218;
   --bg-2: #0b0d12; /* deeper inset (maps, fields) */
   --panel: #161922;
   --panel-2: #1d212b;
   --panel-3: #252a36;
+  --panel-deep: #13161e; /* panel gradient floor */
   --line: #2a2f3b;
   --line-soft: #20242e;
 
   --ink: #e9e7df; /* warm off-white */
   --ink-dim: #c2c6d0;
-  --muted: #888e9d;
+  --muted: #969cab; /* lifted from #888e9d so small print clears AA on panels */
+  --ink-faint: #a6acc0; /* italic asides (.figs) */
+  --parchment: #d4cdbb; /* the chronicle's legend text */
 
   --gold: #e9c46a; /* legends, titles, the momentous */
   --gold-dim: #b89a59;
@@ -24,11 +29,31 @@
   --cyan-deep: #2b3a55;
   --jade: #5fd08a; /* good */
   --rose: #ff7b72; /* bad */
+  --amber: #ffb38a; /* rivals / warnings */
   --violet: #c3a6ef; /* rulers / culture */
   --neutral: #cbb98c;
 
+  /* spacing scale (4px base) — use these, not ad-hoc literals, for a steady rhythm */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 22px;
+  --space-6: 32px;
+
+  /* type scale — a small, deliberate set (floor lifted to 11.5px for legibility) */
+  --fs-2xs: 11.5px; /* micro labels (uppercase, tracked) */
+  --fs-xs: 12.5px;  /* secondary meta */
+  --fs-sm: 13.5px;  /* dense lists, event rows */
+  --fs-base: 15px;  /* body */
+  --fs-lg: 18px;    /* h2 / section titles */
+  --fs-xl: 22px;    /* stat values */
+  --fs-2xl: 26px;   /* the world-scale figure */
+
   --radius: 14px;
   --radius-sm: 9px;
+  --radius-xs: 6px;
+  --radius-pill: 999px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 
   --serif: "Spectral", Georgia, "Times New Roman", serif;
@@ -36,10 +61,30 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --tap: 40px; /* min touch target */
+  --focus-ring: 0 0 0 3px rgba(127, 178, 255, 0.15);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+
+/* a single, consistent keyboard-focus indicator for EVERY interactive element —
+   buttons, links, tabs, entity-links, the role="button" rows. Mouse users never see
+   it (:focus-visible), keyboard users always do. */
+:where(button, a, select, input, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* respect a user's request for less motion — the map's caravans, bristling borders and
+   pulsing focus ring all settle to a calm static state. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 
 body {
   background:
@@ -126,23 +171,23 @@ button { font-family: inherit; }
 
 .panel {
   position: relative;
-  background: linear-gradient(180deg, var(--panel), #13161e);
+  background: linear-gradient(180deg, var(--panel), var(--panel-deep));
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  padding: var(--space-4) var(--space-4);
   max-height: calc(100vh - 132px);
   overflow: auto;
   box-shadow: var(--shadow);
 }
 .panel::-webkit-scrollbar { width: 9px; }
 .panel::-webkit-scrollbar-thumb { background: var(--panel-3); border-radius: 9px; border: 2px solid transparent; background-clip: content-box; }
-.panel h2 { margin: 0 0 12px; font-size: 18px; color: var(--ink); }
+.panel h2 { margin: 0 0 var(--space-3); font-size: var(--fs-lg); color: var(--ink); }
 .panel h3 {
-  margin: 18px 0 8px; font-family: var(--sans); font-weight: 600; font-size: 11px;
-  color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.13em;
-  padding-bottom: 5px; border-bottom: 1px solid var(--line-soft);
+  margin: var(--space-5) 0 var(--space-2); font-family: var(--sans); font-weight: 600; font-size: var(--fs-2xs);
+  color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.12em;
+  padding-bottom: var(--space-1); border-bottom: 1px solid var(--line-soft);
 }
-.panel h4 { margin: 12px 0 4px; font-size: 15px; color: var(--ink); }
+.panel h4 { margin: var(--space-3) 0 var(--space-1); font-size: var(--fs-base); color: var(--ink); }
 
 /* storyteller */
 .storyteller {
@@ -168,16 +213,25 @@ button { font-family: inherit; }
 .settlements, .figures-hist, .notable, .rels, .chain, .feed ul, .eras, .legends {
   list-style: none; margin: 0; padding: 0;
 }
-.settlements li { padding: 7px 8px; border-radius: 8px; border: 1px solid transparent; }
-.settlements li + li { margin-top: 2px; }
+.settlements li { border-radius: var(--radius-xs); border: 1px solid transparent; }
+.settlements li + li { margin-top: var(--space-1); }
 .settlements li.focused { background: rgba(127, 178, 255, 0.09); border-color: rgba(127, 178, 255, 0.22); }
+.settlements li.is-ruin { opacity: 0.72; }
+/* the whole row is one large focus target; name on top, dim meta beneath (scannable) */
 .focus-btn {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left;
   background: none; border: none; color: var(--ink); cursor: pointer; font: inherit;
-  font-weight: 500; padding: 2px 2px; border-radius: 6px;
+  padding: var(--space-2); border-radius: var(--radius-xs);
+  transition: background 0.12s;
 }
-.focus-btn:hover:not(:disabled) { color: var(--cyan); }
-.focus-btn:disabled { cursor: default; color: var(--cyan); }
-.figs { color: #9aa1b6; font-style: italic; }
+.focus-btn:hover:not(:disabled) { background: var(--panel-2); }
+.focus-btn:disabled { cursor: default; }
+.set-name { display: flex; align-items: baseline; gap: 6px; font-weight: 600; color: var(--ink); }
+.set-mark { color: var(--muted); }
+.settlements li.focused .set-mark { color: var(--cyan); }
+.set-pop { margin-left: auto; font-family: var(--mono); font-size: var(--fs-xs); color: var(--gold-dim); font-weight: 500; }
+.set-meta { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
+.figs { color: var(--ink-faint); font-style: italic; }
 .ruin { color: var(--rose); font-style: italic; opacity: 0.85; }
 .ruler { color: var(--violet); }
 .figures-hist li { padding: 4px 0; font-size: 13.5px; border-bottom: 1px solid var(--line-soft); }
@@ -202,8 +256,8 @@ button { font-family: inherit; }
 }
 .eras li .era-year { color: var(--gold-dim); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
 .legends li {
-  padding: 7px 0; border-bottom: 1px solid var(--line-soft);
-  font-family: var(--serif); font-style: italic; color: #cdc6b4; font-size: 14px; line-height: 1.5;
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--line-soft);
+  font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); line-height: 1.5;
 }
 
 /* region map — the hero */
@@ -262,7 +316,7 @@ button { font-family: inherit; }
 .mnode text { pointer-events: none; user-select: none; font-family: var(--sans); }
 .mnode.clickable { cursor: pointer; }
 .mnode.clickable:hover circle { stroke: var(--cyan); stroke-width: 1.5; }
-.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.legend { display: flex; gap: var(--space-4); flex-wrap: wrap; font-size: var(--fs-2xs); color: var(--muted); margin-bottom: var(--space-2); }
 .legend .sw { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--line); vertical-align: middle; margin-right: 4px; }
 .legend .sw.good { border-color: var(--jade); }
 .legend .sw.bad { border-color: var(--rose); border-top-style: dashed; }
@@ -271,13 +325,13 @@ button { font-family: inherit; }
 .cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
 
 /* focused-settlement stat tiles */
-.stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.stats { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .stat {
   flex: 1; min-width: 64px; text-align: center;
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 8px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-2);
 }
-.stat-value { font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--ink); }
-.stat-label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.stat-value { font-family: var(--serif); font-size: var(--fs-xl); font-weight: 600; color: var(--ink); }
+.stat-label { font-size: var(--fs-2xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 
 .notable li, .rels li { padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
 .muted { color: var(--muted); }
@@ -308,9 +362,9 @@ button { font-family: inherit; }
 /* clickable entity links inside event prose — places (gold), people (cyan), figures (violet) */
 .ent {
   background: none; border: none; padding: 0 1px; margin: 0; font: inherit; cursor: pointer;
-  border-radius: 3px; border-bottom: 1px dotted transparent;
+  border-radius: var(--radius-xs); border-bottom: 1px dotted rgba(180, 190, 210, 0.32);
 }
-.ent:hover { border-bottom-color: currentColor; }
+.ent:hover { border-bottom-color: currentColor; border-bottom-style: solid; }
 .ent-settlement { color: var(--gold); }
 .ent-actor { color: var(--cyan); }
 .ent-figure { color: var(--violet); }
@@ -325,7 +379,7 @@ button { font-family: inherit; }
 .kind.spouse { background: rgba(195, 166, 239, 0.16); color: var(--violet); }
 .kind.friend { background: rgba(95, 208, 138, 0.15); color: var(--jade); }
 .kind.feud { background: rgba(255, 123, 114, 0.16); color: var(--rose); }
-.kind.rival { background: rgba(255, 179, 138, 0.15); color: #ffb38a; }
+.kind.rival { background: rgba(255, 179, 138, 0.15); color: var(--amber); }
 .kind.acquaintance { background: var(--panel-2); color: var(--muted); }
 .chain { padding-left: 18px; }
 .chain li { padding: 3px 0; }
@@ -359,7 +413,7 @@ button { font-family: inherit; }
 .action-hint { font-size: 12.5px; color: var(--muted); }
 .play-btn, .play-inline {
   background: none; border: 1px solid var(--line); color: var(--cyan);
-  border-radius: 6px; cursor: pointer; font: inherit; padding: 3px 8px; min-height: 30px;
+  border-radius: var(--radius-xs); cursor: pointer; font: inherit; padding: var(--space-1) var(--space-2); min-height: 34px;
 }
 .play-btn:disabled { color: var(--muted); cursor: default; }
 .play-inline { margin-left: 8px; }
@@ -389,6 +443,18 @@ button { font-family: inherit; }
 
 /* ----------------------------------------------------------- bottom nav --- */
 .bottombar { display: none; }
+
+/* ===================== TABLET (821–1180px): two columns ===================== */
+/* Three columns get cramped below ~1180px (the dense dashboard wraps badly while the
+   inspector sits half-empty). Drop to two: the dashboard down the left, the feed and
+   the on-demand inspector stacked on the right; the page scrolls as one. */
+@media (min-width: 821px) and (max-width: 1180px) {
+  .grid { grid-template-columns: 1.05fr 0.95fr; gap: var(--space-3); }
+  .grid > .dashboard { grid-column: 1; grid-row: 1 / span 2; }
+  .grid > .feed { grid-column: 2; grid-row: 1; }
+  .grid > .inspector { grid-column: 2; grid-row: 2; }
+  .grid > .panel { max-height: none; }
+}
 
 /* ============================ MOBILE (<= 820px) ============================ */
 @media (max-width: 820px) {
@@ -420,6 +486,11 @@ button { font-family: inherit; }
 
   .player-panel, .onboard { margin: 12px 12px 0; }
   .foot { display: none; }
+
+  /* generous tap targets on touch screens */
+  .play-btn, .play-inline { min-height: var(--tap); min-width: var(--tap); }
+  .link, .ent { padding-block: 4px; } /* enlarge the touch area of inline names */
+  .ev-row, .ev-inspect { padding-block: var(--space-2); }
 
   /* fixed bottom bar: time controls + tab nav, thumb-reachable */
   .bottombar {

@@ -52,6 +52,15 @@ const TYPE_TONE: Record<string, string> = {
   famine: 'bad',
 };
 
+/** Keyboard activation for non-button elements that carry role="button" (these wrap
+ *  clickable entity-links, so they cannot be real <button>s). Fires on Enter/Space. */
+function onActivate(e: import('react').KeyboardEvent, run: () => void): void {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    run();
+  }
+}
+
 // Presentation of a settlement's staple buffer. The label is deliberately pack-flavoured
 // (a food pack reads "starving/fed"); the underlying number is the role-neutral
 // subsistenceSecurity from the snapshot.
@@ -226,7 +235,7 @@ export default function App() {
               be given a purpose and live a week at a time — and the world goes on around you.
             </div>
           )}
-          <div className="grid" data-tab={tab}>
+          <main className="grid" data-tab={tab}>
             <Dashboard
               stat={stat}
               onPickActor={inspectActor}
@@ -251,7 +260,7 @@ export default function App() {
               onPossess={(id) => sim.possess(id)}
               onClose={sim.clearInspect}
             />
-          </div>
+          </main>
           <nav className="bottombar">
             <div className="time-bar">
               <button onClick={() => sim.advance(1)} disabled={sim.busy}>+1 year</button>
@@ -636,7 +645,7 @@ function Dashboard({
       <h3>Settlements — click to turn your gaze, and live it in full</h3>
       <ul className="settlements">
         {stat.settlements.map((s) => (
-          <li key={s.id} className={s.detailed ? 'focused' : ''}>
+          <li key={s.id} className={`${s.detailed ? 'focused' : ''} ${s.ruinedYear !== undefined ? 'is-ruin' : ''}`}>
             <button
               className="focus-btn"
               disabled={busy || s.detailed || s.population === 0}
@@ -649,26 +658,30 @@ function Dashboard({
                     : 'turn your gaze here, and live it in full'
               }
             >
-              {s.detailed ? '◉' : s.ruinedYear !== undefined ? '⚑' : '○'} {s.name}
-            </button>
-            {s.ruinedYear !== undefined ? (
-              <span className="muted ruin"> · ruin · fell y{s.ruinedYear}</span>
-            ) : (
-              <span className="muted">
-                {' '}
-                · {s.population} {s.dominantSpecies} · {s.specialization} · {s.wealth}w{' '}
-                <span className={subsistenceClass(s.subsistenceSecurity)}>{subsistenceLabel(s.subsistenceSecurity)}</span>
-                <span className="figs"> · {s.culture}</span>
-                {s.leaderTitle && s.ruler ? (
-                  <span className="ruler"> · {s.leaderTitle} {s.ruler}</span>
-                ) : !s.leaderTitle ? (
-                  <span className="figs"> · free folk (no ruler)</span>
-                ) : null}
-                {s.figureNames.length > 0 && (
-                  <span className="figs"> · still there: {s.figureNames.join(', ')}</span>
-                )}
+              <span className="set-name">
+                <span className="set-mark">{s.detailed ? '◉' : s.ruinedYear !== undefined ? '⚑' : '○'}</span>
+                {s.name}
+                {s.ruinedYear === undefined && <span className="set-pop">{s.population.toLocaleString()}</span>}
               </span>
-            )}
+              {s.ruinedYear !== undefined ? (
+                <span className="set-meta ruin">ruin · fell y{s.ruinedYear}</span>
+              ) : (
+                <span className="set-meta">
+                  {s.dominantSpecies} · {s.specialization} · {s.wealth}w ·{' '}
+                  <span className={subsistenceClass(s.subsistenceSecurity)}>{subsistenceLabel(s.subsistenceSecurity)}</span>
+                  {' · '}
+                  <span className="figs">{s.culture}</span>
+                  {s.leaderTitle && s.ruler ? (
+                    <span className="ruler"> · {s.leaderTitle} {s.ruler}</span>
+                  ) : !s.leaderTitle ? (
+                    <span className="figs"> · free folk</span>
+                  ) : null}
+                  {s.figureNames.length > 0 && (
+                    <span className="figs"> · still there: {s.figureNames.join(', ')}</span>
+                  )}
+                </span>
+              )}
+            </button>
           </li>
         ))}
       </ul>
@@ -681,6 +694,7 @@ function Dashboard({
               className="play-btn"
               onClick={() => onPossess(a.id)}
               disabled={busy || a.id === stat.player?.id}
+              aria-label={a.id === stat.player?.id ? `You live as ${a.name}` : `Live as ${a.name}`}
               title={a.id === stat.player?.id ? 'you live as this soul' : 'live as this soul'}
             >
               {a.id === stat.player?.id ? '◉' : '▶'}
@@ -848,7 +862,14 @@ function HistoryFeed({
         {events.map((ev) => (
           <li key={ev.id} className={`ev ${TYPE_TONE[ev.type] ?? 'neutral'}`}>
             {/* click a name to inspect it · click anywhere else to trace the causes */}
-            <div className="ev-row" onClick={() => onPickEvent(ev.id)} role="button" tabIndex={0} title="trace causes">
+            <div
+              className="ev-row"
+              onClick={() => onPickEvent(ev.id)}
+              onKeyDown={(e) => onActivate(e, () => onPickEvent(ev.id))}
+              role="button"
+              tabIndex={0}
+              title="trace causes"
+            >
               <span className="ev-year">y{ev.year}</span> <EventText parts={ev.parts} onRef={onRef} />
               {ev.causes.length > 0 && <span className="why"> · why?</span>}
             </div>
@@ -903,7 +924,13 @@ function Inspector({
   // a clickable history line: click a name to inspect it, click the line to trace its causes
   const eventLine = (ev: EventView) => (
     <li key={ev.id}>
-      <span className="ev-inspect" onClick={() => onPickEvent(ev.id)} role="button" tabIndex={0}>
+      <span
+        className="ev-inspect"
+        onClick={() => onPickEvent(ev.id)}
+        onKeyDown={(e) => onActivate(e, () => onPickEvent(ev.id))}
+        role="button"
+        tabIndex={0}
+      >
         <span className="ev-year">y{ev.year}</span> <EventText parts={ev.parts} onRef={onRef} />
       </span>
     </li>
