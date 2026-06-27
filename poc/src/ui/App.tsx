@@ -11,6 +11,7 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKe
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, DEFAULT_MAP_STYLE, type MapStyle } from '../content/mapstyles';
+import { generateGeography } from '../engine/geography';
 import { paintTerrain, paintStarfield } from './terrain';
 import { useSim } from './useSim';
 
@@ -311,10 +312,10 @@ function RegionMap({
     if (!c) return;
     c.width = 540;
     c.height = 549;
-    const nodes = map.nodes.map((n) => ({ x: n.x, y: n.y, ruined: n.ruined }));
-    if (style.kind === 'starfield') paintStarfield(c, seed, nodes, MAP_VB, style.field);
-    else paintTerrain(c, seed, nodes, MAP_VB, style.theme);
-    // positions are fixed per world, so the backdrop depends only on seed + style
+    // render the SAME geography the simulation generated (regenerated from the seed)
+    if (style.kind === 'starfield') paintStarfield(c, seed, style.field);
+    else paintTerrain(c, generateGeography(seed), MAP_VB, style.theme);
+    // the backdrop depends only on seed + style
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, style]);
 

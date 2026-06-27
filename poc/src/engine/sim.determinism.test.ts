@@ -19,6 +19,7 @@ import {
 } from './sim';
 import { resolvePlayerIntent } from '../systems/resolve';
 import { fullActors, summaryActors, createActor, emit } from './world';
+import { generateGeography, isLand, freshWaterDist } from './geography';
 import { ageCompatible } from './aspiration';
 import { renderEvent } from './render';
 import { EVENT_RENDER, eventInterest } from '../content/narrative';
@@ -662,6 +663,29 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('geography is the world substrate (drives where civilizations are founded)', () => {
+  it('geography is deterministic from the seed', () => {
+    const a = generateGeography(123);
+    const b = generateGeography(123);
+    expect(a.water).toEqual(b.water);
+    expect(Array.from(a.elevation)).toEqual(Array.from(b.elevation));
+    const c = generateGeography(124);
+    expect(Array.from(a.elevation)).not.toEqual(Array.from(c.elevation));
+  });
+
+  it('settlements are founded on land near water — not at random in the void', () => {
+    for (const seed of [1, 7, 42, 1492, 2024]) {
+      const w = createWorld(seed, false);
+      for (const s of w.settlements) {
+        expect(isLand(w.geography, s.pos.x, s.pos.y)).toBe(true); // never in the sea
+      }
+      // most sit within reach of fresh water (a few relaxed fallbacks may not)
+      const watered = w.settlements.filter((s) => freshWaterDist(w.geography, s.pos.x, s.pos.y) <= 8).length;
+      expect(watered).toBeGreaterThanOrEqual(7);
+    }
   });
 });
 

@@ -26,6 +26,7 @@ import {
   DAYS_PER_YEAR,
 } from './model';
 import { Rng, mixSeed } from './rng';
+import { siteSuitability, isLand } from './geography';
 import {
   fullActors,
   summaryActors,
@@ -79,21 +80,55 @@ const NAME_B = ['reach', 'ford', 'hollow', 'mere', 'barrow', 'gate', 'wick', 'fe
 
 export function createSettlements(world: World): void {
   const gen = new Rng(mixSeed(world.seed, 0x5e77));
+  const geo = world.geography;
+
+  // 1) WHERE to found — geography decides. Score many random land sites by suitability
+  //    (fresh water, fertile soil, coast, defensible ground) and greedily pick the best
+  //    that are well-spaced, so towns cluster on good land near water, not in voids.
+  const cands: { x: number; y: number; score: number }[] = [];
+  for (let t = 0; t < 600; t++) {
+    const x = 3 + gen.next() * 94;
+    const y = 3 + gen.next() * 94;
+    const score = siteSuitability(geo, x, y);
+    if (score > 0.4) cands.push({ x, y, score });
+  }
+  cands.sort((a, b) => b.score - a.score || a.x - b.x || a.y - b.y);
+  const sites: { x: number; y: number; score: number }[] = [];
+  for (const c of cands) {
+    if (sites.length >= SETTLEMENT_COUNT) break;
+    if (sites.every((p) => Math.hypot(p.x - c.x, p.y - c.y) >= 13)) sites.push(c);
+  }
+  // relax spacing where good land is scarce, then fall back to any land
+  for (let relax = 10; sites.length < SETTLEMENT_COUNT && relax >= 0; relax -= 2) {
+    for (const c of cands) {
+      if (sites.length >= SETTLEMENT_COUNT) break;
+      if (sites.includes(c)) continue;
+      if (sites.every((p) => Math.hypot(p.x - c.x, p.y - c.y) >= relax)) sites.push(c);
+    }
+  }
+  for (let guard = 0; sites.length < SETTLEMENT_COUNT && guard < 4000; guard++) {
+    const x = 3 + gen.next() * 94;
+    const y = 3 + gen.next() * 94;
+    if (isLand(geo, x, y)) sites.push({ x, y, score: 0 });
+  }
+
+  // 2) FOUND a settlement at each site — the more generous the land, the larger the founding.
   const used = new Set<string>();
   for (let i = 0; i < SETTLEMENT_COUNT; i++) {
+    const site = sites[i];
     let name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     while (used.has(name)) name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     used.add(name);
 
     const dominant = SPECIES[gen.int(SPECIES.length)].id;
-    const pop = gen.range(80, 320);
+    const pop = Math.round(clamp(60 + site.score * 26 + gen.next() * 40, 40, 340));
     const macro = freshBands(pop, dominant, gen);
     macro.stability = gen.range(-10, 50);
 
     const s: Settlement = {
       id: i,
       name,
-      pos: { x: gen.range(6, 94), y: gen.range(6, 94) },
+      pos: { x: site.x, y: site.y },
       foundedYear: 0,
       detailed: false,
       epoch: 0,

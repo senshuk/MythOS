@@ -70,7 +70,7 @@ export const MAP_STYLES: MapStyleOption[] = [
     style: {
       kind: 'surface',
       theme: {
-        water: null, // no liquid water
+        water: { deep: [30, 22, 26], shallow: [70, 52, 48], level: 0.4 }, // sluggish, silt-laden
         land: [
           { upTo: 0.42, dry: [62, 30, 22] }, // dark basalt lowlands
           { upTo: 0.62, dry: [156, 74, 46], wet: [126, 58, 40] }, // rust dunes

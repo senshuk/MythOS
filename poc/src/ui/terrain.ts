@@ -1,17 +1,14 @@
 /**
- * Map BACKDROP renderers — PRESENTATION ONLY, deterministic from the world seed, so a
- * world always looks the same (they never touch the sim). The look is driven by a
- * pack-defined style (content/mapstyles.ts): `paintTerrain` paints any planet surface
- * from a data `SurfaceTheme`; `paintStarfield` paints a space setting. The clickable
- * settlement/relation overlay (the SVG) is shared on top — only the backdrop changes.
+ * Map BACKDROP renderers — PRESENTATION ONLY. They paint the world the SIMULATION
+ * actually generated: `paintTerrain` renders the engine's `Geography` (the same
+ * elevation/water/rivers/fertility the sim used to place settlements and drive the
+ * economy), coloured by a pack `SurfaceTheme`. So the map and the simulation are the
+ * same world. `paintStarfield` renders a space setting. The clickable settlement
+ * overlay (the SVG) is shared on top — only the backdrop changes.
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER } from '../engine/geography';
 
-export interface TerrainNode {
-  x: number;
-  y: number;
-  ruined: boolean;
-}
 export interface ViewBox {
   x: number;
   y: number;
@@ -19,7 +16,100 @@ export interface ViewBox {
   h: number;
 }
 
-// --- tiny seeded value noise (no dependencies) -------------------------------
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const lerp3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+
+/** bilinear sample of a grid field at grid coords (gx, gy). */
+function bilinear(arr: Float32Array, N: number, gx: number, gy: number): number {
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const x1 = Math.min(N - 1, x0 + 1);
+  const y1 = Math.min(N - 1, y0 + 1);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const a = arr[y0 * N + x0];
+  const b = arr[y0 * N + x1];
+  const c = arr[y1 * N + x0];
+  const d = arr[y1 * N + x1];
+  return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+}
+
+/** land colour from elevation + fertility, using the pack theme's bands. */
+function landColor(theme: SurfaceTheme, e: number, fert: number): RGB {
+  const top = theme.land[theme.land.length - 1];
+  if (e >= top.upTo) return theme.peak;
+  for (const band of theme.land) {
+    if (e < band.upTo) return band.wet && fert > 0.4 ? band.wet : band.dry;
+  }
+  return theme.peak;
+}
+
+/** Paint the engine's geography, coloured by the pack theme. `vb` matches the overlay
+ *  SVG viewBox so settlements land exactly on the terrain that bred them. */
+export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme): void {
+  const W = canvas.width;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const N = geo.size;
+  const E = geo.elevation;
+  const F = geo.fertility;
+  const WTR = geo.water;
+  const sea = geo.seaLevel;
+  const water = theme.water ?? { deep: [18, 26, 40] as RGB, shallow: [40, 60, 80] as RGB, level: sea };
+  const river: RGB = [Math.min(255, water.shallow[0] * 1.15 + 16), Math.min(255, water.shallow[1] * 1.15 + 16), Math.min(255, water.shallow[2] * 1.15 + 20)];
+
+  const gOf = (w: number) => Math.max(0, Math.min(N - 1, (w / 100) * (N - 1)));
+
+  const img = ctx.createImageData(W, H);
+  const data = img.data;
+  for (let py = 0; py < H; py++) {
+    const gy = gOf(vb.y + (py / H) * vb.h);
+    for (let px = 0; px < W; px++) {
+      const gx = gOf(vb.x + (px / W) * vb.w);
+      const ci = Math.round(gy) * N + Math.round(gx);
+      const w = WTR[ci];
+      let r: number;
+      let g: number;
+      let b: number;
+      if (w === WATER_SEA) {
+        const e = bilinear(E, N, gx, gy);
+        [r, g, b] = lerp3(water.deep, water.shallow, Math.max(0, Math.min(1, e / sea)));
+      } else if (w === WATER_LAKE) {
+        [r, g, b] = lerp3(water.deep, water.shallow, 0.65);
+      } else if (w === WATER_RIVER) {
+        [r, g, b] = river;
+      } else {
+        const e = bilinear(E, N, gx, gy);
+        const fert = bilinear(F, N, gx, gy);
+        [r, g, b] = landColor(theme, e, fert);
+        // NW hillshade for relief
+        const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
+        const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
+        let s = 1 + (-ex - ey) * theme.hillshade * 8;
+        s = s < 0.72 ? 0.72 : s > 1.28 ? 1.28 : s;
+        r *= s;
+        g *= s;
+        b *= s;
+      }
+      const i = (py * W + px) * 4;
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const v = theme.vignette;
+  const grd = ctx.createRadialGradient(W / 2, H * 0.46, H * 0.32, W / 2, H / 2, H * 0.74);
+  grd.addColorStop(0, 'rgba(0,0,0,0)');
+  grd.addColorStop(1, `rgba(${v[0]},${v[1]},${v[2]},0.5)`);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// --- starfield (space setting) — its own noise for nebulae + stars ----------
 function hash2(ix: number, iy: number, seed: number): number {
   let h = (seed ^ Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -52,149 +142,13 @@ function fbm(x: number, y: number, seed: number, octaves: number): number {
   }
   return sum / norm;
 }
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const lerp3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
-/** Colour for a surface point, entirely from the pack's SurfaceTheme. */
-function surfaceColor(theme: SurfaceTheme, e: number, m: number): RGB {
-  if (theme.water && e < theme.water.level) {
-    const t = e / theme.water.level; // 0 deepest … 1 at the shore
-    return lerp3(theme.water.deep, theme.water.shallow, t);
-  }
-  const top = theme.land[theme.land.length - 1];
-  if (e >= top.upTo) return theme.peak;
-  for (const band of theme.land) {
-    if (e < band.upTo) return band.wet && m > 0.52 ? band.wet : band.dry;
-  }
-  return theme.peak;
-}
-
-/** Paint a planet surface. `vb` must match the overlay SVG viewBox so towns align. */
-export function paintTerrain(canvas: HTMLCanvasElement, seed: number, nodes: TerrainNode[], vb: ViewBox, theme: SurfaceTheme): void {
-  const W = canvas.width;
-  const H = canvas.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const FREQ = theme.freq;
-
-  // base fbm + ridged detail for ranges + a gentle lift around settlements (towns on
-  // habitable ground — also forms islands on an ocean world).
-  const elevAt = (wx: number, wy: number): number => {
-    let e = fbm(wx * FREQ, wy * FREQ, seed, 5);
-    e = e * 0.82 + (0.5 - Math.abs(fbm(wx * FREQ * 2.4, wy * FREQ * 2.4, seed + 99, 3) - 0.5)) * 0.36;
-    for (const n of nodes) {
-      const dx = wx - n.x;
-      const dy = wy - n.y;
-      e += Math.exp(-(dx * dx + dy * dy) / 110) * (n.ruined ? 0.05 : 0.12);
-    }
-    return e > 1 ? 1 : e;
-  };
-
-  const elev = new Float32Array(W * H);
-  for (let py = 0; py < H; py++) {
-    const wy = vb.y + (py / H) * vb.h;
-    for (let px = 0; px < W; px++) elev[py * W + px] = elevAt(vb.x + (px / W) * vb.w, wy);
-  }
-
-  const img = ctx.createImageData(W, H);
-  const data = img.data;
-  for (let py = 0; py < H; py++) {
-    const wy = vb.y + (py / H) * vb.h;
-    for (let px = 0; px < W; px++) {
-      const idx = py * W + px;
-      const e = elev[idx];
-      const wx = vb.x + (px / W) * vb.w;
-      const m = fbm(wx * FREQ * 0.85 + 40, wy * FREQ * 0.85 + 40, seed + 7, 3);
-      let [r, g, b] = surfaceColor(theme, e, m);
-      const waterLevel = theme.water ? theme.water.level : 0;
-      if (e >= waterLevel) {
-        const ex = elev[idx + (px < W - 1 ? 1 : 0)] - e;
-        const ey = elev[idx + (py < H - 1 ? W : 0)] - e;
-        let s = 1 + (-ex - ey) * theme.hillshade;
-        s = s < 0.7 ? 0.7 : s > 1.28 ? 1.28 : s;
-        r *= s;
-        g *= s;
-        b *= s;
-      }
-      const i = idx * 4;
-      data[i] = r;
-      data[i + 1] = g;
-      data[i + 2] = b;
-      data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-
-  // rivers: trace downhill from high ground to the sea (only on worlds with water/lava)
-  if (theme.water) drawRivers(ctx, elev, W, H, theme.water.level, theme.water.shallow, seed);
-
-  const v = theme.vignette;
-  const grd = ctx.createRadialGradient(W / 2, H * 0.46, H * 0.32, W / 2, H / 2, H * 0.74);
-  grd.addColorStop(0, 'rgba(0,0,0,0)');
-  grd.addColorStop(1, `rgba(${v[0]},${v[1]},${v[2]},0.5)`);
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, W, H);
-}
-
-const NEI8 = [
-  [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
-];
-
-/** Trace and draw rivers: from scattered high points, follow steepest descent to the
- *  sea, widening downstream. Deterministic from the seed. */
-function drawRivers(ctx: CanvasRenderingContext2D, elev: Float32Array, W: number, H: number, seaLevel: number, shallow: RGB, seed: number): void {
-  const col: RGB = [Math.min(255, shallow[0] * 1.15 + 18), Math.min(255, shallow[1] * 1.15 + 18), Math.min(255, shallow[2] * 1.15 + 22)];
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  const TRIES = Math.floor((W * H) / 1400);
-  for (let s = 0; s < TRIES; s++) {
-    let px = Math.floor(hash2(s, 5, seed + 300) * W);
-    let py = Math.floor(hash2(s, 6, seed + 300) * H);
-    if (elev[py * W + px] < 0.66) continue; // sources start high
-    const path: [number, number][] = [[px, py]];
-    for (let step = 0; step < 260; step++) {
-      let bx = px;
-      let by = py;
-      let be = elev[py * W + px];
-      for (const [dx, dy] of NEI8) {
-        const nx = px + dx;
-        const ny = py + dy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-        const e = elev[ny * W + nx];
-        if (e < be) {
-          be = e;
-          bx = nx;
-          by = ny;
-        }
-      }
-      if (bx === px && by === py) break; // stuck in a basin
-      px = bx;
-      py = by;
-      path.push([px, py]);
-      if (be < seaLevel) break; // reached the water
-    }
-    if (path.length < 10) continue;
-    for (let i = 1; i < path.length; i++) {
-      const t = i / path.length;
-      ctx.lineWidth = 0.6 + t * 2.4;
-      ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.55 + t * 0.35})`;
-      ctx.beginPath();
-      ctx.moveTo(path[i - 1][0], path[i - 1][1]);
-      ctx.lineTo(path[i][0], path[i][1]);
-      ctx.stroke();
-    }
-  }
-}
-
-/** Paint a space backdrop — nebulae + stars on the void. Settlements (drawn by the
- *  shared SVG overlay) read as star systems. */
-export function paintStarfield(canvas: HTMLCanvasElement, seed: number, _nodes: TerrainNode[], _vb: ViewBox, field: StarfieldStyle): void {
+export function paintStarfield(canvas: HTMLCanvasElement, seed: number, field: StarfieldStyle): void {
   const W = canvas.width;
   const H = canvas.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // void + nebula clouds (low-frequency noise tinted by the pack's nebula colours)
   const img = ctx.createImageData(W, H);
   const data = img.data;
   const NF = 0.012;
@@ -203,7 +157,7 @@ export function paintStarfield(canvas: HTMLCanvasElement, seed: number, _nodes: 
       let [r, g, b] = field.voidColor;
       for (let k = 0; k < field.nebula.length; k++) {
         const n = fbm(px * NF + k * 30, py * NF + k * 30, seed + 200 + k * 50, 4);
-        const a = Math.max(0, n - 0.55) * 1.4; // only the dense wisps show
+        const a = Math.max(0, n - 0.55) * 1.4;
         const c = field.nebula[k];
         r = lerp(r, c[0], a * 0.5);
         g = lerp(g, c[1], a * 0.5);
@@ -218,7 +172,6 @@ export function paintStarfield(canvas: HTMLCanvasElement, seed: number, _nodes: 
   }
   ctx.putImageData(img, 0, 0);
 
-  // scattered stars: deterministic hash positions, varied brightness
   const [sr, sg, sb] = field.star;
   const count = Math.floor((W * H) / 260);
   for (let s = 0; s < count; s++) {
