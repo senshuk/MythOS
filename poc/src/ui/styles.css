@@ -211,12 +211,36 @@ button { font-family: inherit; }
   position: relative; margin: 8px 0; aspect-ratio: 116 / 118;
   border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden;
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45);
+  cursor: grab; touch-action: none; user-select: none;
 }
-.map-terrain {
-  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
-  image-rendering: auto;
+.map-wrap:active { cursor: grabbing; }
+.map-wrap::after { /* a faint gold cartographer's frame */
+  content: ''; position: absolute; inset: 3px; border: 1px solid rgba(233, 196, 106, 0.14);
+  border-radius: 7px; pointer-events: none; z-index: 5;
 }
-.map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: none; }
+.map-inner { position: absolute; inset: 0; }
+.map-terrain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: none; overflow: visible; }
+
+/* a compass rose + zoom controls, fixed over the explored view */
+.compass {
+  position: absolute; right: 8px; bottom: 8px; width: 38px; height: 38px;
+  color: var(--gold); opacity: 0.55; pointer-events: none; z-index: 6;
+}
+.map-ctl { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 5px; z-index: 6; }
+.map-ctl button {
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  background: rgba(16, 18, 24, 0.78); color: var(--gold); border: 1px solid var(--line);
+  border-radius: 7px; font-size: 16px; line-height: 1; cursor: pointer; backdrop-filter: blur(4px);
+}
+.map-ctl button:hover { border-color: var(--gold); }
+.map-tip {
+  position: fixed; z-index: 60; pointer-events: none;
+  display: flex; flex-direction: column; gap: 1px;
+  background: rgba(16, 18, 24, 0.95); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 11px; font-size: 12.5px; box-shadow: var(--shadow); max-width: 220px;
+}
+.map-tip strong { font-family: var(--serif); font-size: 14px; color: var(--ink); }
 /* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
 .edge.trade { stroke-dasharray: 2.2 2.4; animation: flow 2.6s linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -4.6; } }

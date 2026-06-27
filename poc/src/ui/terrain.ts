@@ -125,12 +125,65 @@ export function paintTerrain(canvas: HTMLCanvasElement, seed: number, nodes: Ter
   }
   ctx.putImageData(img, 0, 0);
 
+  // rivers: trace downhill from high ground to the sea (only on worlds with water/lava)
+  if (theme.water) drawRivers(ctx, elev, W, H, theme.water.level, theme.water.shallow, seed);
+
   const v = theme.vignette;
   const grd = ctx.createRadialGradient(W / 2, H * 0.46, H * 0.32, W / 2, H / 2, H * 0.74);
   grd.addColorStop(0, 'rgba(0,0,0,0)');
   grd.addColorStop(1, `rgba(${v[0]},${v[1]},${v[2]},0.5)`);
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
+}
+
+const NEI8 = [
+  [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+];
+
+/** Trace and draw rivers: from scattered high points, follow steepest descent to the
+ *  sea, widening downstream. Deterministic from the seed. */
+function drawRivers(ctx: CanvasRenderingContext2D, elev: Float32Array, W: number, H: number, seaLevel: number, shallow: RGB, seed: number): void {
+  const col: RGB = [Math.min(255, shallow[0] * 1.15 + 18), Math.min(255, shallow[1] * 1.15 + 18), Math.min(255, shallow[2] * 1.15 + 22)];
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const TRIES = Math.floor((W * H) / 1400);
+  for (let s = 0; s < TRIES; s++) {
+    let px = Math.floor(hash2(s, 5, seed + 300) * W);
+    let py = Math.floor(hash2(s, 6, seed + 300) * H);
+    if (elev[py * W + px] < 0.66) continue; // sources start high
+    const path: [number, number][] = [[px, py]];
+    for (let step = 0; step < 260; step++) {
+      let bx = px;
+      let by = py;
+      let be = elev[py * W + px];
+      for (const [dx, dy] of NEI8) {
+        const nx = px + dx;
+        const ny = py + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const e = elev[ny * W + nx];
+        if (e < be) {
+          be = e;
+          bx = nx;
+          by = ny;
+        }
+      }
+      if (bx === px && by === py) break; // stuck in a basin
+      px = bx;
+      py = by;
+      path.push([px, py]);
+      if (be < seaLevel) break; // reached the water
+    }
+    if (path.length < 10) continue;
+    for (let i = 1; i < path.length; i++) {
+      const t = i / path.length;
+      ctx.lineWidth = 0.6 + t * 2.4;
+      ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.55 + t * 0.35})`;
+      ctx.beginPath();
+      ctx.moveTo(path[i - 1][0], path[i - 1][1]);
+      ctx.lineTo(path[i][0], path[i][1]);
+      ctx.stroke();
+    }
+  }
 }
 
 /** Paint a space backdrop — nebulae + stars on the void. Settlements (drawn by the
