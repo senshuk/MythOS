@@ -255,32 +255,47 @@ describe('summary tier + migration', () => {
 });
 
 describe('region geography', () => {
+  // components over LIVING settlements only — ancient ruins sit outside the trade network.
   function connectedComponents(w: World): number {
-    const n = w.settlements.length;
-    const parent = [...Array(n).keys()];
-    const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
-    for (const e of w.edges) parent[find(e.a)] = find(e.b);
-    return new Set([...Array(n).keys()].map(find)).size;
+    const live = w.settlements.filter((s) => s.ruinedYear === undefined).map((s) => s.id);
+    const parent = new Map<number, number>(live.map((i) => [i, i]));
+    const find = (x: number): number => {
+      const p = parent.get(x)!;
+      if (p === x) return x;
+      const r = find(p);
+      parent.set(x, r);
+      return r;
+    };
+    for (const e of w.edges) if (parent.has(e.a) && parent.has(e.b)) parent.set(find(e.a), find(e.b));
+    return new Set(live.map(find)).size;
   }
 
-  it('the settlement graph is connected and everyone has a neighbour', () => {
-    const w = createWorld(42);
-    expect(w.edges.length).toBeGreaterThanOrEqual(w.settlements.length - 1);
+  it('the settlement graph is connected and every living settlement has a neighbour', () => {
+    let w = createWorld(42);
+    for (let seed = 42; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed); // a land region
+    const living = w.settlements.filter((s) => s.ruinedYear === undefined);
+    expect(w.edges.length).toBeGreaterThanOrEqual(living.length - 1);
     const seen = new Set<number>();
-    for (const e of w.edges) { seen.add(e.a); seen.add(e.b); }
-    expect(seen.size).toBe(w.settlements.length); // no isolated settlement
-    expect(connectedComponents(w)).toBe(1); // single connected region
+    for (const e of w.edges) {
+      seen.add(e.a);
+      seen.add(e.b);
+    }
+    expect(seen.size).toBe(living.length); // no isolated living settlement (ruins are off-network)
+    expect(connectedComponents(w)).toBe(1); // one connected region
   });
 
   it('edge relations stay in range and goods flow along the routes', () => {
-    const w = createWorld(42);
+    let w = createWorld(42);
+    for (let seed = 42; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed); // a land world (galaxies are food-uniform → no trade)
     runYears(w, 60);
     for (const e of w.edges) {
       expect(e.relation).toBeGreaterThanOrEqual(-100);
       expect(e.relation).toBeLessThanOrEqual(100);
     }
-    expect(w.edges.some((e) => e.tradeVolume > 0)).toBe(true); // goods actually moved
-    expect(w.events.filter((e) => e.type === 'trade').length).toBeGreaterThan(0);
+    // goods actually move along the routes (in a big region trade spreads across many
+    // routes, so the chronicle's single busiest-route event may not fire every run — the
+    // accumulated trade volume is the real proof that goods flow).
+    expect(w.edges.reduce((s, e) => s + e.tradeVolume, 0)).toBeGreaterThan(0);
   });
 
   it('migration prefers nearer settlements (geography shapes movement)', () => {

@@ -59,6 +59,7 @@ import {
   pickGovernment,
   hasLeader,
   CULTURES,
+  cultureById,
   culturalDistance,
   mostOpposedValue,
   RESOURCES,
@@ -90,10 +91,14 @@ interface People {
 }
 /** A settlement-in-the-making during the pre-history. */
 interface Proto {
+  name: string;
   site: Site;
-  people: People;
+  people: People; // may CHANGE if conquered & assimilated by another people
   pop: number;
   foundedYear: number;
+  ruinedYear?: number; // razed in a pre-history war
+  razedBy?: string; // the culture id of the people who razed it
+  peakPop?: number; // its population when it fell (for the founding record)
 }
 
 const MIN_SPACING = 12; // settlements don't crowd
@@ -127,11 +132,19 @@ export function createSettlements(world: World): void {
   const target = Math.min(sub.settlements, Math.max(6, Math.round((cands.length / 24) * foodScale)));
 
   const protos: Proto[] = [];
+  const living = () => protos.filter((p) => p.ruinedYear === undefined);
   const occupied = (pos: Vec2, min: number) => protos.some((p) => sub.distance(p.site.pos, pos) < min);
   // a people only settles land it can roughly FEED itself on (biome + coastal fishing). So
   // on a cold or desert world colonists hug the viable coasts/oases rather than founding
   // doomed interior colonies that just become ruins — harsh worlds end up sparse but alive.
   const viable = (site: Site) => terrainYields(site.attributes).food >= 0.8;
+  const usedNames = new Set<string>();
+  const mkName = (): string => {
+    let n = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
+    while (usedNames.has(n)) n = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
+    usedNames.add(n);
+    return n;
+  };
 
   // 1) ORIGINS — a few founding peoples on the best, widely-spaced sites (so territories
   //    are distinct), each a different culture (the people the colonists will carry).
@@ -142,6 +155,7 @@ export function createSettlements(world: World): void {
     if (!site) break;
     const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
     protos.push({
+      name: mkName(),
       site,
       people: { species: speciesForCulture(culture, gen), culture, government: pickGovernment(gen) },
       pop: gen.range(45, 70),
@@ -153,51 +167,52 @@ export function createSettlements(world: World): void {
   //    may send colonists to the best unclaimed land within reach, founding a daughter of
   //    its OWN people. Stops once the world is as full as its land allows.
   for (let yr = 1; yr <= PREHISTORY_YEARS; yr++) {
-    for (const s of protos) {
+    for (const s of living()) {
       // carrying capacity is limited by FOOD (the biome), not just the land — so a cold or
       // desert settlement grows to a SMALL sustainable size and enters the live sim viable,
       // instead of over-growing then crashing to ruin.
       const cap = 260 * s.site.capacity * clamp(terrainYields(s.site.attributes).food, 0.5, 1.3);
       s.pop += s.pop * 0.045 * (1 - s.pop / cap);
     }
-    if (protos.length >= target) continue;
-    for (const parent of [...protos]) {
-      if (protos.length >= target) break;
+    // WARS: culturally-opposed neighbours clash; the strong conquer the weak — razing them
+    // to ruin or assimilating them — so the world is scarred by ancient conflict, not just
+    // peaceful expansion (checked every few years to bound cost).
+    if (yr % 3 === 0) prehistoryWars(protos, sub, gen, yr);
+    if (living().length >= target) continue;
+    for (const parent of living()) {
+      if (living().length >= target) break;
       if (yr - parent.foundedYear < 12 || parent.pop < 120 || !gen.chance(0.03)) continue;
       const site = colonySite(cands, protos, parent, sub);
       if (!site) continue;
-      protos.push({ site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
+      protos.push({ name: mkName(), site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
       parent.pop = Math.max(60, parent.pop - 24); // colonists depart
     }
   }
-  // fill any shortfall (peoples hemmed in) from the best unclaimed land, joining the
-  // nearest people — so the world reaches its size even if expansion stalled.
-  for (let guard = 0; protos.length < target && guard < 5000; guard++) {
+  // fill any shortfall (peoples hemmed in, or wars thinned the world) from the best unclaimed
+  // land, joining the nearest LIVING people — so the world reaches its size.
+  for (let guard = 0; living().length < target && guard < 5000; guard++) {
     const c = cands.find((x) => !occupied(x.pos, MIN_SPACING) && viable(x));
     if (!c) break;
-    const near = protos.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
-    protos.push({ site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
+    const liv = living();
+    const near = liv.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
+    protos.push({ name: mkName(), site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
   }
 
-  // 3) FOUND each settlement, oldest first, dating the event & its founder to its year.
+  // 3) FOUND each settlement, oldest first, dating its founding & founder to its year. A town
+  //    razed in an ancient war is still founded here (it existed) — then it falls, below.
   protos.sort((a, b) => a.foundedYear - b.foundedYear || a.site.pos.x - b.site.pos.x || a.site.pos.y - b.site.pos.y);
-  const used = new Set<string>();
   for (let i = 0; i < protos.length; i++) {
     const d = protos[i];
     world.tick = d.foundedYear * DAYS_PER_YEAR; // so the founding event & founder are dated right
-    let name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
-    while (used.has(name)) name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
-    used.add(name);
-
     // cap the STARTING size (the live sim grows it on toward the land's full capacity) —
     // keeps a focused settlement's live-actor count, and so worldgen cost, in check.
-    const pop = Math.round(clamp(d.pop, 20, 360));
+    const pop = Math.round(clamp(d.peakPop ?? d.pop, 20, 360));
     const macro = freshBands(pop, d.people.species, gen);
     macro.stability = gen.range(-10, 50);
 
     const s: Settlement = {
       id: i,
-      name,
+      name: d.name,
       pos: { ...d.site.pos },
       foundedYear: d.foundedYear,
       detailed: false,
@@ -215,9 +230,62 @@ export function createSettlements(world: World): void {
     emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop });
   }
 
+  // ...and the towns that FELL in those ancient wars become ruins, recorded in the order
+  // they were lost — so the player inherits a map scarred by a history of conquest.
+  const fallen = protos.map((d, i) => ({ d, i })).filter((x) => x.d.ruinedYear !== undefined);
+  fallen.sort((a, b) => a.d.ruinedYear! - b.d.ruinedYear!);
+  for (const { d, i } of fallen) {
+    const s = world.settlements[i];
+    world.tick = d.ruinedYear! * DAYS_PER_YEAR;
+    s.ruinedYear = d.ruinedYear;
+    s.macro = { population: 0, children: 0, adults: 0, elders: 0, stability: 0, dominantSpecies: d.people.species };
+    if (d.razedBy) emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) });
+    else emit(world, 'ruined', [], { name: s.name });
+  }
+
   world.tick = PREHISTORY_YEARS * DAYS_PER_YEAR; // the world is "now" at the end of pre-history
   buildRegionGraph(world, gen);
   world.geoRngState = mixSeed(world.seed, 0x6e0);
+}
+
+/**
+ * A pre-history conflict pass. Culturally-OPPOSED neighbouring peoples clash; where one is
+ * much stronger it CONQUERS the weaker — razing it to ruin under its banner, or assimilating
+ * it (the town keeps its people but adopts the victor's culture & rule). So borders shift
+ * over the centuries and the world gains the SCARS of ancient war: ruins, and territories
+ * that grew by conquest. (Same mechanism as the live sim's wars, run during worldgen.)
+ */
+function prehistoryWars(protos: Proto[], sub: World['substrate'], gen: Rng, yr: number): void {
+  const liv = protos.filter((p) => p.ruinedYear === undefined);
+  for (let i = 0; i < liv.length; i++) {
+    for (let j = i + 1; j < liv.length; j++) {
+      const a = liv[i];
+      const b = liv[j];
+      if (a.ruinedYear !== undefined || b.ruinedYear !== undefined) continue; // one already fell this pass
+      if (a.people.culture === b.people.culture) continue; // a people doesn't war on itself
+      if (sub.distance(a.site.pos, b.site.pos) > 30) continue; // only neighbours clash
+      if (culturalDistance(a.people.culture, b.people.culture) < 18) continue; // only the opposed
+      if (!gen.chance(0.1)) continue; // border wars flare across the centuries
+      const strong = a.pop >= b.pop ? a : b;
+      const weak = strong === a ? b : a;
+      if (strong.pop > weak.pop * 1.3 && gen.chance(0.6)) {
+        if (gen.chance(0.55)) {
+          weak.peakPop = weak.pop; // razed to ruin under the victor's banner
+          weak.pop = 0;
+          weak.ruinedYear = yr;
+          weak.razedBy = strong.people.culture;
+        } else {
+          // conquered & assimilated: keeps its people, adopts the victor's culture & rule
+          weak.people = { ...weak.people, culture: strong.people.culture, government: strong.people.government };
+          weak.pop = Math.max(20, weak.pop * 0.6);
+        }
+        strong.pop = Math.max(40, strong.pop - 18); // war is costly even for the victor
+      } else {
+        weak.pop *= 0.85; // an inconclusive but bloody border war
+        strong.pop *= 0.95;
+      }
+    }
+  }
 }
 
 /** A species that calls this culture home (else any species) — so a people is coherent. */
@@ -244,6 +312,9 @@ function colonySite(cands: Site[], protos: Proto[], parent: Proto, sub: World['s
  *  distance, so a non-euclidean world (jump lanes, districts) connects on its own terms. */
 function buildRegionGraph(world: World, gen: Rng): void {
   const ss = world.settlements;
+  // routes link only LIVING settlements (ids == creation index); ruins don't trade. The
+  // ancient ruins still sit on the map, just outside the trade/conflict network.
+  const live = ss.filter((s) => s.ruinedYear === undefined).map((s) => s.id);
   const dist = (a: Vec2, b: Vec2) => world.substrate.distance(a, b);
   const K = 3;
   const have = new Set<string>();
@@ -260,32 +331,38 @@ function buildRegionGraph(world: World, gen: Rng): void {
     });
   };
 
-  for (let i = 0; i < ss.length; i++) {
-    const order = ss
-      .map((s, j) => ({ j, d: dist(ss[i].pos, s.pos) }))
-      .filter((o) => o.j !== i)
+  for (const i of live) {
+    const order = live
+      .filter((j) => j !== i)
+      .map((j) => ({ j, d: dist(ss[i].pos, ss[j].pos) }))
       .sort((p, q) => p.d - q.d);
     for (let k = 0; k < K && k < order.length; k++) addEdge(i, order[k].j);
   }
 
-  // union-find connectivity: link nearest cross-component pairs until connected
-  const n = ss.length;
-  const parent = [...Array(n).keys()];
-  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
-  const union = (a: number, b: number) => {
-    parent[find(a)] = find(b);
+  // union-find connectivity over the LIVING settlements: link nearest cross-component pairs
+  const parent = new Map<number, number>(live.map((i) => [i, i]));
+  const find = (x: number): number => {
+    const p = parent.get(x)!;
+    if (p === x) return x;
+    const r = find(p);
+    parent.set(x, r);
+    return r;
   };
+  const union = (a: number, b: number) => parent.set(find(a), find(b));
   for (const e of world.edges) union(e.a, e.b);
-  for (let guard = 0; guard < n; guard++) {
-    const roots = new Set([...Array(n).keys()].map(find));
+  for (let guard = 0; guard < live.length; guard++) {
+    const roots = new Set(live.map(find));
     if (roots.size <= 1) break;
     let best: { i: number; j: number; d: number } | null = null;
-    for (let i = 0; i < n; i++)
-      for (let j = i + 1; j < n; j++)
+    for (let x = 0; x < live.length; x++)
+      for (let y = x + 1; y < live.length; y++) {
+        const i = live[x];
+        const j = live[y];
         if (find(i) !== find(j)) {
           const d = dist(ss[i].pos, ss[j].pos);
           if (!best || d < best.d) best = { i, j, d };
         }
+      }
     if (!best) break;
     addEdge(best.i, best.j);
     union(best.i, best.j);
