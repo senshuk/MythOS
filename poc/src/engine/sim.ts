@@ -487,6 +487,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
         population: s.detailed ? full.length : s.macro.population,
         detailed: s.detailed,
         ruined: s.ruinedYear !== undefined,
+        cultureId: s.cultureId,
       })),
       edges: world.edges.map((e) => ({
         a: e.a,

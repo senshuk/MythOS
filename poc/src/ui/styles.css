@@ -220,6 +220,8 @@ button { font-family: inherit; }
 .legend .sw.good { border-color: var(--jade); }
 .legend .sw.bad { border-color: var(--rose); border-top-style: dashed; }
 .legend .sw.neutral { border-color: var(--line); }
+.legend.cultures { gap: 10px 12px; margin: 0 0 8px; }
+.cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
 
 /* focused-settlement stat tiles */
 .stats { display: flex; gap: 10px; flex-wrap: wrap; }

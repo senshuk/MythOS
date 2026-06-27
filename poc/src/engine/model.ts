@@ -420,6 +420,7 @@ export interface MapNodeView {
   population: number;
   detailed: boolean;
   ruined: boolean;
+  cultureId: string; // for colouring the map by culture
 }
 
 export interface MapEdgeView {

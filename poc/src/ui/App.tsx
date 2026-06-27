@@ -61,6 +61,23 @@ function foodClass(security: number): string {
   return 'muted';
 }
 
+// settlements on the map are coloured by their culture (presentation only)
+const CULTURE_COLOR: Record<string, string> = {
+  martial: '#e0685f', // the Iron Creed
+  sylvan: '#6cc08a', // the Green Way
+  artisan: '#e0b25e', // the Maker Folk
+  free: '#6fb6d6', // the Free Companies
+  devout: '#b79be0', // the Old Faith
+};
+const cultureColor = (id: string) => CULTURE_COLOR[id] ?? '#8a8f9e';
+const CULTURE_NAMES: Record<string, string> = {
+  martial: 'Iron Creed',
+  sylvan: 'Green Way',
+  artisan: 'Maker Folk',
+  free: 'Free Companies',
+  devout: 'Old Faith',
+};
+
 /** Renders an event's prose with its named settlements & people as clickable links. */
 function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef) => void }) {
   return (
@@ -207,6 +224,7 @@ export default function App() {
               stat={stat}
               onPickActor={inspectActor}
               onFocus={(id) => sim.focusSettlement(id)}
+              onInspectSettlement={(id) => inspectRef({ kind: 'settlement', id })}
               onSetStoryteller={(id) => sim.setStoryteller(id)}
               onPossess={(id) => sim.possess(id)}
               busy={sim.busy}
@@ -258,24 +276,25 @@ export default function App() {
 function RegionMap({
   map,
   focusedId,
-  onFocus,
+  onInspect,
   busy,
 }: {
   map: NonNullable<ReturnType<typeof useSim>['snapshot']>['map'];
   focusedId: number;
-  onFocus: (id: number) => void;
+  onInspect: (id: number) => void;
   busy: boolean;
 }) {
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
-  const radius = (pop: number) => 2 + 4 * Math.sqrt(pop / maxPop);
-  const edgeColor = (rel: number) => (rel > 15 ? 'var(--good)' : rel < -20 ? 'var(--bad)' : 'var(--line)');
+  const radius = (pop: number) => 2.4 + 4.6 * Math.sqrt(pop / maxPop);
 
   return (
-    <svg className="map" viewBox="-6 -6 112 112" preserveAspectRatio="xMidYMid meet">
+    <svg className="map" viewBox="-8 -9 116 118" preserveAspectRatio="xMidYMid meet">
+      {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
       {map.edges.map((e, i) => {
         const a = nodeById.get(e.a)!;
         const b = nodeById.get(e.b)!;
+        const trade = e.relation > 15;
         const hostile = e.relation < -20;
         return (
           <line
@@ -284,39 +303,38 @@ function RegionMap({
             y1={a.y}
             x2={b.x}
             y2={b.y}
-            stroke={edgeColor(e.relation)}
-            strokeWidth={hostile ? 0.5 : 0.4 + Math.min(1.6, e.tradeVolume / 6)}
+            stroke={hostile ? 'var(--rose)' : trade ? 'var(--jade)' : 'var(--line)'}
+            strokeWidth={hostile ? 0.5 : trade ? 0.5 + Math.min(1.7, e.tradeVolume / 6) : 0.35}
             strokeDasharray={hostile ? '1.6 1.1' : undefined}
-            opacity={0.85}
+            opacity={hostile ? 0.7 : trade ? 0.9 : 0.4}
           />
         );
       })}
+      {/* nodes: coloured by culture, sized by population; click to inspect (ruins included) */}
       {map.nodes.map((n) => {
         const focused = n.id === focusedId;
-        const clickable = !busy && !focused && !n.ruined && n.population > 0;
-        const r = n.ruined ? 1.6 : radius(n.population);
+        const r = n.ruined ? 1.9 : radius(n.population);
+        const color = cultureColor(n.cultureId);
         return (
-          <g
-            key={n.id}
-            className={clickable ? 'mnode clickable' : 'mnode'}
-            onClick={() => clickable && onFocus(n.id)}
-          >
+          <g key={n.id} className={busy ? 'mnode' : 'mnode clickable'} onClick={() => !busy && onInspect(n.id)}>
+            {focused && <circle cx={n.x} cy={n.y} r={r + 1.8} fill="none" stroke="var(--gold)" strokeWidth={0.7} opacity={0.85} />}
             <circle
               cx={n.x}
               cy={n.y}
               r={r}
-              fill={n.ruined ? 'none' : focused ? 'var(--accent)' : 'var(--panel2)'}
-              stroke={n.ruined ? 'var(--bad)' : focused ? 'var(--accent)' : 'var(--muted)'}
-              strokeWidth={focused ? 1.1 : n.ruined ? 0.5 : 0.4}
+              fill={n.ruined ? 'none' : color}
+              stroke={n.ruined ? 'var(--rose)' : 'rgba(8,10,14,0.55)'}
+              strokeWidth={n.ruined ? 0.5 : 0.4}
               strokeDasharray={n.ruined ? '0.8 0.8' : undefined}
+              opacity={n.ruined ? 0.6 : 0.94}
             />
             <text
               x={n.x}
-              y={n.y - r - 1}
+              y={n.y - r - 1.3}
               textAnchor="middle"
-              fontSize="2.7"
-              fill={n.ruined ? 'var(--bad)' : focused ? 'var(--accent)' : 'var(--muted)'}
-              opacity={n.ruined ? 0.7 : 1}
+              fontSize="2.8"
+              fill={n.ruined ? 'var(--rose)' : 'var(--ink-dim)'}
+              opacity={n.ruined ? 0.7 : 0.95}
             >
               {n.ruined ? `⚑ ${n.name}` : n.name}
             </text>
@@ -331,6 +349,7 @@ function Dashboard({
   stat,
   onPickActor,
   onFocus,
+  onInspectSettlement,
   onSetStoryteller,
   onPossess,
   busy,
@@ -338,6 +357,7 @@ function Dashboard({
   stat: NonNullable<ReturnType<typeof useSim>['snapshot']>;
   onPickActor: (id: number) => void;
   onFocus: (id: number) => void;
+  onInspectSettlement: (id: number) => void;
   onSetStoryteller: (id: string) => void;
   onPossess: (id: number) => void;
   busy: boolean;
@@ -428,13 +448,19 @@ function Dashboard({
         </>
       )}
 
-      <h3>Region map — click a settlement to focus it</h3>
-      <RegionMap map={stat.map} focusedId={stat.focusedSettlementId} onFocus={onFocus} busy={busy} />
+      <h3>Region map — click a settlement to read its story</h3>
+      <RegionMap map={stat.map} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
       <div className="legend">
-        <span><i className="sw good" /> trade route</span>
-        <span><i className="sw bad" /> hostile border</span>
-        <span><i className="sw neutral" /> quiet</span>
-        <span>● node size = population</span>
+        <span><i className="sw good" /> trade</span>
+        <span><i className="sw bad" /> war</span>
+        <span>● size = population</span>
+      </div>
+      <div className="legend cultures">
+        {[...new Set(stat.map.nodes.map((n) => n.cultureId))].map((id) => (
+          <span key={id}>
+            <i className="cdot" style={{ background: cultureColor(id) }} /> {CULTURE_NAMES[id] ?? id}
+          </span>
+        ))}
       </div>
 
       <h3>{stat.settlementName} · focused</h3>
