@@ -136,6 +136,14 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   `fertileTo`), and aggregate mortality scales with lifespan. A long-lived people and
   a short-lived one mature, reproduce, and die on their **own** schedules instead of
   one hardcoded human calendar — a step toward the engine being truly universe-agnostic.
+- **Reproduction is species data, not a humanoid model** — each `Species` carries a
+  `Reproduction` descriptor (`mode`, `sexes`, `bearer`, `pairBonds`, `fecundity`) and the
+  engine dispatches on it. The fixture exercises all three: the **Tamar** are *sexual*
+  (two sexes, only `f` bears, mates required), the **Vael** are *hermaphroditic* (one
+  sex; any two may wed and either may bear — real **same-sex pair-bonds**), and the
+  **Grok** are *asexual* (they spawn **alone**, no mate, single-parent births). Nothing
+  in the engine assumes `'m'`/`'f'`, opposite-sex marriage, or two parents. (Polygamy is
+  flagged in the data but not yet implemented — the social tie is still a single spouse.)
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
   species/professions/traits, **with their effects as data**: a profession carries its
   `income`, a trait carries its `ambition` (drive to rule), and the engine reads those
@@ -156,7 +164,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects gate (73 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/per-species/data-effects/reproduction gate (76 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

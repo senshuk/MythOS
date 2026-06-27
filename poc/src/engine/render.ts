@@ -67,7 +67,9 @@ export function renderEvent(world: World, ev: WorldEvent): string {
     case 'immigrated':
       return `${n(0)} arrived in ${d.to} from ${d.from}.`;
     case 'born':
-      return `${n(0)} was born to ${n(1)} and ${n(2)}.`;
+      return ev.subjects.length >= 3
+        ? `${n(0)} was born to ${n(1)} and ${n(2)}.`
+        : `${n(0)} was born to ${n(1)}.`; // asexual: a single parent
     case 'died':
       return `${n(0)} passed away${age !== undefined ? `, aged ${age}` : ''}${d.settlement ? ` in ${d.settlement}` : ''}.`;
     case 'died_brawl':

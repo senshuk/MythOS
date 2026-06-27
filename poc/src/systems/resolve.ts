@@ -19,7 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
 import { ageCompatible } from '../engine/aspiration';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity, professionIncomeOf } from '../content/fixture';
+import { pairAffinity, professionIncomeOf, unionViable } from '../content/fixture';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
 // opinion scale produced by the thought model (see opinion.ts).
@@ -183,7 +183,9 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng
 function eligibleToMarry(world: World, a: EntityId, b: EntityId, rng: Rng): boolean {
   const ia = world.identity.get(a)!;
   const ib = world.identity.get(b)!;
-  if (ia.sex === ib.sex) return false; // PoC simplification: opposite-sex for reproduction
+  // reproductive compatibility comes from species DATA (sexes/mode), not a hardcoded
+  // opposite-sex rule — same-sex (hermaphroditic) unions are viable; asexual don't wed.
+  if (!unionViable(ia.speciesId, ia.sex, ib.speciesId, ib.sex)) return false;
   if (world.ties.get(a)!.spouse !== undefined) return false;
   if (world.ties.get(b)!.spouse !== undefined) return false;
   if (isKin(world, a, b)) return false;

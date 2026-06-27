@@ -1,7 +1,9 @@
 /**
- * Lifecycle system — runs yearly. Aging, natural death (age-curved), and births
- * to married couples. Births reference the marriage as their cause, so a child's
- * existence is traceable back through the courtship that produced the marriage.
+ * Lifecycle system — runs yearly. Aging, natural death (age-curved), and births.
+ * Reproduction follows each species' DATA (fixture.ts `Reproduction`): sexual species
+ * bear within a pair-bond (only the bearer sex), hermaphroditic ones likewise but
+ * either partner may bear, and asexual ones bear ALONE with no mate. No hardcoded
+ * 'f'-mother / two-parent assumption.
  */
 import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
 import { fullActors, createActor, emit } from '../engine/world';
@@ -13,6 +15,9 @@ import {
   pickTraits,
   pickProfession,
   fertileWindowOf,
+  canBear,
+  isAsexual,
+  fecundityOf,
 } from '../content/fixture';
 
 export function deathProbability(age: number, lifespan: number): number {
@@ -37,51 +42,64 @@ export function lifecycleYearly(world: World): void {
     }
   }
 
-  // 2) births: iterate living married mothers (each couple counted once)
-  const mothers: EntityId[] = [];
+  // 2) births: collect this year's BEARERS (each child has exactly one bearer).
+  //    pair-bonding species bear within a marriage (one designated bearer per couple);
+  //    asexual species bear alone. Determined per species DATA, not a hardcoded sex.
+  const bearers: EntityId[] = [];
   for (const id of focused) {
     const lc = world.lifecycle.get(id)!;
     if (!lc.alive) continue; // may have died of old age above
     const idn = world.identity.get(id)!;
-    if (idn.sex !== 'f') continue;
-    const spouse = world.ties.get(id)!.spouse;
-    if (spouse === undefined) continue;
-    if (!world.lifecycle.get(spouse)!.alive) continue;
+    if (!canBear(idn.speciesId, idn.sex)) continue;
     const [fertileFrom, fertileTo] = fertileWindowOf(idn.speciesId);
     if (lc.ageYears < fertileFrom || lc.ageYears > fertileTo) continue;
-    mothers.push(id);
+
+    if (isAsexual(idn.speciesId)) {
+      bearers.push(id); // reproduces alone — no mate required
+      continue;
+    }
+    // pair-bonding: needs a living spouse, and exactly ONE partner bears per couple.
+    const spouse = world.ties.get(id)!.spouse;
+    if (spouse === undefined) continue;
+    const sp = world.lifecycle.get(spouse)!;
+    if (!sp.alive) continue;
+    // if the spouse can ALSO bear (hermaphroditic couple), the lower id bears, so the
+    // couple is counted once.
+    const spi = world.identity.get(spouse)!;
+    if (canBear(spi.speciesId, spi.sex) && spouse < id) continue;
+    bearers.push(id);
   }
 
-  // Per-couple yearly birth chance. Tuned for ~replacement now that actors
-  // actively seek partners (aspirations) and so marry far more than when
-  // socializing was unfocused — without this the focused settlement explodes.
-  for (const mother of mothers) {
-    if (!rng.chance(0.21)) continue;
-    bear(world, mother);
+  // Per-bearer yearly birth chance comes from the species (fecundity) — tuned per
+  // species so each reproduction mode lands near replacement in the focused settlement.
+  for (const bearer of bearers) {
+    if (!rng.chance(fecundityOf(world.identity.get(bearer)!.speciesId))) continue;
+    bear(world, bearer);
   }
 }
 
-function bear(world: World, mother: EntityId): void {
-  const father = world.ties.get(mother)!.spouse!;
+function bear(world: World, bearer: EntityId): void {
   const rng = world.rng;
-  const motherSpecies = world.identity.get(mother)!.speciesId;
-  const fatherFamily = world.identity.get(father)!.family;
+  const idn = world.identity.get(bearer)!;
+  const species = idn.speciesId;
+  const mate = world.ties.get(bearer)!.spouse; // undefined for asexual (solo) births
+  const parents = mate !== undefined ? [bearer, mate] : [bearer];
 
   const childId = createActor(world, {
-    given: generateGiven(rng, motherSpecies),
-    family: fatherFamily,
-    sex: pickSex(rng),
-    speciesId: motherSpecies,
+    given: generateGiven(rng, species),
+    family: idn.family, // the child takes the bearer's family (no patrilineal assumption)
+    sex: pickSex(rng, species),
+    speciesId: species,
     profession: pickProfession(rng), // grows up into a trade (PoC abstraction)
     traits: pickTraits(rng),
     ageYears: 0,
-    parents: [mother, father],
+    parents,
   });
 
-  world.ties.get(mother)!.children.push(childId);
-  world.ties.get(father)!.children.push(childId);
+  world.ties.get(bearer)!.children.push(childId);
+  if (mate !== undefined) world.ties.get(mate)!.children.push(childId);
 
-  emit(world, 'born', [childId, mother, father], {});
+  emit(world, 'born', mate !== undefined ? [childId, bearer, mate] : [childId, bearer], {});
 }
 
 export const LIFECYCLE_CADENCE_DAYS = DAYS_PER_YEAR;

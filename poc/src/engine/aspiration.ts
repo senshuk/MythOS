@@ -15,7 +15,7 @@
 import { type World, type EntityId } from './model';
 import { computeOpinion } from './opinion';
 import { isKin, fullName, emit } from './world';
-import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf } from '../content/fixture';
+import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor } from '../content/fixture';
 
 export type AspirationKind =
   | 'survive'
@@ -62,7 +62,7 @@ function bestSuitor(world: World, id: EntityId): EntityId | undefined {
     const olc = world.lifecycle.get(other);
     if (!olc?.alive) continue;
     const oi = world.identity.get(other);
-    if (!oi || oi.sex === me.sex) continue; // PoC: opposite-sex marriage
+    if (!oi || !unionViable(me.speciesId, me.sex, oi.speciesId, oi.sex)) continue; // species-defined compatibility
     if (world.ties.get(other)!.spouse !== undefined) continue;
     if (!ageCompatible(world, id, other)) continue; // only pine for the marriageable
     if (isKin(world, id, other)) continue;
@@ -114,7 +114,8 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   if (needs.food < 300) return { kind: 'survive', action: 'work' };
   if (needs.wealth < 250) return { kind: 'prosper', action: 'work' };
 
-  if (lc.ageYears >= maturityOf(idn.speciesId) && ties.spouse === undefined) {
+  // pair-bonding species seek a mate; asexual ones (who breed alone) never do.
+  if (pairBondsFor(idn.speciesId) && lc.ageYears >= maturityOf(idn.speciesId) && ties.spouse === undefined) {
     const crush = bestSuitor(world, id);
     return crush !== undefined
       ? { kind: 'wed', target: crush, action: 'court' }

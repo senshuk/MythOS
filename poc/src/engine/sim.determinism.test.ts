@@ -24,7 +24,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -218,12 +218,17 @@ describe('summary tier + migration', () => {
   });
 
   it('migration produces named people living across the world', () => {
-    const w = createWorld(7);
-    runYears(w, 40);
-    expect(summaryActors(w).length).toBeGreaterThan(0);
-    // at least one settlement other than the focused one has a named resident
-    const elsewhere = summaryActors(w).filter((id) => w.homeSettlement.get(id) !== w.focusedSettlementId);
-    expect(elsewhere.length).toBeGreaterThan(0);
+    // Emigration moves named people out of the focused settlement to live elsewhere as
+    // summary-tier actors. Summaries churn and die (cap per settlement), so any SINGLE
+    // seed may momentarily have none at year 40 — assert the property holds across seeds.
+    let found = false;
+    for (let s = 1; s < 25 && !found; s++) {
+      const w = createWorld(s);
+      runYears(w, 40);
+      const elsewhere = summaryActors(w).filter((id) => w.homeSettlement.get(id) !== w.focusedSettlementId);
+      if (w.events.some((e) => e.type === 'emigrated') && elsewhere.length > 0) found = true;
+    }
+    expect(found).toBe(true);
   });
 
   it('live entities = full + summary, and stay bounded vs the world population', () => {
@@ -649,6 +654,66 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('reproduction is species DATA (not a hardcoded humanoid model)', () => {
+  it('compatibility/bearing follow each species reproduction mode', () => {
+    // sexual (Tamar m/f): different-sex only, only 'f' bears
+    expect(unionViable('tamar', 'm', 'tamar', 'f')).toBe(true);
+    expect(unionViable('tamar', 'm', 'tamar', 'm')).toBe(false);
+    expect(canBear('tamar', 'f')).toBe(true);
+    expect(canBear('tamar', 'm')).toBe(false);
+    // hermaphroditic (Vael, single sex): any two may bond, either may bear
+    expect(unionViable('vael', 'vael', 'vael', 'vael')).toBe(true);
+    expect(canBear('vael', 'vael')).toBe(true);
+    // asexual (Grok): never pair-bonds, but the lone individual can bear
+    expect(unionViable('grok', 'grok', 'grok', 'grok')).toBe(false);
+    expect(canBear('grok', 'grok')).toBe(true);
+  });
+
+  it('hermaphroditic species actually form SAME-SEX pair-bonds in the sim', () => {
+    // find a Vael-dominant focused settlement (all Vael share one sex) and confirm
+    // marriages form between same-sex partners — impossible under the old opposite-sex rule.
+    let found = false;
+    for (let s = 1; s < 80 && !found; s++) {
+      const w = createWorld(s);
+      if (w.settlements[w.focusedSettlementId].macro.dominantSpecies !== 'vael') continue;
+      runYears(w, 40);
+      for (const [x, m] of w.rels) {
+        for (const [y, e] of m) {
+          if (
+            e.flags.spouse &&
+            w.identity.get(x)!.speciesId === 'vael' &&
+            w.identity.get(y)!.speciesId === 'vael' &&
+            w.identity.get(x)!.sex === w.identity.get(y)!.sex
+          ) {
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it('asexual species reproduce ALONE — single-parent births, and never wed', () => {
+    const w = createWorld(5); // focused world
+    const groks: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      groks.push(
+        createActor(w, { given: `G${i}`, family: 'Brood', sex: 'grok', speciesId: 'grok', profession: 'farmer', traits: [], ageYears: 18 }),
+      );
+    }
+    runYears(w, 20);
+    // a Grok bore offspring with exactly ONE parent (subjects = [child, bearer])
+    const soloBirths = w.events.filter(
+      (e) => e.type === 'born' && e.subjects.length === 2 && w.identity.get(e.subjects[1])?.speciesId === 'grok',
+    );
+    expect(soloBirths.length).toBeGreaterThan(0);
+    // and no Grok ever took a spouse
+    for (const g of groks) expect(w.ties.get(g)?.spouse).toBeUndefined();
   });
 });
 

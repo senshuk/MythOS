@@ -9,7 +9,10 @@ import { Rng } from './rng';
 import { type Intent } from './intent';
 
 export type EntityId = number;
-export type Sex = 'm' | 'f';
+/** A sex label. NOT a fixed 'm'|'f': the set of sexes is SPECIES DATA (a species
+ *  may have two, one — hermaphroditic/asexual — or more). The engine treats it as an
+ *  opaque string and dispatches reproduction through the species' Reproduction data. */
+export type Sex = string;
 
 /** The five data-defined needs (kept tiny for the PoC). */
 export const NEED_KEYS = ['food', 'wealth', 'safety', 'esteem', 'belonging'] as const;

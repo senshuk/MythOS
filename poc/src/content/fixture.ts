@@ -8,6 +8,31 @@
 import { Rng } from '../engine/rng';
 import type { Sex, Specialization, ResourceKey } from '../engine/model';
 
+/**
+ * How a species reproduces — SPECIES DATA the engine dispatches on, so the sim does
+ * not bake in one humanoid-mammalian model. Three modes the PoC exercises:
+ *   - sexual: two complementary sexes; only the `bearer` sex gestates; needs a mate.
+ *   - hermaphroditic: one sex; any two may pair-bond and EITHER may bear.
+ *   - asexual: an individual reproduces ALONE (budding/spawning); no mate, no bond.
+ * (Polygamy is acknowledged via `monogamous` but not yet implemented — the social
+ * tie is still a single spouse; that refactor is a separate step.)
+ */
+export type ReproductionMode = 'sexual' | 'hermaphroditic' | 'asexual';
+
+export interface Reproduction {
+  mode: ReproductionMode;
+  /** the sexes an individual may be ('sexual' needs ≥2; others typically one). */
+  sexes: string[];
+  /** sex that gestates (sexual mode). undefined => any individual can bear. */
+  bearer?: string;
+  /** does breeding happen inside an exclusive pair-bond? (asexual = false). */
+  pairBonds: boolean;
+  /** pair-bond exclusivity. (PoC is always monogamous; flag reserved for polygamy.) */
+  monogamous: boolean;
+  /** per-bearer yearly chance to produce a child, in the focused settlement. */
+  fecundity: number;
+}
+
 export interface Species {
   id: string;
   name: string;
@@ -23,6 +48,7 @@ export interface Species {
   elderhood: number; // age one becomes an elder
   fertileFrom: number; // youngest age that can bear/sire
   fertileTo: number; // oldest age that can bear/sire
+  reproduction: Reproduction;
   /** Syllable banks for a tiny phonetic name grammar (Warsim-style). */
   onset: string[];
   nucleus: string[];
@@ -38,6 +64,9 @@ export const SPECIES: Species[] = [
     elderhood: 68,
     fertileFrom: 20,
     fertileTo: 58,
+    // The Vael have no sexes: any two may join, and either may bear. Lower fecundity
+    // than a sexual species since ANY two can pair, so more couples form.
+    reproduction: { mode: 'hermaphroditic', sexes: ['vael'], pairBonds: true, monogamous: true, fecundity: 0.15 },
     onset: ['Ae', 'Sy', 'Th', 'El', 'Va', 'Ny', 'Lor', 'Cae'],
     nucleus: ['ri', 'la', 'we', 'no', 'ae', 'ly', 'sa'],
     coda: ['n', 'l', 'th', 'r', 's', 'ndor', 'wyn'],
@@ -50,6 +79,8 @@ export const SPECIES: Species[] = [
     elderhood: 54,
     fertileFrom: 16,
     fertileTo: 46,
+    // The Tamar are sexual: two sexes, only the bearer ('f') gestates, mates required.
+    reproduction: { mode: 'sexual', sexes: ['m', 'f'], bearer: 'f', pairBonds: true, monogamous: true, fecundity: 0.21 },
     onset: ['Bar', 'Hal', 'Dun', 'Ros', 'Mer', 'Gar', 'Wend', 'Tor'],
     nucleus: ['o', 'a', 'e', 'ic', 'um', 'ad'],
     coda: ['d', 'k', 'rin', 'son', 'wick', 'mund', 'ric'],
@@ -62,6 +93,9 @@ export const SPECIES: Species[] = [
     elderhood: 40,
     fertileFrom: 13,
     fertileTo: 34,
+    // The Grok spawn their own brood: asexual, no mate and no pair-bond needed.
+    // Much lower fecundity since EVERY fertile adult bears (not just bonded couples).
+    reproduction: { mode: 'asexual', sexes: ['grok'], pairBonds: false, monogamous: false, fecundity: 0.06 },
     onset: ['Gr', 'Mok', 'Zar', 'Ugg', 'Brak', 'Sno', 'Dru', 'Kaz'],
     nucleus: ['o', 'u', 'a', 'og', 'uk', 'ar'],
     coda: ['g', 'k', 'z', 'nak', 'tuk', 'rok', 'mash'],
@@ -189,8 +223,47 @@ export function generateFamily(rng: Rng): string {
   return rng.pick(FAMILY_ROOTS);
 }
 
-export function pickSex(rng: Rng): Sex {
-  return rng.chance(0.5) ? 'm' : 'f';
+export function pickSex(rng: Rng, speciesId: string): Sex {
+  const sexes = speciesById(speciesId).reproduction.sexes;
+  // preserve the exact 2-sex coin-flip draw, so sexual species are byte-unchanged
+  if (sexes.length === 2) return rng.chance(0.5) ? sexes[0] : sexes[1];
+  if (sexes.length === 1) return sexes[0];
+  return sexes[rng.int(sexes.length)];
+}
+
+// --- Reproduction accessors (the engine dispatches on species DATA, never on a
+//     hardcoded 'm'/'f' or two-parent assumption) ---
+
+/** Does this species form pair-bonds (marriages) to reproduce? Asexual ones don't. */
+export function pairBondsFor(speciesId: string): boolean {
+  return speciesById(speciesId).reproduction.pairBonds;
+}
+/** Does this species reproduce alone (no mate)? */
+export function isAsexual(speciesId: string): boolean {
+  return speciesById(speciesId).reproduction.mode === 'asexual';
+}
+/** Per-bearer yearly chance of a child. */
+export function fecundityOf(speciesId: string): number {
+  return speciesById(speciesId).reproduction.fecundity;
+}
+/** Can an individual of this species/sex gestate offspring? */
+export function canBear(speciesId: string, sex: string): boolean {
+  const r = speciesById(speciesId).reproduction;
+  if (r.mode === 'sexual') return r.bearer === undefined || sex === r.bearer;
+  return true; // hermaphroditic & asexual: any individual can bear
+}
+/**
+ * Could A and B form a reproductively viable pair-bond (for courtship & weddings)?
+ * Asexual species don't pair-bond to breed; a union needs at least one bearer; and
+ * if EITHER party is strictly sexual the pairing must be different-sex.
+ */
+export function unionViable(spA: string, sexA: string, spB: string, sexB: string): boolean {
+  const ra = speciesById(spA).reproduction;
+  const rb = speciesById(spB).reproduction;
+  if (!ra.pairBonds || !rb.pairBonds) return false;
+  if (!canBear(spA, sexA) && !canBear(spB, sexB)) return false;
+  if (ra.mode === 'sexual' || rb.mode === 'sexual') return sexA !== sexB;
+  return true;
 }
 
 export function pickTraits(rng: Rng): string[] {

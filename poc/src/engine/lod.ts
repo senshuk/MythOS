@@ -51,6 +51,8 @@ import {
   pickSpecialization,
   maturityOf,
   elderhoodOf,
+  pairBondsFor,
+  unionViable,
   PRODUCTION,
   CONSUMPTION,
   BASE_PRICE,
@@ -227,7 +229,7 @@ export function promote(world: World, s: Settlement): void {
       createActor(world, {
         given: generateGiven(rng, species),
         family: generateFamily(rng),
-        sex: pickSex(rng),
+        sex: pickSex(rng, species),
         speciesId: species,
         profession: pickProfession(rng),
         traits: pickTraits(rng),
@@ -241,30 +243,39 @@ export function promote(world: World, s: Settlement): void {
 }
 
 function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
-  const males: EntityId[] = [];
-  const females: EntityId[] = [];
-  for (const id of ids) {
-    if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
-    if (world.ties.get(id)!.spouse !== undefined) continue;
-    (world.identity.get(id)!.sex === 'm' ? males : females).push(id);
-  }
-  // pair by age proximity (sort both, match adjacent) so seeded couples are
-  // age-compatible instead of arbitrary array neighbours.
+  // eligible: adult, unmarried, from a PAIR-BONDING species (asexual ones never wed).
   const ageOf = (id: EntityId) => world.lifecycle.get(id)!.ageYears;
-  males.sort((x, y) => ageOf(x) - ageOf(y) || x - y);
-  females.sort((x, y) => ageOf(x) - ageOf(y) || x - y);
-  const pairs = Math.min(males.length, females.length);
-  for (let i = 0; i < pairs; i++) {
+  const elig = ids.filter((id) => {
+    const idn = world.identity.get(id)!;
+    if (!pairBondsFor(idn.speciesId)) return false;
+    if (ageOf(id) < maturityOf(idn.speciesId)) return false;
+    return world.ties.get(id)!.spouse === undefined;
+  });
+  // pair by age proximity: sort once, then each unmarried person takes the nearest-age
+  // viable partner ahead of them. Generic over sexes/modes — no male/female buckets.
+  elig.sort((x, y) => ageOf(x) - ageOf(y) || x - y);
+  const taken = new Set<EntityId>();
+  for (let i = 0; i < elig.length; i++) {
+    const a = elig[i];
+    if (taken.has(a)) continue;
     if (!rng.chance(0.45)) continue;
-    const m = males[i];
-    const f = females[i];
-    if (Math.abs(ageOf(m) - ageOf(f)) > 16) continue; // skip implausible gaps
-    world.ties.get(m)!.spouse = f;
-    world.ties.get(f)!.spouse = m;
-    const edge = getRel(world, m, f);
-    addThought(edge, 'wed', world.tick);
-    edge.flags.spouse = true;
-    edge.flags.friend = true;
+    const ia = world.identity.get(a)!;
+    for (let j = i + 1; j < elig.length; j++) {
+      const b = elig[j];
+      if (taken.has(b)) continue;
+      if (Math.abs(ageOf(a) - ageOf(b)) > 16) break; // sorted by age: nothing closer ahead
+      const ib = world.identity.get(b)!;
+      if (!unionViable(ia.speciesId, ia.sex, ib.speciesId, ib.sex)) continue;
+      taken.add(a);
+      taken.add(b);
+      world.ties.get(a)!.spouse = b;
+      world.ties.get(b)!.spouse = a;
+      const edge = getRel(world, a, b);
+      addThought(edge, 'wed', world.tick);
+      edge.flags.spouse = true;
+      edge.flags.friend = true;
+      break;
+    }
   }
 }
 
