@@ -224,6 +224,17 @@ button { font-family: inherit; }
 @keyframes bristle { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
 .focus-ring { animation: ring 2.6s ease-in-out infinite; }
 @keyframes ring { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
+/* in a space setting, settlements read as glowing star systems */
+.map-wrap.starfield .mnode circle { filter: drop-shadow(0 0 1.2px rgba(190, 205, 255, 0.7)); }
+
+/* the world-skin selector beside the map heading */
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.map-head h3 { flex: 1; }
+.skin-select {
+  background: var(--bg-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; min-height: 30px; cursor: pointer;
+}
+.skin-select:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.15); }
 .mnode text { pointer-events: none; user-select: none; font-family: var(--sans); }
 .mnode.clickable { cursor: pointer; }
 .mnode.clickable:hover circle { stroke: var(--cyan); stroke-width: 1.5; }

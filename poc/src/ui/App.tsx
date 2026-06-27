@@ -9,7 +9,8 @@ import { useState, useRef, useEffect } from 'react';
 import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
-import { paintTerrain } from './terrain';
+import { MAP_STYLES, DEFAULT_MAP_STYLE, type MapStyle } from '../content/mapstyles';
+import { paintTerrain, paintStarfield } from './terrain';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -111,6 +112,7 @@ export default function App() {
   const [saveName, setSaveName] = useState('quicksave');
   const [tab, setTab] = useState<'world' | 'chronicle' | 'inspector'>('world');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mapStyleId, setMapStyleId] = useState(DEFAULT_MAP_STYLE);
 
   const stat = sim.snapshot;
   // tapping an event/villager/place jumps to the Inspector tab on mobile (harmless on desktop)
@@ -228,6 +230,8 @@ export default function App() {
               onInspectSettlement={(id) => inspectRef({ kind: 'settlement', id })}
               onSetStoryteller={(id) => sim.setStoryteller(id)}
               onPossess={(id) => sim.possess(id)}
+              mapStyleId={mapStyleId}
+              onSetMapStyle={setMapStyleId}
               busy={sim.busy}
             />
             <HistoryFeed events={stat.recentEvents} onPickEvent={inspectEvent} onRef={inspectRef} />
@@ -279,39 +283,39 @@ const MAP_VB = { x: -8, y: -9, w: 116, h: 118 };
 function RegionMap({
   map,
   seed,
+  style,
   focusedId,
   onInspect,
   busy,
 }: {
   map: NonNullable<ReturnType<typeof useSim>['snapshot']>['map'];
   seed: number;
+  style: MapStyle;
   focusedId: number;
   onInspect: (id: number) => void;
   busy: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // paint procedural terrain once per world (deterministic from the seed)
+  // paint the backdrop per the pack's map style — deterministic from the seed. A
+  // surface theme paints terrain; 'starfield' paints space. (Presentation only.)
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
     c.width = 300;
     c.height = 305;
-    paintTerrain(
-      c,
-      seed,
-      map.nodes.map((n) => ({ x: n.x, y: n.y, ruined: n.ruined })),
-      MAP_VB,
-    );
-    // positions are fixed per world, so terrain depends only on the seed
+    const nodes = map.nodes.map((n) => ({ x: n.x, y: n.y, ruined: n.ruined }));
+    if (style.kind === 'starfield') paintStarfield(c, seed, nodes, MAP_VB, style.field);
+    else paintTerrain(c, seed, nodes, MAP_VB, style.theme);
+    // positions are fixed per world, so the backdrop depends only on seed + style
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed]);
+  }, [seed, style]);
 
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
   const radius = (pop: number) => 2.4 + 4.6 * Math.sqrt(pop / maxPop);
 
   return (
-    <div className="map-wrap">
+    <div className={style.kind === 'starfield' ? 'map-wrap starfield' : 'map-wrap'}>
       <canvas ref={canvasRef} className="map-terrain" />
       <svg className="map" viewBox="-8 -9 116 118" preserveAspectRatio="xMidYMid meet">
       {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
@@ -377,6 +381,8 @@ function Dashboard({
   onInspectSettlement,
   onSetStoryteller,
   onPossess,
+  mapStyleId,
+  onSetMapStyle,
   busy,
 }: {
   stat: NonNullable<ReturnType<typeof useSim>['snapshot']>;
@@ -385,8 +391,11 @@ function Dashboard({
   onInspectSettlement: (id: number) => void;
   onSetStoryteller: (id: string) => void;
   onPossess: (id: number) => void;
+  mapStyleId: string;
+  onSetMapStyle: (id: string) => void;
   busy: boolean;
 }) {
+  const mapStyle = MAP_STYLES.find((s) => s.id === mapStyleId)?.style ?? MAP_STYLES[0].style;
   return (
     <section className="panel dashboard">
       <h2>Year {stat.year}</h2>
@@ -473,8 +482,15 @@ function Dashboard({
         </>
       )}
 
-      <h3>Region map — click a settlement to read its story</h3>
-      <RegionMap map={stat.map} seed={stat.seed} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
+      <div className="map-head">
+        <h3>Region map — click a settlement to read its story</h3>
+        <select className="skin-select" value={mapStyleId} onChange={(e) => onSetMapStyle(e.target.value)} title="world skin (presentation only)">
+          {MAP_STYLES.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      </div>
+      <RegionMap map={stat.map} seed={stat.seed} style={mapStyle} focusedId={stat.focusedSettlementId} onInspect={onInspectSettlement} busy={busy} />
       <div className="legend">
         <span><i className="sw good" /> trade</span>
         <span><i className="sw bad" /> war</span>
