@@ -51,11 +51,16 @@ export function resolveIntent(world: World, a: EntityId, intent: Intent): void {
   }
 }
 
-/** Income earned by plying a profession. (Not yet produced by NPC deciders.) */
+/**
+ * Income earned by plying a profession (a chosen weekly action). The food grant
+ * covers several weeks of metabolism (needs.ts decays food ~28/week), so a fed
+ * actor only needs to work occasionally and spends the rest of its turns on the
+ * social loop — keeping marriages/births healthy while making work a real choice.
+ */
 function resolveWork(world: World, a: EntityId): void {
   const n = world.needs.get(a)!;
   const prof = world.profession.get(a)!;
-  n.food = clamp(n.food + 45, 0, 1000);
+  n.food = clamp(n.food + 140, 0, 1000);
   n.wealth = clamp(n.wealth + (PROFESSION_INCOME[prof] ?? 3) * 7, 0, 1000);
 }
 

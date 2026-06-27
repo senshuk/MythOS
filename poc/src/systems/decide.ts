@@ -6,10 +6,11 @@
  * lands here without touching resolution — and the player simply substitutes a
  * different producer for this same step.
  *
- * v1 deliberately reproduces the old socialWeekly behaviour exactly (idle or
- * socialize), so this refactor is behaviour-preserving and the determinism hash is
- * unchanged. The needs→`work` motivation arrives in the next step alongside the
- * needs-system change (so income becomes a chosen action for everyone).
+ * Needs now gate the choice: a hungry (or poor) actor *works* instead of
+ * socializing — the first real needs→goal link. Otherwise the actor behaves as
+ * before (socialize an acquaintance, else idle). Work replenishes the need
+ * (resolve.ts), so actors settle into working only when they must and spending the
+ * rest of their time on relationships — the source of marriages, feuds, and births.
  */
 import { type World, type EntityId, ADULT_AGE } from '../engine/model';
 import { type Intent } from '../engine/intent';
@@ -37,6 +38,11 @@ export function choosePartner(world: World, a: EntityId, adults: EntityId[]): En
 /** Produce this NPC's intent for the turn. `adults` is the live adult pool (passed
  *  in so partner selection draws RNG identically to the original loop). */
 export function decideActor(world: World, a: EntityId, adults: EntityId[]): Intent {
+  // subsistence first: hunger (or poverty) motivates plying your profession.
+  const needs = world.needs.get(a)!;
+  if (needs.food < 300 || needs.wealth < 250) return { kind: 'work' };
+
+  // otherwise be social, at the same activity rate as before
   if (!world.rng.chance(0.55)) return { kind: 'idle' };
   const b = choosePartner(world, a, adults);
   if (b === undefined) return { kind: 'idle' };
