@@ -198,6 +198,7 @@ button { font-family: inherit; }
   background: var(--bg-2); color: var(--ink); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 7px; font: inherit; font-size: 13px;
 }
+.storyteller.footer { margin-top: var(--space-2); opacity: 0.9; } /* a quiet footer, not prime content */
 .tension-bar { height: 6px; background: var(--bg-2); border-radius: 4px; margin-top: 9px; overflow: hidden; }
 .tension-fill { height: 100%; background: linear-gradient(90deg, var(--jade), var(--neutral), var(--rose)); }
 

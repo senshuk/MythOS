@@ -537,30 +537,6 @@ function Dashboard({
     <section className="panel dashboard">
       <h2>Year {stat.year}</h2>
 
-      <div className="storyteller">
-        <label>
-          The Fates:{' '}
-          <select
-            value={stat.director.personality}
-            disabled={busy}
-            onChange={(e) => onSetStoryteller(e.target.value)}
-          >
-            {stat.director.options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="muted">
-          {' '}
-          · {stat.director.mood} · {stat.director.incidents} turns of fate
-        </span>
-        <div className="tension-bar" title="the gathering temper of the age">
-          <div className="tension-fill" style={{ width: `${Math.min(100, stat.director.tension / 2)}%` }} />
-        </div>
-      </div>
-
       <div className="worldscale">
         <div>
           <span className="ws-num">{stat.worldPopulation.toLocaleString()}</span> souls draw breath
@@ -578,69 +554,6 @@ function Dashboard({
           <strong>{stat.worldWealth.toLocaleString()}</strong> in wealth flows along the trade roads below
         </div>
       </div>
-
-      {(stat.eras.length > 0 || stat.chronicle.length > 0) && (
-        <>
-          <h3>Chronicle — the world remembers</h3>
-          {stat.eras.length > 0 && (
-            <ul className="eras">
-              {stat.eras.slice(0, 6).map((e, i) => (
-                <li key={i}>
-                  <span className="muted">y{e.year}:</span> {e.title}
-                </li>
-              ))}
-            </ul>
-          )}
-          <ul className="legends">
-            {stat.chronicle.slice(0, 8).map((t, i) => (
-              <li key={i}>
-                <span className="muted">y{t.year}</span> {t.text}
-              </li>
-            ))}
-          </ul>
-          {stat.historicalFigures.length > 0 && (
-            <>
-              <h4>Figures of history</h4>
-              <ul className="figures-hist">
-                {stat.historicalFigures.slice(0, 8).map((f, i) => (
-                  <li key={i}>
-                    <span className="fig-name">{f.name}</span>
-                    <span className="muted">
-                      {' '}
-                      — {f.role}
-                      {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
-                      {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
-
-      {stat.houses.length > 0 && (
-        <>
-          <h3>Great Houses — the dynasties of the age</h3>
-          <ul className="houses">
-            {stat.houses.slice(0, 8).map((h, i) => (
-              <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                <span className="house-name">House {h.name}</span>
-                <span className="house-status">
-                  {h.extinctYear !== undefined
-                    ? `fell with its seat, y${h.extinctYear}`
-                    : h.seat
-                      ? `rules ${h.seat}`
-                      : 'out of power'}
-                </span>
-                <span className="muted house-meta">
-                  founded y{h.foundedYear} in {h.origin} · {h.rulers} {h.rulers === 1 ? 'ruler' : 'rulers'} · {h.prestige} renown
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
 
       <div className="map-head">
         <h3>Map of the known world — click a settlement to read its tale</h3>
@@ -735,6 +648,94 @@ function Dashboard({
           </li>
         ))}
       </ul>
+
+      {(stat.eras.length > 0 || stat.chronicle.length > 0) && (
+        <>
+          <h3>Chronicle — the world remembers</h3>
+          {stat.eras.length > 0 && (
+            <ul className="eras">
+              {stat.eras.slice(0, 6).map((e, i) => (
+                <li key={i}>
+                  <span className="muted">y{e.year}:</span> {e.title}
+                </li>
+              ))}
+            </ul>
+          )}
+          <ul className="legends">
+            {stat.chronicle.slice(0, 8).map((t, i) => (
+              <li key={i}>
+                <span className="muted">y{t.year}</span> {t.text}
+              </li>
+            ))}
+          </ul>
+          {stat.historicalFigures.length > 0 && (
+            <>
+              <h4>Figures of history</h4>
+              <ul className="figures-hist">
+                {stat.historicalFigures.slice(0, 8).map((f, i) => (
+                  <li key={i}>
+                    <span className="fig-name">{f.name}</span>
+                    <span className="muted">
+                      {' '}
+                      — {f.role}
+                      {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
+                      {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+
+      {stat.houses.length > 0 && (
+        <>
+          <h3>Great Houses — the dynasties of the age</h3>
+          <ul className="houses">
+            {stat.houses.slice(0, 8).map((h, i) => (
+              <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
+                <span className="house-name">House {h.name}</span>
+                <span className="house-status">
+                  {h.extinctYear !== undefined
+                    ? `fell with its seat, y${h.extinctYear}`
+                    : h.seat
+                      ? `rules ${h.seat}`
+                      : 'out of power'}
+                </span>
+                <span className="muted house-meta">
+                  founded y{h.foundedYear} in {h.origin} · {h.rulers} {h.rulers === 1 ? 'ruler' : 'rulers'} · {h.prestige} renown
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <h3>The tone of this age</h3>
+      <div className="storyteller footer">
+        <label>
+          The Fates:{' '}
+          <select
+            value={stat.director.personality}
+            disabled={busy}
+            onChange={(e) => onSetStoryteller(e.target.value)}
+          >
+            {stat.director.options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="muted">
+          {' '}
+          · {stat.director.mood} · {stat.director.incidents} turns of fate
+        </span>
+        <div className="tension-bar" title="the gathering temper of the age">
+          <div className="tension-fill" style={{ width: `${Math.min(100, stat.director.tension / 2)}%` }} />
+        </div>
+      </div>
     </section>
   );
 }
