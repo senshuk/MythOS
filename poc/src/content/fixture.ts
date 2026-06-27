@@ -8,6 +8,7 @@
 import { Rng } from '../engine/rng';
 import { DAYS_PER_YEAR } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec } from '../engine/model';
+import { biomeOf } from './biomes';
 
 /**
  * How a species reproduces — SPECIES DATA the engine dispatches on, so the sim does
@@ -441,32 +442,23 @@ export const BASE_PRICE: Record<ResourceKey, number> = { food: 1, materials: 2, 
  * hills & forest → materials (ore, stone, timber); coasts & forest → trade goods.
  */
 export function terrainYields(a: Record<string, number>): Record<ResourceKey, number> {
-  const fert = a.fertility ?? 0;
-  const elev = a.elevation ?? 0;
-  const moist = a.moisture ?? 0;
-  const coastal = (a.coast ?? 0) > 0.6; // ~ within reach of the sea
-  const forest = moist > 0.55 && elev > 0.42 && elev < 0.72;
-  const hills = elev > 0.6;
+  // the BIOME sets the baseline (a grassland farms, a desert mines, a jungle is lush);
+  // the SEA adds fishing, and fresh water lifts farming a touch. So what a place makes is
+  // its climate, not just a fertility number — and a desert world really is harsh.
+  const b = biomeOf(a);
+  const coastal = (a.coast ?? 0) > 0.6;
+  const fresh = a.freshWater ?? 0;
   return {
-    // food: poor dry inland sites run a deficit (famine-prone unless fed by trade), while
-    // farmland and — crucially — the SEA feed a surplus. Coastal fishing is what makes an
-    // archipelago (little farmland, all coast) a viable world rather than a starving one.
-    food: Math.max(0.2, 0.38 + fert * 1.2 + (coastal ? 0.62 : 0)),
-    materials: Math.max(0.05, 0.12 + (hills ? (elev - 0.6) * 2.3 : 0) + (forest ? 0.55 : 0)),
-    goods: Math.max(0.05, 0.1 + (coastal ? 0.55 : 0) + (forest ? 0.18 : 0) + fert * 0.1),
+    food: Math.max(0.2, b.yields.food + (coastal ? 0.55 : 0) + fresh * 0.18),
+    materials: Math.max(0.05, b.yields.materials),
+    goods: Math.max(0.05, b.yields.goods + (coastal ? 0.5 : 0)),
   };
 }
 
-/** A short label for what a place makes (display only), read off its site attributes. */
+/** A short label for what a place makes (display only) — from its biome (+ fishing). */
 export function specializationFromTerrain(a: Record<string, number>): string {
-  const elev = a.elevation ?? 0;
-  const moist = a.moisture ?? 0;
-  const fert = a.fertility ?? 0;
-  if ((a.coast ?? 0) > 0.6) return fert > 0.5 ? 'fishing & farms' : 'fishing & trade';
-  if (elev > 0.66) return 'mining';
-  if (moist > 0.55 && elev > 0.45) return 'forestry';
-  if (fert > 0.5) return 'farming';
-  return 'mixed';
+  if ((a.coast ?? 0) > 0.6) return `fishing & ${biomeOf(a).craft}`;
+  return biomeOf(a).craft;
 }
 
 // ---- relationships: what each kind of thought is worth ----

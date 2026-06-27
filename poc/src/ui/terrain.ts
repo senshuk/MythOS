@@ -7,6 +7,7 @@
  * overlay (the SVG) is shared on top — only the backdrop changes.
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
+import { biomeOf } from '../content/biomes';
 import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN } from '../engine/geography';
 
 export interface ViewBox {
@@ -34,16 +35,6 @@ function bilinear(arr: Float32Array, N: number, gx: number, gy: number): number 
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
 }
 
-/** land colour from elevation + fertility, using the pack theme's bands. */
-function landColor(theme: SurfaceTheme, e: number, fert: number): RGB {
-  const top = theme.land[theme.land.length - 1];
-  if (e >= top.upTo) return theme.peak;
-  for (const band of theme.land) {
-    if (e < band.upTo) return band.wet && fert > 0.4 ? band.wet : band.dry;
-  }
-  return theme.peak;
-}
-
 /** Paint the engine's geography, coloured by the pack theme. `vb` matches the overlay
  *  SVG viewBox so settlements land exactly on the terrain that bred them. */
 export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme): void {
@@ -53,7 +44,8 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   if (!ctx) return;
   const N = geo.size;
   const E = geo.elevation;
-  const F = geo.fertility;
+  const M = geo.moisture;
+  const T = geo.temperature;
   const WTR = geo.water;
   const sea = geo.seaLevel;
   const water = theme.water ?? { deep: [18, 26, 40] as RGB, shallow: [40, 60, 80] as RGB, level: sea };
@@ -83,8 +75,11 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         [r, g, b] = river;
       } else {
         const e = bilinear(E, N, gx, gy);
-        const fert = bilinear(F, N, gx, gy);
-        [r, g, b] = landColor(theme, e, fert);
+        // colour by BIOME (the pack's climate taxonomy), not an elevation band
+        const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
+        r = col[0];
+        g = col[1];
+        b = col[2];
         // NW hillshade for relief
         const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
         const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;

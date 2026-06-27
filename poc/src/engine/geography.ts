@@ -37,6 +37,7 @@ export interface Geography {
   seaLevel: number;
   elevation: Float32Array; // 0..1
   moisture: Float32Array; // 0..1
+  temperature: Float32Array; // 0..1 (cold→hot): latitude − elevation lapse + the world's climate
   fertility: Float32Array; // 0..1 (arable potential; 0 in water/mountain)
   water: Uint8Array; // WaterKind per cell
   /** distance (in cells) to the nearest fresh water (river/lake); large if none near. */
@@ -84,27 +85,34 @@ const FREQ = 0.05; // world-units → noise scale (smaller = larger landmasses)
 /** Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
  *  wet the world is (dry/desert → low, water world → high); `freq` sets the noise scale
  *  (smaller = larger, smoother landmasses; larger = broken-up, island-y terrain). */
-export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL, freq = FREQ): Geography {
+export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_LEVEL, freq = FREQ, baseTemp = 0): Geography {
   const N = size;
   const NN = N * N;
   const elevation = new Float32Array(NN);
   const moisture = new Float32Array(NN);
+  const temperature = new Float32Array(NN);
   const water = new Uint8Array(NN);
   const fertility = new Float32Array(NN);
   const wOf = (i: number) => GEO_MIN + (i / (N - 1)) * GEO_SPAN;
 
-  // 1) elevation (base fbm + ridged detail for mountain ranges) + an independent
-  //    moisture field, sampled across the world extent. No edge treatment: the noise
-  //    decides where land and water fall, so topology is whatever the seed makes.
+  // 1) elevation (base fbm + ridged detail for mountain ranges), an independent moisture
+  //    field, and TEMPERATURE — colder toward one pole (latitude) and with altitude
+  //    (mountains keep snow), shifted by the world's overall climate (baseTemp: an ice
+  //    world vs a hot one). Together temperature × moisture make biomes (the pack's job).
   for (let j = 0; j < N; j++) {
     const wy = wOf(j);
+    const lat = (wy - GEO_MIN) / GEO_SPAN; // 0 (one pole) … 1 (the other)
     for (let i = 0; i < N; i++) {
       const wx = wOf(i);
       let e = fbm(wx * freq, wy * freq, seed, 5);
       e = e * 0.82 + (0.5 - Math.abs(fbm(wx * freq * 2.4, wy * freq * 2.4, seed + 99, 3) - 0.5)) * 0.36;
       const k = j * N + i;
-      elevation[k] = e < 0 ? 0 : e > 1 ? 1 : e;
+      const elev = e < 0 ? 0 : e > 1 ? 1 : e;
+      elevation[k] = elev;
       moisture[k] = fbm(wx * freq * 0.85 + 40, wy * freq * 0.85 + 40, seed + 7, 3);
+      const tNoise = fbm(wx * freq * 1.3 + 90, wy * freq * 1.3 + 90, seed + 23, 2);
+      const t = baseTemp + 0.12 + lat * 0.72 - elev * 0.5 + (tNoise - 0.5) * 0.22;
+      temperature[k] = t < 0 ? 0 : t > 1 ? 1 : t;
     }
   }
 
@@ -193,7 +201,7 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
     fertility[k] = Math.min(1, moisture[k] * 0.7 * elevFit + waterBoost);
   }
 
-  return { size: N, seaLevel, elevation, moisture, fertility, water, freshDist, seaDist };
+  return { size: N, seaLevel, elevation, moisture, temperature, fertility, water, freshDist, seaDist };
 }
 
 /** Multi-source BFS distance (in cells) to the nearest cell matching `is`. */
@@ -244,6 +252,9 @@ export function fertilityAt(geo: Geography, x: number, y: number): number {
 }
 export function moistureAt(geo: Geography, x: number, y: number): number {
   return geo.moisture[cellOf(geo, x, y)];
+}
+export function temperatureAt(geo: Geography, x: number, y: number): number {
+  return geo.temperature[cellOf(geo, x, y)];
 }
 
 /**

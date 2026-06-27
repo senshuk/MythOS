@@ -713,6 +713,29 @@ describe('the world is a SUBSTRATE (geography is one kind); worlds are diverse',
   });
 });
 
+describe('climate & biomes (temperature × moisture drive the map and the economy)', () => {
+  it('temperature is deterministic and follows latitude (one pole cold, the other warm)', () => {
+    const g = generateGeography(7);
+    expect(g.temperature.length).toBe(g.elevation.length);
+    const N = g.size;
+    let topSum = 0;
+    let botSum = 0;
+    for (let i = 0; i < N; i++) {
+      topSum += g.temperature[i];
+      botSum += g.temperature[(N - 1) * N + i];
+    }
+    expect(botSum / N).toBeGreaterThan(topSum / N); // warmer toward the equatorward edge
+    expect(Array.from(generateGeography(7).temperature)).toEqual(Array.from(g.temperature)); // deterministic
+  });
+
+  it('biomes give a surface world a VARIED economy — climate, not one fertility number', () => {
+    let w = createWorld(1, false);
+    for (let seed = 1; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed, false);
+    const specs = new Set(w.settlements.map((s) => s.econ.specialization));
+    expect(specs.size).toBeGreaterThanOrEqual(3); // farming / forestry / hunting / mining / fishing…
+  });
+});
+
 describe('geography is the world substrate (drives where civilizations are founded)', () => {
   it('geography is deterministic from the seed', () => {
     const a = generateGeography(123);
