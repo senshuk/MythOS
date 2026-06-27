@@ -66,58 +66,55 @@ export default function App() {
   const [seedInput, setSeedInput] = useState('123456');
   const [historyYears, setHistoryYears] = useState(200);
   const [saveName, setSaveName] = useState('quicksave');
+  const [tab, setTab] = useState<'world' | 'chronicle' | 'inspector'>('world');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const stat = sim.snapshot;
+  // tapping an event/villager jumps to the Inspector tab on mobile (harmless on desktop)
+  const inspectActor = (id: number) => { sim.inspectActor(id); setTab('inspector'); };
+  const inspectEvent = (id: number) => { sim.inspectEvent(id); setTab('inspector'); };
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="title">
-          MythOS · <strong>The Living Village</strong>
-          {stat && <span className="village"> — {stat.settlementName}</span>}
+        <div className="brand">
+          <span className="logo">Myth<span className="dot">OS</span></span>
+          {stat && <span className="village">{stat.settlementName}</span>}
         </div>
-        <div className="controls">
+        <button className="menu-toggle" onClick={() => setMenuOpen((o) => !o)} aria-label="world menu" aria-expanded={menuOpen}>
+          ☰
+        </button>
+        <div className={`controls ${menuOpen ? 'open' : ''}`}>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              const seed = Number(seedInput) || 0;
+              if (historyYears > 0) sim.genesis(seed, historyYears);
+              else sim.reset(seed);
+              setMenuOpen(false);
+            }}
+            disabled={sim.busy}
+          >
+            {historyYears > 0 ? 'Forge world' : 'New world'}
+          </button>
           <label>
-            seed{' '}
-            <input
-              value={seedInput}
-              onChange={(e) => setSeedInput(e.target.value)}
-              size={8}
-            />
+            seed
+            <input value={seedInput} onChange={(e) => setSeedInput(e.target.value)} size={8} />
           </label>
           <label>
-            history{' '}
-            <select
-              value={historyYears}
-              onChange={(e) => setHistoryYears(Number(e.target.value))}
-              disabled={sim.busy}
-            >
+            history
+            <select value={historyYears} onChange={(e) => setHistoryYears(Number(e.target.value))} disabled={sim.busy}>
               <option value={0}>none</option>
               <option value={100}>1 century</option>
               <option value={200}>2 centuries</option>
               <option value={500}>5 centuries</option>
             </select>
           </label>
-          <button
-            onClick={() => {
-              const seed = Number(seedInput) || 0;
-              if (historyYears > 0) sim.genesis(seed, historyYears);
-              else sim.reset(seed);
-            }}
-            disabled={sim.busy}
-          >
-            {historyYears > 0 ? 'Forge world' : 'New world'}
-          </button>
-          <button onClick={() => sim.advance(1)} disabled={sim.busy}>
-            +1 year
-          </button>
-          <button onClick={() => sim.advance(10)} disabled={sim.busy}>
-            +10 years
-          </button>
-          <button onClick={() => sim.advance(60)} disabled={sim.busy}>
-            +60 years
-          </button>
-
+          <span className="time-inline">
+            <button onClick={() => sim.advance(1)} disabled={sim.busy}>+1y</button>
+            <button onClick={() => sim.advance(10)} disabled={sim.busy}>+10y</button>
+            <button onClick={() => sim.advance(60)} disabled={sim.busy}>+60y</button>
+          </span>
           <span className="ctl-sep" />
           <input
             value={saveName}
@@ -126,11 +123,7 @@ export default function App() {
             title="save slot name"
             aria-label="save name"
           />
-          <button
-            onClick={() => sim.save(saveName.trim() || 'quicksave')}
-            disabled={sim.busy || !stat}
-            title="save the world to this slot"
-          >
+          <button onClick={() => sim.save(saveName.trim() || 'quicksave')} disabled={sim.busy || !stat} title="save the world to this slot">
             Save
           </button>
           <button
@@ -160,7 +153,6 @@ export default function App() {
               ))}
             </select>
           )}
-
           {sim.busy && <span className="busy">simulating…</span>}
         </div>
       </header>
@@ -184,10 +176,10 @@ export default function App() {
               get a goal and act a week at a time — and the world keeps going around you.
             </div>
           )}
-          <div className="grid">
+          <div className="grid" data-tab={tab}>
             <Dashboard
               stat={stat}
-              onPickActor={(id) => sim.inspectActor(id)}
+              onPickActor={inspectActor}
               onFocus={(id) => sim.focusSettlement(id)}
               onSetStoryteller={(id) => sim.setStoryteller(id)}
               onPossess={(id) => sim.possess(id)}
@@ -195,20 +187,38 @@ export default function App() {
             />
             <HistoryFeed
               events={stat.recentEvents}
-              onPickEvent={(id) => sim.inspectEvent(id)}
-              onPickActor={(id) => sim.inspectActor(id)}
+              onPickEvent={inspectEvent}
+              onPickActor={inspectActor}
             />
             <Inspector
               actorDetail={sim.actorDetail}
               eventChain={sim.eventChain}
               actorsById={stat.actors}
               playerId={stat.player?.id}
-              onPickActor={(id) => sim.inspectActor(id)}
-              onPickEvent={(id) => sim.inspectEvent(id)}
+              onPickActor={inspectActor}
+              onPickEvent={inspectEvent}
               onPossess={(id) => sim.possess(id)}
               onClose={sim.clearInspect}
             />
           </div>
+          <nav className="bottombar">
+            <div className="time-bar">
+              <button onClick={() => sim.advance(1)} disabled={sim.busy}>+1 year</button>
+              <button onClick={() => sim.advance(10)} disabled={sim.busy}>+10 years</button>
+              <button onClick={() => sim.advance(60)} disabled={sim.busy}>+60 years</button>
+            </div>
+            <div className="tabs">
+              <button className={tab === 'world' ? 'active' : ''} onClick={() => setTab('world')}>
+                🗺 World
+              </button>
+              <button className={tab === 'chronicle' ? 'active' : ''} onClick={() => setTab('chronicle')}>
+                📜 Chronicle
+              </button>
+              <button className={tab === 'inspector' ? 'active' : ''} onClick={() => setTab('inspector')}>
+                🔍 Inspect
+              </button>
+            </div>
+          </nav>
         </>
       )}
       <footer className="foot">
