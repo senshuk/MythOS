@@ -280,7 +280,7 @@ export default function App() {
   );
 }
 
-const MAP_VB = { x: -8, y: -9, w: 116, h: 118 };
+const MAP_VB = { x: -10, y: -12, w: 190, h: 193 };
 // fallbacks so the backdrop always matches the WORLD's substrate, whatever skin is picked:
 // a galaxy renders as a starfield, a surface world as terrain.
 const STAR_FIELD = (MAP_STYLES.find((s) => s.style.kind === 'starfield')?.style as Extract<MapStyle, { kind: 'starfield' }> | undefined)?.field;
@@ -393,7 +393,13 @@ function RegionMap({
 
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
-  const radius = (pop: number) => 2.4 + 4.6 * Math.sqrt(pop / maxPop);
+  const radius = (pop: number) => 1.7 + 3.4 * Math.sqrt(pop / maxPop);
+  // on a big, busy map only the GREATEST cities are labelled (others are dots with a
+  // hover name) — zoom in to read them all, like a world atlas.
+  const labelIds = new Set(
+    [...map.nodes].sort((a, b) => b.population - a.population).slice(0, 14).map((n) => n.id),
+  );
+  const showLabels = view.s > 2.2;
 
   return (
     <div
@@ -406,7 +412,7 @@ function RegionMap({
     >
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
         <canvas ref={canvasRef} className="map-terrain" />
-        <svg className="map" viewBox="-8 -9 116 118" preserveAspectRatio="xMidYMid meet">
+        <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
           {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
           {map.edges.map((e, i) => {
             const a = nodeById.get(e.a)!;
@@ -456,19 +462,21 @@ function RegionMap({
                   strokeDasharray={n.ruined ? '0.8 0.8' : undefined}
                   opacity={n.ruined ? 0.6 : 0.94}
                 />
-                <text
-                  x={n.x}
-                  y={n.y - r - 1.3}
-                  textAnchor="middle"
-                  fontSize="2.8"
-                  fill={n.ruined ? 'var(--rose)' : 'var(--ink-dim)'}
-                  stroke="rgba(8,9,13,0.9)"
-                  strokeWidth={0.7}
-                  style={{ paintOrder: 'stroke' }}
-                  opacity={n.ruined ? 0.8 : 1}
-                >
-                  {n.ruined ? `⚑ ${n.name}` : n.name}
-                </text>
+                {(labelIds.has(n.id) || focused || showLabels) && (
+                  <text
+                    x={n.x}
+                    y={n.y - r - 1.3}
+                    textAnchor="middle"
+                    fontSize="2.8"
+                    fill={n.ruined ? 'var(--rose)' : 'var(--ink-dim)'}
+                    stroke="rgba(8,9,13,0.9)"
+                    strokeWidth={0.7}
+                    style={{ paintOrder: 'stroke' }}
+                    opacity={n.ruined ? 0.8 : 1}
+                  >
+                    {n.ruined ? `⚑ ${n.name}` : n.name}
+                  </text>
+                )}
               </g>
             );
           })}

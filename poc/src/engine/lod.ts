@@ -58,7 +58,7 @@ import {
   unionViable,
   pickGovernment,
   hasLeader,
-  pickCulture,
+  CULTURES,
   culturalDistance,
   mostOpposedValue,
   RESOURCES,
@@ -68,6 +68,7 @@ import {
   CONSUMPTION,
   BASE_PRICE,
 } from '../content/fixture';
+import { biomeOf } from '../content/biomes';
 import { deathProbability } from '../systems/lifecycle';
 
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
@@ -80,78 +81,162 @@ const NAME_B = ['reach', 'ford', 'hollow', 'mere', 'barrow', 'gate', 'wick', 'fe
 
 // ----------------------------------------------------------- worldgen --------
 
+/** A people's identity — carried by colonists to every daughter settlement, so a culture
+ *  occupies a contiguous TERRITORY rather than the map being a random scatter. */
+interface People {
+  species: string;
+  culture: string;
+  government: string;
+}
+/** A settlement-in-the-making during the pre-history. */
+interface Proto {
+  site: Site;
+  people: People;
+  pop: number;
+  foundedYear: number;
+}
+
+const MIN_SPACING = 12; // settlements don't crowd
+const PREHISTORY_YEARS = 180; // centuries of growth before the world is "now"
+
+/**
+ * Grow the world's settlements through a PRE-HISTORY (Dwarf-Fortress style) rather than
+ * dropping them all at year 0. A few founding PEOPLES arise far apart, each a distinct
+ * culture; over the centuries they GROW and COLONISE nearby suitable land, their colonists
+ * carrying the parent's culture — so the map fills with cultural TERRITORIES, settlements
+ * have real founding YEARS, and where two peoples' frontiers meet a border emerges. The
+ * world the player inherits is a residue of history, not a placement.
+ */
 export function createSettlements(world: World): void {
   const gen = new Rng(mixSeed(world.seed, 0x5e77));
   const sub = world.substrate;
 
-  // 1) WHERE to found — the SUBSTRATE decides. It scores a pool of viable candidate sites
-  //    (by whatever "habitable" means for this kind of world); we greedily pick the best
-  //    that are well-spaced, relax spacing where good sites are scarce, then fall back to
-  //    any habitable spot. No land/water assumption lives here — that's the substrate's.
+  // the substrate scores a pool of viable sites; richness tracks how much GOOD ground the
+  // world offers (a sparse archipelago seats fewer than a land-rich pangaea).
   const cands = sub.candidates(gen);
   cands.sort((a, b) => b.suitability - a.suitability || a.pos.x - b.pos.x || a.pos.y - b.pos.y);
-  // richness tracks how much GOOD ground the world actually offers: a land-rich pangaea
-  // seats many settlements, a sparse archipelago only a few — so towns sit on viable
-  // sites, not barren fallbacks that would starve the whole region.
-  const target = Math.min(sub.settlements, Math.max(6, Math.round(cands.length / 24)));
-  const sites: Site[] = [];
-  const spaced = (c: Site, min: number) => sites.every((p) => sub.distance(p.pos, c.pos) >= min);
-  for (const c of cands) {
-    if (sites.length >= target) break;
-    if (spaced(c, 13)) sites.push(c);
+  // richness tracks how much GOOD ground the world offers (land amount) AND how FOOD-RICH
+  // its climate is: a frozen or desert world is SPARSE (it clings to a few viable coasts &
+  // oases) while a lush temperate world teems — so harsh worlds stay small but viable
+  // instead of over-founding and collapsing to ruins.
+  // judge by the LAND's own food (the biome, before coastal fishing) so a cold world's
+  // viable coasts don't mask how harsh its interior is.
+  const sample = cands.slice(0, 200);
+  const avgFood = sample.length ? sample.reduce((s, c) => s + biomeOf(c.attributes).yields.food, 0) / sample.length : 1;
+  const foodScale = clamp((avgFood - 0.45) / 0.6, 0.35, 1.05);
+  const target = Math.min(sub.settlements, Math.max(6, Math.round((cands.length / 24) * foodScale)));
+
+  const protos: Proto[] = [];
+  const occupied = (pos: Vec2, min: number) => protos.some((p) => sub.distance(p.site.pos, pos) < min);
+  // a people only settles land it can roughly FEED itself on (biome + coastal fishing). So
+  // on a cold or desert world colonists hug the viable coasts/oases rather than founding
+  // doomed interior colonies that just become ruins — harsh worlds end up sparse but alive.
+  const viable = (site: Site) => terrainYields(site.attributes).food >= 0.8;
+
+  // 1) ORIGINS — a few founding peoples on the best, widely-spaced sites (so territories
+  //    are distinct), each a different culture (the people the colonists will carry).
+  const peoplesCount = Math.max(2, Math.min(5, 2 + Math.floor(target / 5)));
+  const cultureBag = CULTURES.map((c) => c.id);
+  for (let p = 0; p < peoplesCount; p++) {
+    const site = cands.find((c) => !occupied(c.pos, 55) && viable(c)); // origins: viable, far apart
+    if (!site) break;
+    const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
+    protos.push({
+      site,
+      people: { species: speciesForCulture(culture, gen), culture, government: pickGovernment(gen) },
+      pop: gen.range(45, 70),
+      foundedYear: 0,
+    });
   }
-  for (let relax = 10; sites.length < target && relax >= 0; relax -= 2) {
-    for (const c of cands) {
-      if (sites.length >= target) break;
-      if (sites.includes(c)) continue;
-      if (spaced(c, relax)) sites.push(c);
+
+  // 2) SPREAD — each pre-history year settlements grow, and a prosperous, established one
+  //    may send colonists to the best unclaimed land within reach, founding a daughter of
+  //    its OWN people. Stops once the world is as full as its land allows.
+  for (let yr = 1; yr <= PREHISTORY_YEARS; yr++) {
+    for (const s of protos) {
+      // carrying capacity is limited by FOOD (the biome), not just the land — so a cold or
+      // desert settlement grows to a SMALL sustainable size and enters the live sim viable,
+      // instead of over-growing then crashing to ruin.
+      const cap = 260 * s.site.capacity * clamp(terrainYields(s.site.attributes).food, 0.5, 1.3);
+      s.pop += s.pop * 0.045 * (1 - s.pop / cap);
+    }
+    if (protos.length >= target) continue;
+    for (const parent of [...protos]) {
+      if (protos.length >= target) break;
+      if (yr - parent.foundedYear < 12 || parent.pop < 120 || !gen.chance(0.03)) continue;
+      const site = colonySite(cands, protos, parent, sub);
+      if (!site) continue;
+      protos.push({ site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
+      parent.pop = Math.max(60, parent.pop - 24); // colonists depart
     }
   }
-  for (let guard = 0; sites.length < target && guard < 4000; guard++) {
-    const f = sub.fallbackSite(gen);
-    if (f) sites.push(f);
-    else break; // no habitable ground left — found however many we have
+  // fill any shortfall (peoples hemmed in) from the best unclaimed land, joining the
+  // nearest people — so the world reaches its size even if expansion stalled.
+  for (let guard = 0; protos.length < target && guard < 5000; guard++) {
+    const c = cands.find((x) => !occupied(x.pos, MIN_SPACING) && viable(x));
+    if (!c) break;
+    const near = protos.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
+    protos.push({ site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
   }
-  const count = Math.min(target, sites.length);
 
-  // 2) FOUND a settlement at each site — the more generous the site, the larger the founding.
+  // 3) FOUND each settlement, oldest first, dating the event & its founder to its year.
+  protos.sort((a, b) => a.foundedYear - b.foundedYear || a.site.pos.x - b.site.pos.x || a.site.pos.y - b.site.pos.y);
   const used = new Set<string>();
-  for (let i = 0; i < count; i++) {
-    const site = sites[i];
+  for (let i = 0; i < protos.length; i++) {
+    const d = protos[i];
+    world.tick = d.foundedYear * DAYS_PER_YEAR; // so the founding event & founder are dated right
     let name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     while (used.has(name)) name = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
     used.add(name);
 
-    const dominant = SPECIES[gen.int(SPECIES.length)].id;
-    const pop = Math.round(clamp(60 + site.suitability * 26 + gen.next() * 40, 40, 340));
-    const macro = freshBands(pop, dominant, gen);
+    // cap the STARTING size (the live sim grows it on toward the land's full capacity) —
+    // keeps a focused settlement's live-actor count, and so worldgen cost, in check.
+    const pop = Math.round(clamp(d.pop, 20, 360));
+    const macro = freshBands(pop, d.people.species, gen);
     macro.stability = gen.range(-10, 50);
 
     const s: Settlement = {
       id: i,
       name,
-      pos: { ...site.pos },
-      foundedYear: 0,
+      pos: { ...d.site.pos },
+      foundedYear: d.foundedYear,
       detailed: false,
       epoch: 0,
       rngState: mixSeed(world.seed, i + 1),
-      governmentId: pickGovernment(gen),
-      cultureId: pickCulture(gen, dominant),
-      capacity: site.capacity,
+      governmentId: d.people.government,
+      cultureId: d.people.culture,
+      capacity: d.site.capacity,
       macro,
-      econ: initEconomy(gen, pop, site),
+      econ: initEconomy(gen, pop, d.site),
     };
     world.settlements.push(s);
-    // mint the founder so the founding has a named person. In a polity with a leader
-    // the founder is also its first ruler; a leaderless polity records the founder in
-    // history but has no ongoing ruler.
-    const founder = mintFigure(world, s, 0, gen, 'founder');
+    const founder = mintFigure(world, s, d.foundedYear, gen, 'founder');
     if (hasLeader(s.governmentId)) s.currentRulerId = founder.id;
     emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop });
   }
 
+  world.tick = PREHISTORY_YEARS * DAYS_PER_YEAR; // the world is "now" at the end of pre-history
   buildRegionGraph(world, gen);
   world.geoRngState = mixSeed(world.seed, 0x6e0);
+}
+
+/** A species that calls this culture home (else any species) — so a people is coherent. */
+function speciesForCulture(cultureId: string, gen: Rng): string {
+  const match = SPECIES.filter((s) => s.defaultCulture === cultureId);
+  return (match.length ? match[gen.int(match.length)] : SPECIES[gen.int(SPECIES.length)]).id;
+}
+
+/** The best unclaimed site within colonising reach of `parent` (cands are suitability-sorted,
+ *  so the first that qualifies is the most desirable land the colonists can reach). */
+function colonySite(cands: Site[], protos: Proto[], parent: Proto, sub: World['substrate']): Site | undefined {
+  for (const c of cands) {
+    const dp = sub.distance(parent.site.pos, c.pos);
+    if (dp > 32 || dp < MIN_SPACING) continue; // within reach, not on the parent
+    if (terrainYields(c.attributes).food < 0.8) continue; // colonists need land they can feed on
+    if (protos.some((p) => sub.distance(p.site.pos, c.pos) < MIN_SPACING)) continue; // unclaimed
+    return c;
+  }
+  return undefined;
 }
 
 /** Build a connected graph: each settlement links to its nearest neighbours (trade
@@ -451,9 +536,10 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // Logistic growth: a settlement breeds fast when there's room (so it RECOVERS
   // from shocks instead of spiralling to ruin) and tapers toward a soft carrying
   // capacity. This is what keeps a world sustainable over many centuries.
-  // carrying capacity is set by the LAND: fertile, watered, coastal sites grow great
-  // cities; barren, dry, isolated ones stay villages.
-  const CAPACITY = 260 * s.capacity;
+  // carrying capacity is set by the LAND and its FOOD: fertile, watered, food-rich sites
+  // grow great cities; cold, barren, or dry ones stay villages (a tundra town can't feed a
+  // metropolis however "developed" the land).
+  const CAPACITY = 260 * s.capacity * clamp(s.econ.production.food, 0.5, 1.3);
   const room = Math.max(0, 1 - m.population / CAPACITY);
   // births also depend on FOOD: a starving settlement does not breed its way back to
   // health. So a chronically food-broken, trade-isolated place (geography's marginal,

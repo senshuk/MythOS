@@ -18,7 +18,7 @@ export const WATER_LAKE = 2;
 export const WATER_RIVER = 3;
 export type WaterKind = 0 | 1 | 2 | 3;
 
-export const GEO_SIZE = 128; // grid resolution across the world extent
+export const GEO_SIZE = 208; // grid resolution across the (now much larger) world extent
 
 /** Default fraction of terrain below which a cell holds water. It is a PARAMETER, not
  *  a law: a dry/desert world passes a low value (few or no seas — just basins), a water
@@ -29,8 +29,8 @@ export const SEA_LEVEL = 0.4;
  *  the [0,100] settlement plane, so the map can render terrain past the settled area
  *  instead of smearing the grid's edge cells to fill its margin. The grid edge carries
  *  no meaning — land may run right off it; it is not a coastline. */
-export const GEO_MIN = -10;
-export const GEO_SPAN = 120;
+export const GEO_MIN = -15;
+export const GEO_SPAN = 200;
 
 export interface Geography {
   size: number;

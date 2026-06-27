@@ -21,7 +21,7 @@ export interface Biome {
 
 export const BIOMES: Record<string, Biome> = {
   tundra: { id: 'tundra', name: 'tundra', color: [198, 208, 214], yields: { food: 0.62, materials: 0.35, goods: 0.15 }, craft: 'hunting' },
-  taiga: { id: 'taiga', name: 'boreal forest', color: [58, 92, 78], yields: { food: 0.82, materials: 0.95, goods: 0.2 }, craft: 'forestry' },
+  taiga: { id: 'taiga', name: 'boreal forest', color: [58, 92, 78], yields: { food: 1.0, materials: 0.95, goods: 0.2 }, craft: 'forestry' },
   alpine: { id: 'alpine', name: 'alpine', color: [152, 152, 160], yields: { food: 0.32, materials: 0.95, goods: 0.1 }, craft: 'mining' },
   steppe: { id: 'steppe', name: 'steppe', color: [156, 154, 98], yields: { food: 1.0, materials: 0.2, goods: 0.25 }, craft: 'herding' },
   grassland: { id: 'grassland', name: 'grassland', color: [122, 158, 80], yields: { food: 1.35, materials: 0.12, goods: 0.25 }, craft: 'farming' },

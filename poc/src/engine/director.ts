@@ -63,11 +63,14 @@ export function directorYearly(world: World): void {
   const rng = new Rng(world.directorRngState);
   const yr = Math.floor(world.tick / DAYS_PER_YEAR);
 
-  // recent *natural* drama (from the chronicle) relieves the urge to manufacture more
+  // recent *natural* drama (from the chronicle) relieves the urge to manufacture more —
+  // NORMALISED by world size, so a big world's busy chronicle doesn't permanently suppress
+  // the storyteller (it paces drama per-region, not by raw event volume).
   let recentDrama = 0;
   for (const t of world.chronicle) if (yr - t.year <= 3) recentDrama += t.interest;
+  const scale = Math.max(1, world.settlements.length / 12);
 
-  st.tension = clamp(st.tension + def.tensionGain - recentDrama * 0.06, 0, 200);
+  st.tension = clamp(st.tension + def.tensionGain - (recentDrama / scale) * 0.06, 0, 200);
 
   if (st.tension >= def.trigger && yr - st.lastIncidentYear >= def.minGap) {
     const before = world.events.length;

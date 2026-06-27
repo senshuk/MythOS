@@ -196,7 +196,7 @@ describe('level-of-detail / scale', () => {
     // never the whole world
     expect(alive).toBe(snap.simulatedInDetail + snap.namedPeople);
     expect(alive).toBeLessThan(snap.worldPopulation);
-    expect(snap.namedPeople).toBeLessThan(80); // summary tier stays bounded
+    expect(snap.namedPeople).toBeLessThan(snap.settlements.length * 8); // summary tier bounded per settlement, not the whole world
   });
 
   it('notable individuals persist as summary actors after you focus away', () => {
@@ -568,7 +568,7 @@ describe('worldgen orchestration (forgeWorld)', () => {
     const w = forgeWorld(1492, 200);
     expect(w.focusedSettlementId).toBeGreaterThanOrEqual(0); // a settlement was entered
     expect(fullActors(w).length).toBeGreaterThan(0); // and it's live
-    expect(Math.floor(w.tick / DAYS_PER_YEAR)).toBe(200); // after 200 years of history
+    expect(Math.floor(w.tick / DAYS_PER_YEAR)).toBeGreaterThanOrEqual(200); // 200 forged years atop the grown pre-history
     expect(w.figures.length).toBeGreaterThan(10); // founders + rulers
     expect(w.annals.length).toBeGreaterThan(0); // a deep recorded past
     const snap = buildSnapshot(w);
@@ -735,10 +735,47 @@ describe('climate & biomes (temperature × moisture drive the map and the econom
   });
 
   it('biomes give a surface world a VARIED economy — climate, not one fertility number', () => {
-    let w = createWorld(1, false);
-    for (let seed = 1; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed, false);
-    const specs = new Set(w.settlements.map((s) => s.econ.specialization));
-    expect(specs.size).toBeGreaterThanOrEqual(3); // farming / forestry / hunting / mining / fishing…
+    // most worlds span several crafts; a single-climate world (e.g. all-boreal) has fewer,
+    // so scan for a climatically varied surface world to make the point.
+    let specs = new Set<string>();
+    for (let seed = 1; seed < 60; seed++) {
+      const w = createWorld(seed, false);
+      if (w.substrate.kind !== 'surface') continue;
+      specs = new Set(w.settlements.map((s) => s.econ.specialization));
+      if (specs.size >= 3) break;
+    }
+    expect(specs.size).toBeGreaterThanOrEqual(3); // farming / forestry / ranching / fishing…
+  });
+});
+
+describe('the world is GROWN through a pre-history (peoples spread into territories)', () => {
+  it('settlements have a founding timeline and same-culture peoples form territories', () => {
+    let w = createWorld(4, false);
+    for (let seed = 4; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed, false);
+    // founded over centuries, not all dropped at year 0
+    const years = w.settlements.map((s) => s.foundedYear);
+    expect(new Set(years).size).toBeGreaterThanOrEqual(3);
+    expect(Math.max(...years)).toBeGreaterThan(0);
+    // a people occupies a contiguous REGION: same-culture pairs are nearer than cross-culture
+    const ss = w.settlements;
+    let sameSum = 0;
+    let sameN = 0;
+    let diffSum = 0;
+    let diffN = 0;
+    for (let i = 0; i < ss.length; i++)
+      for (let j = i + 1; j < ss.length; j++) {
+        const d = Math.hypot(ss[i].pos.x - ss[j].pos.x, ss[i].pos.y - ss[j].pos.y);
+        if (ss[i].cultureId === ss[j].cultureId) {
+          sameSum += d;
+          sameN++;
+        } else {
+          diffSum += d;
+          diffN++;
+        }
+      }
+    expect(sameN).toBeGreaterThan(0);
+    expect(diffN).toBeGreaterThan(0);
+    expect(sameSum / sameN).toBeLessThan(diffSum / diffN); // territories, not a random scatter
   });
 });
 

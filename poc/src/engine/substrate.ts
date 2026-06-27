@@ -27,7 +27,14 @@ import {
   seaDist,
   freshWaterDist,
   isLand,
+  GEO_MIN,
+  GEO_SPAN,
 } from './geography';
+
+// the settled plane: inset from the grid's edges (the grid extends past it so the map
+// has margin). Sites are scattered across this; a bigger span = a bigger world.
+const SETTLE_LO = GEO_MIN + 16;
+const SETTLE_SPAN = GEO_SPAN - 32;
 
 /** A candidate place to found a settlement, with its physical qualities. The engine reads
  *  `suitability` (where to found) and `capacity` (how big it grows); a pack reads
@@ -84,8 +91,8 @@ export class SurfaceSubstrate implements Substrate {
   candidates(rng: Rng): Site[] {
     const out: Site[] = [];
     for (let t = 0; t < this.tries; t++) {
-      const x = 3 + rng.next() * 94;
-      const y = 3 + rng.next() * 94;
+      const x = SETTLE_LO + rng.next() * SETTLE_SPAN;
+      const y = SETTLE_LO + rng.next() * SETTLE_SPAN;
       const suit = siteSuitability(this.geography, x, y);
       if (suit > 0.4) out.push(this.siteAt(x, y, suit));
     }
@@ -94,8 +101,8 @@ export class SurfaceSubstrate implements Substrate {
 
   fallbackSite(rng: Rng): Site | undefined {
     for (let g = 0; g < 50; g++) {
-      const x = 3 + rng.next() * 94;
-      const y = 3 + rng.next() * 94;
+      const x = SETTLE_LO + rng.next() * SETTLE_SPAN;
+      const y = SETTLE_LO + rng.next() * SETTLE_SPAN;
       if (isLand(this.geography, x, y)) return this.siteAt(x, y, 0);
     }
     return undefined;
@@ -126,8 +133,8 @@ export class StarfieldSubstrate implements Substrate {
   ) {}
 
   private system(rng: Rng): Site {
-    const x = 4 + rng.next() * 92;
-    const y = 4 + rng.next() * 92;
+    const x = SETTLE_LO + rng.next() * SETTLE_SPAN;
+    const y = SETTLE_LO + rng.next() * SETTLE_SPAN;
     const habitability = rng.next(); // can it support a population?
     const minerals = rng.next(); // asteroid / ore wealth
     const lanes = rng.next(); // trade-lane access (a system's "coastline")
@@ -187,10 +194,10 @@ export interface WorldShape {
 // archetypes look genuinely different yet all keep enough coast/fresh water to be viable
 // (a near-waterless world starves — no fishing, little fertile ground).
 const ARCHETYPES: Omit<WorldShape, 'settlements' | 'kind' | 'baseTemp' | 'wetness'>[] = [
-  { archetype: 'pangaea', seaLevel: 0.4, freq: 0.045, tries: 700 }, // one vast landmass, rivers & lakes
-  { archetype: 'continents', seaLevel: 0.46, freq: 0.05, tries: 850 }, // land & sea in balance
-  { archetype: 'inland-sea', seaLevel: 0.5, freq: 0.052, tries: 1000 }, // continents around a great sea
-  { archetype: 'archipelago', seaLevel: 0.57, freq: 0.078, tries: 1400 }, // scattered islands, all coastal
+  { archetype: 'pangaea', seaLevel: 0.4, freq: 0.045, tries: 2200 }, // one vast landmass, rivers & lakes
+  { archetype: 'continents', seaLevel: 0.46, freq: 0.05, tries: 2600 }, // land & sea in balance
+  { archetype: 'inland-sea', seaLevel: 0.5, freq: 0.052, tries: 3100 }, // continents around a great sea
+  { archetype: 'archipelago', seaLevel: 0.57, freq: 0.078, tries: 4200 }, // scattered islands, all coastal
 ];
 
 /** Pick a world's shape from its seed — a separate RNG stream so it doesn't perturb the
@@ -198,7 +205,7 @@ const ARCHETYPES: Omit<WorldShape, 'settlements' | 'kind' | 'baseTemp' | 'wetnes
 export function worldShapeFor(seed: number): WorldShape {
   const r = new Rng(mixSeed(seed, 0x5ade));
   const a = ARCHETYPES[r.int(ARCHETYPES.length)];
-  const settlements = 11 + r.int(7); // 11..17 — richer, varied-size regions
+  const settlements = 30 + r.int(26); // 30..55 — a populous WORLD, not a village cluster
   // ~1 in 5 worlds is a GALAXY instead. The draw is taken AFTER the surface draws, so
   // surface worlds are byte-identical to before; this only diverts some seeds to space.
   if (r.int(5) === 0) {
