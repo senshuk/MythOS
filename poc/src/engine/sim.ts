@@ -22,6 +22,7 @@ import {
 } from './model';
 import { type Intent } from './intent';
 import { currentAspiration, aspirationLabel } from './aspiration';
+export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { fullActors, summaryActors, fullName, relCount, homeName } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
@@ -276,6 +277,17 @@ function buildPlayerView(world: World): PlayerView | undefined {
   );
 
   const asp = currentAspiration(world, id);
+
+  // a recently-fulfilled goal, for a transient on-screen celebration (~3 months)
+  let lastAchieved: string | undefined;
+  for (let i = world.events.length - 1; i >= 0 && i > world.events.length - 300; i--) {
+    const ev = world.events[i];
+    if (ev.type === 'goal_met' && ev.subjects[0] === id && world.tick - ev.tick <= 90) {
+      lastAchieved = renderEvent(world, ev);
+      break;
+    }
+  }
+
   // a one-click pursue intent, only when the goal is directly actionable
   let suggested: Intent | undefined;
   if (asp.action === 'work') suggested = { kind: 'work' };
@@ -299,6 +311,7 @@ function buildPlayerView(world: World): PlayerView | undefined {
       targetName: asp.target !== undefined ? fullName(world, asp.target) : undefined,
       suggested,
     },
+    lastAchieved,
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
   };
@@ -576,6 +589,7 @@ export function canonicalize(world: World): string {
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);
+  parts.push(`pgoal=${world.playerGoal ? `${world.playerGoal.kind}.${world.playerGoal.target ?? -1}` : '-'}`);
   return parts.join('\n');
 }
 

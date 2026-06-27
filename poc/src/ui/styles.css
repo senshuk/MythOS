@@ -238,3 +238,10 @@ body {
 .goal-tag { color: var(--accent); font-weight: bold; }
 .goal-label { font-weight: bold; }
 .goal-pursue { padding: 4px 10px; }
+
+/* aspiration fulfilment celebration */
+.achieved {
+  margin-bottom: 10px; padding: 8px 12px; border-radius: 6px;
+  background: rgba(95,208,138,0.14); border: 1px solid var(--good);
+  color: var(--good); font-weight: bold;
+}

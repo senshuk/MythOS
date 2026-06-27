@@ -144,6 +144,8 @@ export type EventType =
   // --- migration / cross-settlement ---
   | 'emigrated'
   | 'immigrated'
+  // --- player: a controlled actor fulfils an aspiration ---
+  | 'goal_met'
   // --- LOD control ---
   | 'focus_shift';
 
@@ -290,6 +292,11 @@ export interface World {
    *  how much randomness the player consumed). Same pattern as the director/geo/
    *  figure streams. */
   playerRngState: number;
+  /** The player's last-evaluated aspiration (kind + target), used to detect when a
+   *  goal is fulfilled so the moment can be celebrated. Undefined until baselined
+   *  at possession. Player-only — NPC milestones already surface as their own
+   *  events (married, born, …). */
+  playerGoal?: { kind: string; target?: EntityId };
   /** Append-only log of the player's intents, stamped with the tick they apply on.
    *  The world is f(seed, playerInputs): re-feeding this log reproduces the world
    *  exactly — the basis of save/replay (and, later, multiplayer). */
@@ -465,6 +472,8 @@ export interface PlayerView {
   // the actor's current drive (a goal). `suggested` is the one-click action that
   // pursues it, when the goal points at a concrete action/target.
   aspiration: { kind: string; label: string; targetName?: string; suggested?: Intent };
+  /** rendered text of a recently-fulfilled goal, for a transient celebration. */
+  lastAchieved?: string;
   actions: PlayerActionView[];
   targets: PlayerTargetView[];
 }

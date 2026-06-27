@@ -16,6 +16,7 @@ import {
   possess,
   release,
   playerTurn,
+  checkPlayerGoal,
 } from '../engine/sim';
 import { serializeWorld, deserializeWorld } from '../engine/persistence';
 import { putSave, getSave, listSaves } from '../engine/idb';
@@ -51,6 +52,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     case 'advanceYears': {
       if (!world) reset(0);
       runYears(world!, msg.years);
+      checkPlayerGoal(world!); // a goal may have been fulfilled while time passed
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -69,6 +71,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     case 'possess': {
       if (!world) reset(0);
       possess(world!, msg.actorId);
+      checkPlayerGoal(world!); // baseline the new player's goal (no event)
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -80,6 +83,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     case 'playerTurn': {
       if (!world) reset(0);
       playerTurn(world!, msg.intent);
+      checkPlayerGoal(world!); // the turn may have fulfilled the goal
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }

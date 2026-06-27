@@ -86,6 +86,21 @@ export function renderEvent(world: World, ev: WorldEvent): string {
       return `${n(0)} did ${n(1)} a kindness.`;
     case 'brawl':
       return `${n(0)} and ${n(1)} came to blows.`;
+    case 'goal_met': {
+      const who = n(0);
+      switch (d.goal) {
+        case 'wed':
+          return `${who} found love at last and married.`;
+        case 'family':
+          return `${who} became a parent — a lifelong wish fulfilled.`;
+        case 'reconcile':
+          return `${who} made peace with an old enemy.`;
+        case 'rule':
+          return `${who} rose to lead the settlement.`;
+        default:
+          return `${who} fulfilled a cherished goal.`;
+      }
+    }
     default:
       return ev.type;
   }

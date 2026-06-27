@@ -14,7 +14,7 @@
  */
 import { type World, type EntityId, ADULT_AGE, ELDER_AGE } from './model';
 import { computeOpinion } from './opinion';
-import { isKin, fullName } from './world';
+import { isKin, fullName, emit } from './world';
 
 export type AspirationKind =
   | 'survive'
@@ -121,6 +121,52 @@ export function currentAspiration(world: World, id: EntityId): Aspiration {
   if (lc.ageYears >= ELDER_AGE) return { kind: 'legacy', action: 'socialize' };
 
   return { kind: 'content', action: 'socialize' };
+}
+
+/** Did the player actually attain `prev` (vs merely shifting to a new goal)? Only
+ *  positive life milestones count — survive/prosper/belonging/legacy are ongoing,
+ *  not "achievements". */
+function isFulfilled(world: World, id: EntityId, prev: { kind: string; target?: EntityId }): boolean {
+  const ties = world.ties.get(id)!;
+  switch (prev.kind) {
+    case 'wed':
+      return ties.spouse !== undefined;
+    case 'family':
+      return ties.children.length > 0;
+    case 'reconcile': {
+      // genuine reconciliation: the former rival is alive and the feud has cleared
+      // (feud only clears by warming back into friendship — see resolve.ts promote).
+      if (prev.target === undefined) return false;
+      const edge = world.rels.get(id)?.get(prev.target);
+      return !!edge && !edge.flags.feud && world.lifecycle.get(prev.target)?.alive === true;
+    }
+    case 'rule': {
+      const h = world.homeSettlement.get(id);
+      return h !== undefined && world.settlements[h]?.currentRulerId === id;
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Detect when the controlled actor fulfils its goal and emit a celebratory
+ * `goal_met` event. Baselines silently on the first call after possession (so a
+ * fresh possession never spuriously fires). Deterministic; player-only. The fresh
+ * goal then emerges on its own, since aspirations are derived from state.
+ */
+export function checkPlayerGoal(world: World): void {
+  const id = world.playerId;
+  if (id === undefined || !world.identity.has(id) || !world.lifecycle.get(id)?.alive) {
+    world.playerGoal = undefined;
+    return;
+  }
+  const curr = currentAspiration(world, id);
+  const prev = world.playerGoal;
+  if (prev !== undefined && prev.kind !== curr.kind && isFulfilled(world, id, prev)) {
+    emit(world, 'goal_met', [id], prev.target !== undefined ? { goal: prev.kind, target: prev.target } : { goal: prev.kind });
+  }
+  world.playerGoal = { kind: curr.kind, target: curr.target };
 }
 
 /** A player-facing one-line description of an aspiration. */

@@ -4,7 +4,7 @@
  * scripts, the goal.
  */
 import { describe, it, expect } from 'vitest';
-import { createWorld, runYears } from './sim';
+import { createWorld, runYears, possess, checkPlayerGoal } from './sim';
 import { fullActors } from './world';
 import { currentAspiration } from './aspiration';
 import { ADULT_AGE } from './model';
@@ -65,5 +65,42 @@ describe('aspirations', () => {
       expect(asp.action).toBe('court'); // pursues a known fondness via courting
       expect(w.lifecycle.get(asp.target!)!.alive).toBe(true);
     }
+  });
+
+  it('fulfilling a goal emits a celebratory goal_met event (player-only)', () => {
+    const w = createWorld(5);
+    runYears(w, 8);
+    const single = fullActors(w).find(
+      (i) => w.ties.get(i)!.spouse === undefined && w.lifecycle.get(i)!.ageYears >= ADULT_AGE,
+    )!;
+    const n = w.needs.get(single)!;
+    n.food = 900;
+    n.wealth = 900;
+    n.belonging = 900;
+
+    possess(w, single);
+    checkPlayerGoal(w); // baseline — should NOT emit
+    const before = w.events.filter((e) => e.type === 'goal_met').length;
+    expect(currentAspiration(w, single).kind).toBe('wed');
+
+    // force the fulfilment condition: they now have a spouse
+    const someone = fullActors(w).find((i) => i !== single)!;
+    w.ties.get(single)!.spouse = someone;
+
+    checkPlayerGoal(w);
+    const after = w.events.filter((e) => e.type === 'goal_met').length;
+    expect(after).toBe(before + 1);
+    const ev = w.events[w.events.length - 1];
+    expect(ev.type).toBe('goal_met');
+    expect(ev.data.goal).toBe('wed');
+    expect(ev.subjects[0]).toBe(single);
+  });
+
+  it('does not fire goal_met without a possessed player', () => {
+    const w = createWorld(6);
+    runYears(w, 5);
+    checkPlayerGoal(w);
+    checkPlayerGoal(w);
+    expect(w.events.some((e) => e.type === 'goal_met')).toBe(false);
   });
 });

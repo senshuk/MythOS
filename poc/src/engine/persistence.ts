@@ -37,6 +37,7 @@ export interface SaveFile {
   figureRngState: number;
   playerRngState: number;
   playerId: number | null;
+  playerGoal: { kind: string; target?: number } | null;
 
   // plain arrays / objects (already JSON-safe)
   settlements: World['settlements'];
@@ -104,6 +105,7 @@ export function serializeWorld(world: World): SaveFile {
     figureRngState: world.figureRngState,
     playerRngState: world.playerRngState,
     playerId: world.playerId ?? null,
+    playerGoal: world.playerGoal ?? null,
 
     settlements: world.settlements,
     edges: world.edges,
@@ -181,6 +183,7 @@ export function deserializeWorld(s: SaveFile): World {
     figureRngState: s.figureRngState,
     playerId: s.playerId ?? undefined,
     playerRngState: s.playerRngState,
+    playerGoal: s.playerGoal ?? undefined,
     playerInputs: s.playerInputs,
   };
 }

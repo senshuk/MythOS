@@ -37,6 +37,7 @@ const TYPE_TONE: Record<string, string> = {
   focus_shift: 'focus',
   emigrated: 'focus',
   immigrated: 'focus',
+  goal_met: 'good',
   rivalry: 'bad',
   dispute: 'bad',
   feud: 'bad',
@@ -523,6 +524,7 @@ function PlayerPanel({
         </p>
       ) : (
         <>
+          {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
           <div className="goal">
             <span className="goal-tag">🎯 Goal</span>{' '}
             <span className="goal-label">{player.aspiration.label}</span>
