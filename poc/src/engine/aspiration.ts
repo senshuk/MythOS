@@ -1,186 +1,52 @@
 /**
- * Emergent aspirations. An actor's current goal is a PURE FUNCTION of its state —
- * needs, family ties, relationships, traits, age, station — not a scripted quest.
- * The same derivation drives two things:
+ * Emergent aspirations — the MACHINERY. An actor's current goal is a PURE FUNCTION of
+ * its state, derived not stored, so it never desyncs and changes as the world changes
+ * (find a partner → start a family → be remembered = the sense of progress). The same
+ * derivation drives two things:
  *
- *   - the PLAYER sees it as their objective (text-adventure wisdom: a world with no
- *     goal loses the player), and
- *   - NPCs PURSUE it (decide.ts), turning the reactive social loop into character
- *     arcs — the player and NPCs use the identical rule ("every character is equal").
+ *   - the PLAYER sees it as their objective (a world with no goal loses the player), and
+ *   - NPCs PURSUE it (decide.ts), turning the reactive social loop into character arcs.
+ *     Player and NPC use the identical rule ("every character is equal").
  *
- * Because it's derived (no stored state), it needs no serialization and can never
- * desync; as the world changes, an actor's aspiration changes with it (find a
- * spouse → start a family → be remembered), which is the sense of progress.
+ * The engine here owns only the MECHANISM (evaluate the ladder, detect fulfilment). The
+ * LADDER itself — which goals exist, their order, conditions, labels and which are
+ * achievements — is PACK DATA (content/aspirations.ts), so a different universe supplies
+ * a different set of wants without any engine change. Reusable social queries used by the
+ * ladder live in engine/social.ts (kept separate to avoid an import cycle).
  */
-import { type World, type EntityId } from './model';
-import { computeOpinion } from './opinion';
-import { isKin, fullName, emit } from './world';
-import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, unionViable, pairBondsFor, hasLeader, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
-
-export type AspirationKind =
-  | 'survive'
-  | 'prosper'
-  | 'wed'
-  | 'family'
-  | 'reconcile'
-  | 'rule'
-  | 'belonging'
-  | 'legacy'
-  | 'content';
-
-export interface Aspiration {
-  kind: AspirationKind;
-  target?: EntityId;
-  /** the action that pursues this goal (decide.ts maps it to an Intent). */
-  action: 'work' | 'court' | 'socialize' | 'idle';
-}
-
-const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
-
-/** Whether two actors are a plausible marriage match (each adult by THEIR OWN
- *  species' maturity; wider gaps allowed later in life). Shared by courtship (who
- *  you pine for) and the wedding gate, so actors only pursue partners they could
- *  actually marry. */
-export function ageCompatible(world: World, a: EntityId, b: EntityId): boolean {
-  const ageA = world.lifecycle.get(a)!.ageYears;
-  const ageB = world.lifecycle.get(b)!.ageYears;
-  const matA = maturityOf(world.identity.get(a)!.speciesId);
-  const matB = maturityOf(world.identity.get(b)!.speciesId);
-  if (ageA < matA || ageB < matB) return false;
-  // slack scales with how far past their OWN maturity the younger partner is.
-  const youngerSlack = Math.min(ageA - matA, ageB - matB);
-  return Math.abs(ageA - ageB) <= 12 + Math.round(youngerSlack * 0.4);
-}
-
-/** The warmest eligible match this actor already knows — their emergent "crush". */
-function bestSuitor(world: World, id: EntityId): EntityId | undefined {
-  const me = world.identity.get(id)!;
-  if (world.ties.get(id)!.spouse !== undefined) return undefined;
-  let best: EntityId | undefined;
-  let bestOpinion = CRUSH_WARMTH;
-  for (const [other, edge] of world.rels.get(id)!) {
-    const olc = world.lifecycle.get(other);
-    if (!olc?.alive) continue;
-    const oi = world.identity.get(other);
-    if (!oi || !unionViable(me.speciesId, me.sex, oi.speciesId, oi.sex)) continue; // species-defined compatibility
-    if (world.ties.get(other)!.spouse !== undefined) continue;
-    if (!ageCompatible(world, id, other)) continue; // only pine for the marriageable
-    if (isKin(world, id, other)) continue;
-    const op = computeOpinion(edge, world.tick);
-    if (op > bestOpinion) {
-      bestOpinion = op;
-      best = other;
-    }
-  }
-  return best;
-}
-
-/** The bitterest active feud, if any. */
-function strongestFeud(world: World, id: EntityId): EntityId | undefined {
-  let worst: EntityId | undefined;
-  let worstOpinion = 0;
-  for (const [other, edge] of world.rels.get(id)!) {
-    if (!edge.flags.feud) continue;
-    if (!world.lifecycle.get(other)?.alive) continue;
-    const op = computeOpinion(edge, world.tick);
-    if (op < worstOpinion) {
-      worstOpinion = op;
-      worst = other;
-    }
-  }
-  return worst;
-}
-
-function isRuler(world: World, id: EntityId): boolean {
-  const h = world.homeSettlement.get(id);
-  return h !== undefined && world.settlements[h]?.currentRulerId === id;
-}
-
-/** Whether this actor's polity even has a leadership seat to aspire to (not a
- *  leaderless government). */
-function canSeekRule(world: World, id: EntityId): boolean {
-  const h = world.homeSettlement.get(id);
-  return h !== undefined && hasLeader(world.settlements[h].governmentId);
-}
+import { type World, type EntityId, type Aspiration } from './model';
+import { emit } from './world';
+import { ASPIRATIONS, DEFAULT_ASPIRATION } from '../content/aspirations';
 
 /**
- * The actor's current aspiration. Priority follows a life arc: stay alive, make a
- * living, find a partner, raise a family, settle grudges, seek standing, find
- * belonging, leave a legacy — falling back to a quiet life.
+ * The actor's current aspiration: the first rung of the pack's ladder whose condition
+ * holds. An actor mid-construction (missing components) gets the quiet default.
  */
 export function currentAspiration(world: World, id: EntityId): Aspiration {
-  const needs = world.needs.get(id);
-  const lc = world.lifecycle.get(id);
-  const ties = world.ties.get(id);
-  const idn = world.identity.get(id);
-  if (!needs || !lc || !ties || !idn) return { kind: 'content', action: 'socialize' };
-  const traits = world.traits.get(id) ?? [];
-
-  // thresholds match decide.ts's subsistence gate, so a hungry actor's surfaced
-  // goal and its forced action agree.
-  if (needs[SUBSISTENCE_NEED] < 300) return { kind: 'survive', action: 'work' };
-  if (needs[WEALTH_NEED] < 250) return { kind: 'prosper', action: 'work' };
-
-  // pair-bonding species seek a mate; asexual ones (who breed alone) never do.
-  if (pairBondsFor(idn.speciesId) && lc.ageYears >= maturityOf(idn.speciesId) && ties.spouse === undefined) {
-    const crush = bestSuitor(world, id);
-    return crush !== undefined
-      ? { kind: 'wed', target: crush, action: 'court' }
-      : { kind: 'wed', action: 'socialize' };
+  if (!world.identity.has(id) || !world.lifecycle.has(id) || !world.ties.has(id) || !world.needs.has(id)) {
+    return { ...DEFAULT_ASPIRATION };
   }
-
-  if (ties.spouse !== undefined && ties.children.length === 0 && lc.ageYears <= fertileWindowOf(idn.speciesId)[1]) {
-    return { kind: 'family', target: ties.spouse, action: 'socialize' };
+  for (const def of ASPIRATIONS) {
+    if (!def.applies(world, id)) continue;
+    const target = def.target?.(world, id);
+    const action = def.action(target);
+    return target !== undefined ? { kind: def.kind, target, action } : { kind: def.kind, action };
   }
-
-  const feud = strongestFeud(world, id);
-  if (feud !== undefined) return { kind: 'reconcile', target: feud, action: 'socialize' };
-
-  // ambition (data-driven): those whose traits carry a drive to lead — and whose
-  // polity HAS a leadership seat — strive for it, unless they already hold it. The
-  // engine reads `ambition` + the government's succession, never a specific id.
-  if (ambitionOf(traits) > 0 && canSeekRule(world, id) && !isRuler(world, id)) return { kind: 'rule', action: 'work' };
-
-  if (needs[SOCIAL_NEED] < 250 || (world.rels.get(id)?.size ?? 0) < 2) {
-    return { kind: 'belonging', action: 'socialize' };
-  }
-
-  if (lc.ageYears >= elderhoodOf(idn.speciesId)) return { kind: 'legacy', action: 'socialize' };
-
-  return { kind: 'content', action: 'socialize' };
+  return { ...DEFAULT_ASPIRATION };
 }
 
-/** Did the player actually attain `prev` (vs merely shifting to a new goal)? Only
- *  positive life milestones count — survive/prosper/belonging/legacy are ongoing,
- *  not "achievements". */
+/** Did the player actually attain `prev` (vs merely shifting to a new goal)? Delegates
+ *  to the pack rung's `fulfilled`; rungs without one are ongoing states, not achievements. */
 function isFulfilled(world: World, id: EntityId, prev: { kind: string; target?: EntityId }): boolean {
-  const ties = world.ties.get(id)!;
-  switch (prev.kind) {
-    case 'wed':
-      return ties.spouse !== undefined;
-    case 'family':
-      return ties.children.length > 0;
-    case 'reconcile': {
-      // genuine reconciliation: the former rival is alive and the feud has cleared
-      // (feud only clears by warming back into friendship — see resolve.ts promote).
-      if (prev.target === undefined) return false;
-      const edge = world.rels.get(id)?.get(prev.target);
-      return !!edge && !edge.flags.feud && world.lifecycle.get(prev.target)?.alive === true;
-    }
-    case 'rule': {
-      const h = world.homeSettlement.get(id);
-      return h !== undefined && world.settlements[h]?.currentRulerId === id;
-    }
-    default:
-      return false;
-  }
+  const def = ASPIRATIONS.find((d) => d.kind === prev.kind);
+  return def?.fulfilled?.(world, id, prev.target) ?? false;
 }
 
 /**
- * Detect when the controlled actor fulfils its goal and emit a celebratory
- * `goal_met` event. Baselines silently on the first call after possession (so a
- * fresh possession never spuriously fires). Deterministic; player-only. The fresh
- * goal then emerges on its own, since aspirations are derived from state.
+ * Detect when the controlled actor fulfils its goal and emit a celebratory `goal_met`
+ * event. Baselines silently on the first call after possession (so a fresh possession
+ * never spuriously fires). Deterministic; player-only. The fresh goal then emerges on
+ * its own, since aspirations are derived from state.
  */
 export function checkPlayerGoal(world: World): void {
   const id = world.playerId;
@@ -196,30 +62,8 @@ export function checkPlayerGoal(world: World): void {
   world.playerGoal = { kind: curr.kind, target: curr.target };
 }
 
-/** A player-facing one-line description of an aspiration. */
+/** A player-facing one-line description of an aspiration (delegated to the pack rung). */
 export function aspirationLabel(world: World, id: EntityId, asp: Aspiration): string {
-  const name = (t?: EntityId) => (t !== undefined ? fullName(world, t) : 'someone');
-  switch (asp.kind) {
-    case 'survive':
-      return 'Stave off hunger';
-    case 'prosper':
-      return 'Build a livelihood';
-    case 'wed':
-      return asp.target !== undefined ? `Win the heart of ${name(asp.target)}` : 'Find someone to marry';
-    case 'family':
-      return 'Start a family';
-    case 'reconcile':
-      return `Make peace with ${name(asp.target)}`;
-    case 'rule': {
-      const h = world.homeSettlement.get(id);
-      const place = h !== undefined ? world.settlements[h]?.name ?? 'the village' : 'the village';
-      return `Rise to lead ${place}`;
-    }
-    case 'belonging':
-      return 'Find true friends';
-    case 'legacy':
-      return 'Be remembered in the village';
-    case 'content':
-      return 'Live a good and quiet life';
-  }
+  const def = ASPIRATIONS.find((d) => d.kind === asp.kind);
+  return def ? def.label(world, id, asp.target) : asp.kind;
 }

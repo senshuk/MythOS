@@ -168,6 +168,42 @@ export interface Economy {
 /** The three simulation fidelity tiers an actor can be in. */
 export type Fidelity = 'full' | 'summary';
 
+// ---- aspirations (an actor's emergent goal) ----
+
+/** How an actor pursues a goal (decide.ts maps it to an Intent). A small fixed set of
+ *  generic verbs; the universe-specific part is WHICH goals exist, not how they're
+ *  pursued. (Broadening this vocabulary is a separate audit item, B2.) */
+export type AspirationAction = 'work' | 'court' | 'socialize' | 'idle';
+
+/** An actor's current goal — a PURE FUNCTION of state, derived not stored. */
+export interface Aspiration {
+  kind: string; // open id; the SET of goals is pack data (content/aspirations.ts)
+  target?: EntityId;
+  action: AspirationAction;
+}
+
+/**
+ * One rung of a pack's aspiration ladder. The engine evaluates the ordered list and
+ * takes the FIRST whose `applies` holds, so the set, order, conditions, labels and
+ * fulfilment of goals are ALL pack data — a sci-fi pack can swap 'wed/family' for
+ * 'explore/ascend' without touching the engine. (Methods, unlike entity components,
+ * are allowed here: this is a behaviour descriptor the pack supplies, not stored data.)
+ */
+export interface AspirationDef {
+  kind: string;
+  /** does this goal apply to this actor right now? (priority = list order) */
+  applies(world: World, id: EntityId): boolean;
+  /** who/what the goal points at, if anything. */
+  target?(world: World, id: EntityId): EntityId | undefined;
+  /** how to pursue it (may depend on whether a target was found). */
+  action(target: EntityId | undefined): AspirationAction;
+  /** player-facing one-line description. */
+  label(world: World, id: EntityId, target: EntityId | undefined): string;
+  /** present => this goal is an ACHIEVEMENT: checkPlayerGoal fires `goal_met` when it
+   *  becomes true after having been the player's goal. Absent => an ongoing state. */
+  fulfilled?(world: World, id: EntityId, target: EntityId | undefined): boolean;
+}
+
 export interface Vec2 {
   x: number;
   y: number;

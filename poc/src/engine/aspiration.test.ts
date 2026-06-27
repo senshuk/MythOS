@@ -6,10 +6,32 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, possess, checkPlayerGoal } from './sim';
 import { fullActors } from './world';
-import { currentAspiration } from './aspiration';
-import { ADULT_AGE } from './model';
+import { currentAspiration, aspirationLabel } from './aspiration';
+import { ASPIRATIONS } from '../content/aspirations';
+import { ADULT_AGE, type AspirationDef } from './model';
 
 describe('aspirations', () => {
+  it('is goal-AGNOSTIC: a pack can add a goal the engine never declared', () => {
+    const w = createWorld(5);
+    runYears(w, 8);
+    const someone = fullActors(w)[0];
+    // a sci-fi goal the engine has no knowledge of, injected at top priority
+    const frontier: AspirationDef = {
+      kind: 'seek_the_frontier',
+      applies: (_world, id) => id === someone,
+      action: () => 'work',
+      label: () => 'Chart the unknown',
+    };
+    ASPIRATIONS.unshift(frontier);
+    try {
+      const asp = currentAspiration(w, someone);
+      expect(asp.kind).toBe('seek_the_frontier'); // engine returns a kind it never declared
+      expect(aspirationLabel(w, someone, asp)).toBe('Chart the unknown'); // …and its pack label
+    } finally {
+      ASPIRATIONS.shift(); // restore the ladder for the other tests
+    }
+  });
+
   it('hunger overrides everything (survive)', () => {
     const w = createWorld(1);
     runYears(w, 5);

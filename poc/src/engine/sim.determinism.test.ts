@@ -20,7 +20,7 @@ import {
 import { resolvePlayerIntent } from '../systems/resolve';
 import { fullActors, summaryActors, createActor, emit } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
-import { ageCompatible } from './aspiration';
+import { ageCompatible } from './social';
 import { renderEvent } from './render';
 import { EVENT_RENDER, eventInterest } from '../content/narrative';
 import { addThought, computeOpinion, opinionReasons } from './opinion';

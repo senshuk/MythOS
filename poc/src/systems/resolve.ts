@@ -17,7 +17,7 @@ import { type World, type EntityId, type RelEdge } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor } from '../engine/world';
-import { ageCompatible } from '../engine/aspiration';
+import { ageCompatible } from '../engine/social';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 
