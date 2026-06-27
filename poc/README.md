@@ -163,6 +163,15 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
   **role** — `SUBSISTENCE_RESOURCE` (its depletion causes famine), `PREMIUM_RESOURCE`,
   `SUBSISTENCE_NEED`, `WEALTH_NEED`, `SOCIAL_NEED` — never by a literal `'food'`. A pack can
   add a new resource or need (e.g. `faith`) and the engine carries it through untouched.
+- **Culture gives wars a reason** — each people holds a `Culture`: a weighted profile over
+  value axes (honor, war, tradition, freedom, nature, craft). A settlement's culture is
+  seeded from its species' default but may **diverge**, so a people leans one way while
+  frontier towns drift. Inter-settlement relations now settle toward how culturally
+  *compatible* two peoples are — aligned values pull toward friendship and trade, opposed
+  values toward hostility and war (measured: aligned borders average ≈ +24 relation,
+  opposed ≈ −20). When a raid or war breaks out, the event records the **most-opposed value**
+  as its cause and the prose names it ("Grokhold raided Fenreach … over the wild"), so the
+  player can trace *why* — the start of the belief layer that turns a population into a people.
 - **Generic fixture content** (`src/content/fixture.ts`) — original, abstract
   species/professions/traits, **with their effects as data**: a profession carries its
   `income`, a trait carries its `ambition` (drive to rule), and the engine reads those
@@ -183,7 +192,7 @@ reproducible across a fixed script of focus changes.
 ```bash
 cd poc
 npm install
-npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/annals/figures/forge/variety/reproduction/narrative/government/resource-need gate (83 tests) — must stay green
+npm test          # determinism + LOD/economy/opinion/chronicle/grammar/director/worldgen/figures/forge/reproduction/narrative/government/resource-need/culture gate (86 tests) — must stay green
 npm run dev       # open http://localhost:5173  — watch the village
 ```
 

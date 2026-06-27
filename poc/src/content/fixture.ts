@@ -49,6 +49,8 @@ export interface Species {
   fertileFrom: number; // youngest age that can bear/sire
   fertileTo: number; // oldest age that can bear/sire
   reproduction: Reproduction;
+  /** the culture id a settlement of this species leans toward (it may diverge). */
+  defaultCulture: string;
   /** Syllable banks for a tiny phonetic name grammar (Warsim-style). */
   onset: string[];
   nucleus: string[];
@@ -67,6 +69,7 @@ export const SPECIES: Species[] = [
     // The Vael have no sexes: any two may join, and either may bear. Lower fecundity
     // than a sexual species since ANY two can pair, so more couples form.
     reproduction: { mode: 'hermaphroditic', sexes: ['vael'], pairBonds: true, monogamous: true, fecundity: 0.15 },
+    defaultCulture: 'sylvan',
     onset: ['Ae', 'Sy', 'Th', 'El', 'Va', 'Ny', 'Lor', 'Cae'],
     nucleus: ['ri', 'la', 'we', 'no', 'ae', 'ly', 'sa'],
     coda: ['n', 'l', 'th', 'r', 's', 'ndor', 'wyn'],
@@ -81,6 +84,7 @@ export const SPECIES: Species[] = [
     fertileTo: 46,
     // The Tamar are sexual: two sexes, only the bearer ('f') gestates, mates required.
     reproduction: { mode: 'sexual', sexes: ['m', 'f'], bearer: 'f', pairBonds: true, monogamous: true, fecundity: 0.21 },
+    defaultCulture: 'artisan',
     onset: ['Bar', 'Hal', 'Dun', 'Ros', 'Mer', 'Gar', 'Wend', 'Tor'],
     nucleus: ['o', 'a', 'e', 'ic', 'um', 'ad'],
     coda: ['d', 'k', 'rin', 'son', 'wick', 'mund', 'ric'],
@@ -96,6 +100,7 @@ export const SPECIES: Species[] = [
     // The Grok spawn their own brood: asexual, no mate and no pair-bond needed.
     // Much lower fecundity since EVERY fertile adult bears (not just bonded couples).
     reproduction: { mode: 'asexual', sexes: ['grok'], pairBonds: false, monogamous: false, fecundity: 0.06 },
+    defaultCulture: 'martial',
     onset: ['Gr', 'Mok', 'Zar', 'Ugg', 'Brak', 'Sno', 'Dru', 'Kaz'],
     nucleus: ['o', 'u', 'a', 'og', 'uk', 'ar'],
     coda: ['g', 'k', 'z', 'nak', 'tuk', 'rok', 'mash'],
@@ -254,6 +259,68 @@ export function hasLeader(id: string): boolean {
 export function reignSpan(id: string, rng: Rng): number {
   const g = governmentById(id);
   return g.succession === 'elected' && g.termYears !== undefined ? g.termYears : rng.range(15, 45);
+}
+
+// ----------------------------------------------------------- culture ---------
+// What a people HOLDS DEAR — a weighted profile over value axes (DF-style, −50..50).
+// Two cultures' VALUE DISTANCE is what makes their settlements drift toward friendship
+// or hostility, so wars have REASONS (opposed values) instead of dice. Culture is pack
+// DATA, agnostic to species; each species merely has a DEFAULT its settlements lean to.
+
+export const VALUES = ['honor', 'war', 'tradition', 'freedom', 'nature', 'craft'] as const;
+export type ValueAxis = (typeof VALUES)[number];
+
+export interface Culture {
+  id: string;
+  name: string;
+  /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
+  values: Partial<Record<ValueAxis, number>>;
+}
+
+export const CULTURES: Culture[] = [
+  { id: 'martial', name: 'the Iron Creed', values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 } },
+  { id: 'sylvan', name: 'the Green Way', values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 } },
+  { id: 'artisan', name: 'the Maker Folk', values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 } },
+  { id: 'free', name: 'the Free Companies', values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 } },
+  { id: 'devout', name: 'the Old Faith', values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 } },
+];
+
+export function cultureById(id: string): Culture {
+  return CULTURES.find((c) => c.id === id) ?? CULTURES[0];
+}
+
+/** A settlement's culture is seeded from its species' default, but may diverge — so a
+ *  people tends toward one creed while colonies and frontier towns drift to others. */
+export function pickCulture(rng: Rng, speciesId: string): string {
+  const def = speciesById(speciesId).defaultCulture;
+  return rng.chance(0.7) ? def : CULTURES[rng.int(CULTURES.length)].id;
+}
+
+const valueOf = (c: Culture, axis: ValueAxis): number => c.values[axis] ?? 0;
+
+/** Mean absolute difference across value axes (≈0 identical … ≈80 utterly opposed). */
+export function culturalDistance(aId: string, bId: string): number {
+  const a = cultureById(aId);
+  const b = cultureById(bId);
+  let sum = 0;
+  for (const axis of VALUES) sum += Math.abs(valueOf(a, axis) - valueOf(b, axis));
+  return sum / VALUES.length;
+}
+
+/** The value axis the two cultures disagree on most — the *reason* in a clash. */
+export function mostOpposedValue(aId: string, bId: string): ValueAxis {
+  const a = cultureById(aId);
+  const b = cultureById(bId);
+  let worst: ValueAxis = VALUES[0];
+  let gap = -1;
+  for (const axis of VALUES) {
+    const d = Math.abs(valueOf(a, axis) - valueOf(b, axis));
+    if (d > gap) {
+      gap = d;
+      worst = axis;
+    }
+  }
+  return worst;
 }
 
 export function speciesById(id: string): Species {

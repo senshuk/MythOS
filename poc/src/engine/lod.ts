@@ -53,6 +53,9 @@ import {
   unionViable,
   pickGovernment,
   hasLeader,
+  pickCulture,
+  culturalDistance,
+  mostOpposedValue,
   RESOURCES,
   SUBSISTENCE_RESOURCE,
   PREMIUM_RESOURCE,
@@ -96,6 +99,7 @@ export function createSettlements(world: World): void {
       epoch: 0,
       rngState: mixSeed(world.seed, i + 1),
       governmentId: pickGovernment(gen),
+      cultureId: pickCulture(gen, dominant),
       macro,
       econ: initEconomy(gen, pop),
     };
@@ -456,9 +460,13 @@ export function geographyYearly(world: World): void {
     const B = world.settlements[e.b];
     const proximity = 1 / (1 + e.distance / 25); // 0..1, nearer => stronger ties
 
-    // mean-reverting relation drift (trade nudges it back up in economyYearly)
-    e.relation = clamp(Math.round(e.relation * 0.96) + rng.range(-5, 5), -100, 100);
-    // a rare border grievance sharply sours relations — the seed of raids & wars
+    // relations settle toward how culturally COMPATIBLE the two peoples are: aligned
+    // values pull toward friendship, opposed values toward hostility — so wars have a
+    // REASON, not dice. (Trade nudges it further up in economyYearly.)
+    const dist = culturalDistance(A.cultureId, B.cultureId);
+    const cultureTarget = clamp(Math.round((20 - dist) * 1.1), -42, 26);
+    e.relation = clamp(Math.round(e.relation * 0.92 + cultureTarget * 0.08) + rng.range(-4, 4), -100, 100);
+    // a rare border grievance sharply sours relations — the spark that lights the war
     if (rng.chance(0.012)) e.relation = clamp(e.relation - rng.range(18, 44), -100, 100);
 
     if (
@@ -482,7 +490,7 @@ export function geographyYearly(world: World): void {
         weak.ruinedYear = Math.floor(world.tick / DAYS_PER_YEAR);
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
-        emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name });
+        emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) });
       } else {
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);
@@ -494,7 +502,7 @@ export function geographyYearly(world: World): void {
         A.macro.stability = clamp(A.macro.stability - rng.range(3, 8), -100, 100);
         B.macro.stability = clamp(B.macro.stability - rng.range(3, 8), -100, 100);
         const subjects = [A.currentRulerId, B.currentRulerId].filter((x): x is number => x !== undefined);
-        emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll });
+        emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) });
       }
     } else if (e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
       // a raid along a hostile border. The weaker, non-focused side is the victim;
@@ -512,7 +520,7 @@ export function geographyYearly(world: World): void {
         victim.macro.stability = clamp(victim.macro.stability - rng.range(4, 12), -100, 100);
       }
       e.tradeVolume *= 0.4; // war chokes the route
-      emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll });
+      emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll, reason: mostOpposedValue(A.cultureId, B.cultureId) });
     }
   }
   world.geoRngState = rng.state;

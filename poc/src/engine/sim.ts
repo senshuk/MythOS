@@ -33,7 +33,7 @@ import { setStoryteller } from './director';
 import { renderEvent } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -218,6 +218,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       ruinedYear: s.ruinedYear,
       government: governmentById(s.governmentId).title || 'free folk',
       leaderTitle: leaderTitleOf(s.governmentId),
+      culture: cultureById(s.cultureId).name,
       founder: world.figures.find((f) => f.role === 'founder' && f.settlementId === s.id)?.name,
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
@@ -564,7 +565,7 @@ export function canonicalize(world: World): string {
   for (const s of world.settlements) {
     const m = s.macro;
     parts.push(
-      `@${s.id}:${s.name}.det${s.detailed ? 1 : 0}.ep${s.epoch}.rng${s.rngState}.ruin${s.ruinedYear ?? -1}.gov${s.governmentId}.rl${s.currentRulerId ?? -1}.` +
+      `@${s.id}:${s.name}.det${s.detailed ? 1 : 0}.ep${s.epoch}.rng${s.rngState}.ruin${s.ruinedYear ?? -1}.gov${s.governmentId}.cul${s.cultureId}.rl${s.currentRulerId ?? -1}.` +
         `pop${m.population}.c${m.children}.a${m.adults}.e${m.elders}.stab${m.stability}.` +
         `dom${m.dominantSpecies}.spec${s.econ.specialization}.w${Math.round(s.econ.wealth)}.` +
         // resources serialized generically over the pack's RESOURCES vector

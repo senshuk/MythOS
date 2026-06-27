@@ -186,6 +186,8 @@ export interface Settlement {
   ruinedYear?: number;
   /** this polity's government (succession model) — a pack id; see content/fixture. */
   governmentId: string;
+  /** this people's culture (value profile) — a pack id; drives inter-settlement relations. */
+  cultureId: string;
   /** the figure who currently rules here (founder, then a line of successors). Absent
    *  in a leaderless polity (government with no leader). */
   currentRulerId?: FigureId;
@@ -364,6 +366,7 @@ export interface SettlementView {
   ruinedYear?: number; // set if the settlement is a ruin
   government: string; // the polity's government (display label, e.g. 'Lord'/'Speaker'/'free folk')
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
+  culture: string; // the people's culture name (e.g. 'the Iron Creed')
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   // economy

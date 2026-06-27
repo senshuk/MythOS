@@ -26,7 +26,7 @@ import { addThought, computeOpinion, opinionReasons } from './opinion';
 import { interestOf } from './chronicle';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
-import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { BASE_PRICE, maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, unionViable, canBear, successionOf, hasLeader, leaderTitleOf, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, VALUES, CULTURES, culturalDistance, mostOpposedValue } from '../content/fixture';
 import { DAYS_PER_YEAR, ADULT_AGE, type World, type RelEdge, type WorldEvent, type EventType } from './model';
 import { type Intent } from './intent';
 
@@ -662,6 +662,49 @@ describe('per-species life stages (aging is species DATA, not a global constant)
     const vaelM = mk('m', 'vael', 15);
     expect(ageCompatible(w, grokF, grokM)).toBe(true); // adults by Grok maturity (13)
     expect(ageCompatible(w, vaelF, vaelM)).toBe(false); // not yet adult by Vael maturity (20)
+  });
+});
+
+describe('culture/values drive relations (wars have reasons, not dice)', () => {
+  it('the pack defines value axes, cultures, distance, and the opposed-value reason', () => {
+    expect(VALUES.length).toBeGreaterThan(0);
+    expect(CULTURES.length).toBeGreaterThan(1);
+    expect(culturalDistance('martial', 'martial')).toBe(0); // identical = no distance
+    // the war-creed is further from the green way than from a kindred martial faith
+    expect(culturalDistance('martial', 'sylvan')).toBeGreaterThan(culturalDistance('martial', 'devout'));
+    // and what they most disagree on is war or nature
+    expect(['war', 'nature']).toContain(mostOpposedValue('martial', 'sylvan'));
+  });
+
+  it('culturally-opposed settlements grow hostile while aligned ones grow friendly', () => {
+    let alignedSum = 0, alignedN = 0, opposedSum = 0, opposedN = 0;
+    for (let seed = 1; seed < 16; seed++) {
+      const w = createWorld(seed, false);
+      runYears(w, 150);
+      for (const e of w.edges) {
+        const d = culturalDistance(w.settlements[e.a].cultureId, w.settlements[e.b].cultureId);
+        if (d < 12) { alignedSum += e.relation; alignedN++; } else if (d > 28) { opposedSum += e.relation; opposedN++; }
+      }
+    }
+    // averaged across many edges/seeds, aligned peoples are markedly friendlier
+    expect(alignedSum / Math.max(1, alignedN)).toBeGreaterThan(opposedSum / Math.max(1, opposedN) + 15);
+  });
+
+  it('a conflict records its cultural cause, and the prose names it', () => {
+    let sawReason = false;
+    for (let seed = 1; seed < 20 && !sawReason; seed++) {
+      const w = createWorld(seed, false);
+      runYears(w, 300);
+      const conflict = w.events.find(
+        (e) => (e.type === 'raid' || e.type === 'battle' || e.type === 'conquest') && typeof e.data.reason === 'string',
+      );
+      if (conflict) {
+        sawReason = true;
+        expect(VALUES).toContain(conflict.data.reason as string); // the opposed value axis
+        expect(renderEvent(w, conflict)).toContain('over '); // the cultural clause is rendered
+      }
+    }
+    expect(sawReason).toBe(true);
   });
 });
 

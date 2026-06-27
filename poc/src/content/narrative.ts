@@ -22,6 +22,19 @@ import { type GrammarRules } from '../engine/grammar';
  *  event's data bag; `subjectCount` is how many subjects it carries. */
 export type RenderFn = (n: (i: number) => string, d: Record<string, number | string>, subjectCount: number) => string;
 
+/** How each culture value axis reads in prose (the cultural REASON behind a clash). */
+const VALUE_PHRASE: Record<string, string> = {
+  honor: 'honor',
+  war: 'the ways of war',
+  tradition: 'old tradition',
+  freedom: 'freedom',
+  nature: 'the wild',
+  craft: 'the crafts',
+};
+/** " over the wild" — the cultural reason clause appended to a conflict, if present. */
+const overReason = (d: Record<string, number | string>): string =>
+  d.reason ? ` over ${VALUE_PHRASE[d.reason as string] ?? d.reason}` : '';
+
 export const EVENT_RENDER: Record<string, RenderFn> = {
   settlement_founded: (n, d, c) =>
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
@@ -35,13 +48,14 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   blight: (_n, d) => `A hard season struck ${d.name} — ${d.toll} lost.`,
   plague: (_n, d) => `Plague swept ${d.name} — ${d.toll} perished.`,
   ruined: (n, d, c) => (c ? `${d.name} fell to ruin under ${n(0)}, its last ruler.` : `${d.name} was abandoned, falling to ruin.`),
-  battle: (_n, d) => `${d.a} and ${d.b} clashed in battle (${d.aToll} and ${d.bToll} fell).`,
-  conquest: (n, d, c) => (c ? `${n(0)} of ${d.victor} conquered ${d.fallen}, razing it.` : `${d.victor} conquered ${d.fallen}, razing it.`),
+  battle: (_n, d) => `${d.a} and ${d.b} clashed in battle${overReason(d)} (${d.aToll} and ${d.bToll} fell).`,
+  conquest: (n, d, c) =>
+    c ? `${n(0)} of ${d.victor} conquered ${d.fallen}${overReason(d)}, razing it.` : `${d.victor} conquered ${d.fallen}${overReason(d)}, razing it.`,
   wonder: (_n, d) => `${d.wonder} was raised in ${d.name}.`,
   beast: (_n, d) => `${d.beast} ravaged ${d.name} — ${d.toll} slain.`,
   omen: (_n, d) => `Over ${d.name}, ${d.omen} — folk feared dark days.`,
   trade: (_n, d) => `Caravans (${d.goods} in goods) ran between ${d.from} and ${d.to}.`,
-  raid: (_n, d) => `${d.raider} raided ${d.victim}${d.toll ? ` (${d.toll} lost)` : ''}.`,
+  raid: (_n, d) => `${d.raider} raided ${d.victim}${d.toll ? ` (${d.toll} lost)` : ''}${overReason(d)}.`,
   famine: (_n, d) => `Famine struck ${d.name} — ${d.toll} starved.`,
   focus_shift: (_n, d) => `Attention turned from ${d.from} to ${d.to}.`,
   emigrated: (n, d) => `${n(0)} left ${d.from} to settle in ${d.to}.`,

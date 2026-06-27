@@ -435,6 +435,7 @@ function Dashboard({
                 {' '}
                 · {s.population} {s.dominantSpecies} · {s.specialization} · {s.wealth}w{' '}
                 <span className={foodClass(s.foodSecurity)}>{foodLabel(s.foodSecurity)}</span>
+                <span className="figs"> · {s.culture}</span>
                 {s.leaderTitle && s.ruler ? (
                   <span className="ruler"> · {s.leaderTitle} {s.ruler}</span>
                 ) : !s.leaderTitle ? (
