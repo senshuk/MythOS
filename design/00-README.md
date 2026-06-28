@@ -57,6 +57,15 @@ This folder contains a two-part architectural study:
 |------|----------|
 | `10-intent-resolver-design.md` | Intent/resolver seam: the player-as-actor foundation |
 
+6. **Part 6 — Simulation Ontology** (`11-simulation-ontology.md`)
+   The engine's conceptual constitution — defines every entity type (Actor, Organization, Location, Object, Vehicle, Event, Relationship, Resource, Record), their capability matrix, ownership rules, containment rules, mobility rules, and dual-role entity handling (e.g., Vehicle-as-Location). Produced before Phase 1 World Topology implementation to ensure all future systems share a consistent vocabulary.
+
+| File | Contents |
+|------|----------|
+| `11-simulation-ontology.md` | Entity types, capability matrix, ownership/containment/mobility rules, dual-role entities, universe pack extension contract |
+
+---
+
 ## How Warsim was studied
 
 The repository ships the compiled game (`Warsim.exe`, ~20 MB QB64 binary) plus a
