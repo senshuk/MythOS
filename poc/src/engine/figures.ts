@@ -104,14 +104,21 @@ export function mintFigure(
     // a hereditary ruler reigns until death; an elected one serves a fixed term.
     reignEnd: year + reignSpan(s.governmentId, rng),
   };
-  world.figures.push(fig);
+  addFigure(world, fig);
   return fig;
+}
+
+function addFigure(world: World, fig: HistoricalFigure): void {
+  world.figures.push(fig);
+  world.figuresById.set(fig.id, fig);
+  const list = world.figuresBySettlement.get(fig.settlementId);
+  if (list) list.push(fig.id);
+  else world.figuresBySettlement.set(fig.settlementId, [fig.id]);
 }
 
 export function getFigure(world: World, id: FigureId | undefined): HistoricalFigure | undefined {
   if (id === undefined) return undefined;
-  for (const f of world.figures) if (f.id === id) return f;
-  return undefined;
+  return world.figuresById.get(id);
 }
 
 /** The local heir to a focused settlement's rule: the most PROMINENT living adult —
@@ -156,7 +163,7 @@ function crownActor(world: World, s: Settlement, id: EntityId, year: number, rng
     reignStart: year,
     reignEnd: year + reignSpan(s.governmentId, rng),
   };
-  world.figures.push(fig);
+  addFigure(world, fig);
   return fig;
 }
 

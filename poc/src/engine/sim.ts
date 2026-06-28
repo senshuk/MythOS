@@ -97,6 +97,8 @@ export function createWorld(seed: number, focus = true): World {
     director: initialDirector(),
     directorRngState: mixSeed(seed, 0xd17),
     figures: [],
+    figuresById: new Map(),
+    figuresBySettlement: new Map(),
     houses: [],
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
@@ -247,7 +249,7 @@ function eventView(world: World, ev: WorldEvent): EventView {
 /** Inspect a remembered historical FIGURE (a record — founder/ruler — not a live
  *  actor). Returns its dates/role and every event that names it. */
 export function inspectFigure(world: World, id: EntityId): FigureDetail | undefined {
-  const fig = world.figures.find((f) => f.id === id);
+  const fig = world.figuresById.get(id);
   if (!fig) return undefined;
   const lifeEvents = (world.eventsBySubject.get(id) ?? [])
     .map((eid) => getEvent(world, eid))
@@ -275,11 +277,10 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
   const s = world.settlements[id];
   if (!s) return undefined;
   // Union: events where this settlement is explicitly indexed + events where one of its
-  // figures is a subject. Both indexes are O(1) lookups; no full scan of world.events.
+  // figures is a subject. All three lookups are O(1) via the reverse indexes.
   const eventIds = new Set<number>(world.eventsBySettlement.get(id) ?? []);
-  for (const f of world.figures) {
-    if (f.settlementId !== id) continue;
-    for (const eid of world.eventsBySubject.get(f.id) ?? []) eventIds.add(eid);
+  for (const fid of world.figuresBySettlement.get(id) ?? []) {
+    for (const eid of world.eventsBySubject.get(fid) ?? []) eventIds.add(eid);
   }
   const events = [...eventIds]
     .sort((a, b) => b - a) // event IDs are monotonic — descending = newest first
@@ -684,6 +685,19 @@ export function compactEvents(world: World): void {
 
   world.events.splice(0, cutIdx);
   world.firstEventId += cutIdx;
+
+  // Sweep reverse indexes: drop entries whose event was discarded (not archived, not recent).
+  // Runs after firstEventId is updated so the "recent" threshold is correct.
+  for (const [subj, ids] of world.eventsBySubject) {
+    const kept = ids.filter((id) => id >= world.firstEventId || world.eventArchive.has(id));
+    if (kept.length === 0) world.eventsBySubject.delete(subj);
+    else if (kept.length < ids.length) world.eventsBySubject.set(subj, kept);
+  }
+  for (const [sid, ids] of world.eventsBySettlement) {
+    const kept = ids.filter((id) => id >= world.firstEventId || world.eventArchive.has(id));
+    if (kept.length === 0) world.eventsBySettlement.delete(sid);
+    else if (kept.length < ids.length) world.eventsBySettlement.set(sid, kept);
+  }
 }
 
 // ------------------------------------------------ determinism support --------

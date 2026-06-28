@@ -428,6 +428,11 @@ export interface World {
 
   /** Named people the world remembers (founders, rulers) — the legends database. */
   figures: HistoricalFigure[];
+  /** O(1) lookup: figure id → record. Maintained alongside figures[]; never serialized. */
+  figuresById: Map<FigureId, HistoricalFigure>;
+  /** O(1) lookup: settlement id → figure ids for that settlement. Maintained alongside
+   *  figures[]; never serialized; rebuilt on load. */
+  figuresBySettlement: Map<SettlementId, FigureId[]>;
   /** The great Houses — lineages that hold seats and endure across generations. */
   houses: House[];
   /** dedicated RNG stream for minting historical figures during worldgen. */

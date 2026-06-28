@@ -256,13 +256,23 @@ export function deserializeWorld(s: SaveFile): World {
       }
       return m;
     })(),
+    figures: s.figures,
+    figuresById: new Map(s.figures.map((f) => [f.id, f])),
+    figuresBySettlement: (() => {
+      const m = new Map<number, number[]>();
+      for (const f of s.figures) {
+        const list = m.get(f.settlementId);
+        if (list) list.push(f.id);
+        else m.set(f.settlementId, [f.id]);
+      }
+      return m;
+    })(),
+    houses: s.houses ?? [],
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,
     director: s.director,
     directorRngState: s.directorRngState,
-    figures: s.figures,
-    houses: s.houses ?? [],
     figureRngState: s.figureRngState,
     playerId: s.playerId ?? undefined,
     playerRngState: s.playerRngState,
