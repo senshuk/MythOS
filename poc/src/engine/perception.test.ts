@@ -114,7 +114,7 @@ describe('perception through the real resolver (the live weekly loop)', () => {
     edge.flags.rival = true;
     for (let week = 0; week < 400; week++) {
       w.tick += 7;
-      actWeekly(w);
+      actWeekly(w, fullActors(w));
     }
     return w;
   };

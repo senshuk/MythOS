@@ -78,7 +78,7 @@ describe('reputation colours the esteem need — renown feels good, notoriety gn
     for (let i = 0; i < 3; i++) addMark(w.reputation.get(notorious)!, 'bloodshed', w.tick, { witnesses: 8 });
 
     // let the esteem need drift toward its (reputation-coloured) target
-    for (let day = 0; day < 300; day++) needsDaily(w);
+    for (let day = 0; day < 300; day++) needsDaily(w, fullActors(w));
 
     const e = (id: number) => w.needs.get(id)![ESTEEM_NEED];
     expect(e(notorious)).toBeLessThan(e(clean));
@@ -92,7 +92,7 @@ describe('reputation effects stay deterministic', () => {
       const giver = fullActors(w)[0];
       // earn some renown so the effect paths (reception/esteem/courtship) are live
       witnessDeed(w, emit(w, 'kindness', [giver, fullActors(w)[1]]), giver, fullActors(w)[1], 'generosity');
-      for (let day = 0; day < 200; day++) needsDaily(w);
+      for (let day = 0; day < 200; day++) needsDaily(w, fullActors(w));
       return [...w.reputation.entries()]
         .map(([id, r]) => `${id}:${Math.round(computeStanding(r, w.tick))}`)
         .sort()

@@ -10,14 +10,17 @@
  * it against the player's own RNG stream — "one rule set, two intent producers",
  * with no `if (isPlayer)` inside any rule (only this source selection).
  */
-import { type World } from '../engine/model';
-import { fullActors, isAlive } from '../engine/world';
+import { type World, type EntityId } from '../engine/model';
+import { isAlive } from '../engine/world';
 import { takePlayerIntent } from '../engine/player';
 import { isAdult, decideActor } from './decide';
 import { resolveIntent, resolvePlayerIntent } from './resolve';
 
-export function actWeekly(world: World): void {
-  const adults = fullActors(world).filter((id) => isAdult(world, id));
+export function actWeekly(world: World, actors: EntityId[]): void {
+  const adults: EntityId[] = [];
+  for (const id of actors) {
+    if (isAdult(world, id)) adults.push(id);
+  }
   if (adults.length < 2) return;
 
   for (const a of adults) {

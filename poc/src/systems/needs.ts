@@ -11,8 +11,8 @@
  *
  * Unmet needs feed the decider (decide.ts) and aspirations (aspiration.ts).
  */
-import { type World } from '../engine/model';
-import { fullActors, relCount, clamp, isWed } from '../engine/world';
+import { type World, type EntityId } from '../engine/model';
+import { relCount, clamp, isWed } from '../engine/world';
 import { standingOf } from '../engine/reputation';
 import { REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
 
@@ -21,12 +21,12 @@ function drift(v: number, target: number, rate: number): number {
   return v + (target - v) * rate;
 }
 
-export function needsDaily(world: World): void {
+export function needsDaily(world: World, actors: EntityId[]): void {
   const focused = world.focusedSettlementId;
   const stability = focused >= 0 ? world.settlements[focused]?.macro.stability ?? 0 : 0;
   const safetyTarget = clamp(500 + stability * 5, 0, 1000); // a stable home feels safe
 
-  for (const id of fullActors(world)) {
+  for (const id of actors) {
     const n = world.needs.get(id)!;
     // consumption & cost-of-living (engine reads needs by ROLE, not a literal id)
     n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] - 4, 0, 1000);
