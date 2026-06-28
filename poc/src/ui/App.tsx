@@ -1175,7 +1175,7 @@ function Inspector({
             {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
-          <p className="muted">Nature: {actorDetail.actor.nature}</p>
+          <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}</p>
 
           {actorDetail.reputation.reasons.length > 0 && (
             <>
@@ -1260,6 +1260,9 @@ function Inspector({
               {settV.culture}
               {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
             </p>
+          )}
+          {settV?.patronDeity && (
+            <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
           )}
           {settV?.culturalTaboos && settV.culturalTaboos.length > 0 && (
             <p className="culture-taboos">taboo: {settV.culturalTaboos.join(' · ')}</p>

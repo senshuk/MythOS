@@ -16,7 +16,7 @@ import {
   DAYS_PER_YEAR,
   MEMORY_LIMIT,
 } from './model';
-import { NEEDS, monogamousOf, valueProfile, temperamentProfile } from '../content/fixture';
+import { NEEDS, monogamousOf, valueProfile, temperamentProfile, patronDeityOf, faithProbability } from '../content/fixture';
 import { Rng, mixSeed } from './rng';
 
 export interface ActorProps {
@@ -101,6 +101,11 @@ export function createActor(world: World, p: ActorProps): EntityId {
     values: valueProfile(cultureId, p.traits, new Rng(mixSeed(world.seed, id, 0x9e1d))),
     temperament: temperamentProfile(p.traits, new Rng(mixSeed(world.seed, id, 0x7c0d))),
   });
+  // FAITH: stable religious affiliation, derived once at birth and stored. Most actors
+  // follow their settlement's patron deity; the devout trait raises the probability.
+  // A minority are irreligious (faith = ''), which is a valid, permanent state.
+  const faithRng = new Rng(mixSeed(world.seed, id, 0xfa17));
+  world.faith.set(id, faithRng.chance(faithProbability(p.traits)) ? patronDeityOf(cultureId).id : '');
   return id;
 }
 
@@ -306,6 +311,7 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   world.ties.delete(id);
   world.memory.delete(id);
   world.reputation.delete(id);
+  world.faith.delete(id);
   world.rels.delete(id);
   world.homeSettlement.delete(id);
   world.fidelity.delete(id);

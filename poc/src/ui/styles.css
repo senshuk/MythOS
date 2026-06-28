@@ -311,6 +311,8 @@ button { font-family: inherit; }
 .name-gloss { margin: -2px 0 var(--space-2); font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); }
 /* cultural taboos: what this people consider sacred-forbidden */
 .culture-taboos { margin: var(--space-1) 0; font-size: var(--fs-xs); color: var(--muted); letter-spacing: 0.04em; }
+/* patron deity: the divine source this settlement's people answer to */
+.patron-deity { margin: var(--space-1) 0; font-size: var(--fs-xs); color: var(--gold-dim); letter-spacing: 0.03em; }
 /* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
 .edge.trade { stroke-dasharray: 2.2 2.4; animation: flow 2.6s linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -4.6; } }

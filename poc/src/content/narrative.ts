@@ -75,6 +75,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   dispute: (n) => `${n(0)} and ${n(1)} quarrelled.`,
   kindness: (n) => `${n(0)} did ${n(1)} a kindness.`,
   brawl: (n) => `${n(0)} and ${n(1)} came to blows.`,
+  condemned: (n, d) => `${n(0)} was condemned by ${d.deity ?? 'the gods'} for their deed.`,
 };
 
 /**
@@ -85,6 +86,8 @@ export function eventInterest(type: string, data: Record<string, number | string
   const toll = typeof data.toll === 'number' ? data.toll : 0;
   const age = typeof data.age === 'number' ? data.age : 0;
   switch (type) {
+    case 'condemned':
+      return 55; // a named divine condemnation is notable but not as grave as a death
     case 'died_brawl':
       return 72;
     case 'conquest':

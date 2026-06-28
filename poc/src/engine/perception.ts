@@ -19,11 +19,11 @@
  */
 import { type World, type EntityId, type EventId } from './model';
 import { Rng, mixSeed } from './rng';
-import { fullActors, getRel, remember } from './world';
+import { fullActors, getRel, remember, emit } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
 import { escalateAnimosity, personalityOf } from './social';
-import { reputeSpec, ethicsWeightFor } from '../content/fixture';
+import { reputeSpec, ethicsWeightFor, patronDeityOf } from '../content/fixture';
 
 /** A co-resident's chance of having been present to see a public deed. */
 const WITNESS_CHANCE = 0.5;
@@ -64,6 +64,11 @@ export function witnessDeed(
     if (rng.chance(WITNESS_CHANCE)) witnesses.push(id);
   }
 
+  // a deed the community treats as a cultural profanity (weight ≥ 2.0) triggers
+  // moral revulsion — a stronger, distinct witness thought — and a named religious
+  // condemnation in the history if the settlement has a patron deity.
+  const isTaboo = culturalWeight >= 2.0;
+
   const wt = spec.witnessThought;
   for (const w of witnesses) {
     remember(world, w, eventId); // episodic memory of what they saw — always
@@ -72,11 +77,6 @@ export function witnessDeed(
     // standing only — it doesn't reshape the social graph or perturb the wider sim.
     if (wt) {
       const edge = getRel(world, w, actor);
-      // a deed the community treats as a cultural profanity (weight ≥ 2.0) triggers
-      // moral revulsion — a stronger, distinct thought — rather than personal dread.
-      // Below that threshold the thought kind is unchanged; the value scales with
-      // cultural weight in both cases.
-      const isTaboo = culturalWeight >= 2.0;
       const thoughtKind = isTaboo ? 'tabooHorror' : wt.kind;
       const thoughtValue = Math.round((wt.value ?? -150) * culturalWeight);
       addThought(edge, thoughtKind, world.tick, { value: thoughtValue, cause: eventId });
@@ -91,6 +91,15 @@ export function witnessDeed(
     witnesses: witnesses.length,
     cause: eventId,
   });
+
+  // a culturally-tabooed deed in a settlement that has a patron deity becomes a
+  // RELIGIOUS condemnation — a named event in the history, so "condemned by the
+  // Rootmother" is traceable and not just an opaque standing number.
+  if (isTaboo && cultureId) {
+    const deity = patronDeityOf(cultureId);
+    emit(world, 'condemned', [actor], { deity: deity.name, deed: kind }, [eventId]);
+  }
+
   return witnesses;
 }
 

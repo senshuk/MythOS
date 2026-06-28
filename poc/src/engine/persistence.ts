@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -70,6 +70,7 @@ export interface SaveFile {
   ties: [number, SocialTies][];
   memory: [number, number[]][];
   reputation: [number, Reputation][];
+  faith?: [number, string][]; // actor → deity id ('' = faithless); optional for v7 compat
 
   // relationship graph. `relPool` holds each unique edge ONCE; `relAdj` lists, per
   // entity (in original order), its neighbours as [neighbourId, poolIndex]. This
@@ -143,6 +144,7 @@ export function serializeWorld(world: World): SaveFile {
     ties: [...world.ties],
     memory: [...world.memory],
     reputation: [...world.reputation],
+    faith: [...world.faith],
 
     relPool,
     relAdj,
@@ -151,7 +153,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -222,6 +224,7 @@ export function deserializeWorld(s: SaveFile): World {
     ties: new Map(s.ties),
     memory: new Map(s.memory),
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
+    faith: new Map(s.faith ?? []),           // religious affiliation, stable from birth
     rels,
     firstEventId: (s as { firstEventId?: number }).firstEventId ?? 1,
     eventArchive: new Map((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []),

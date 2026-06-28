@@ -38,7 +38,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -89,6 +89,7 @@ export function createWorld(seed: number, focus = true): World {
     ties: new Map(),
     memory: new Map(),
     reputation: new Map(),
+    faith: new Map(),
     rels: new Map(),
     events: [],
     chronicle: [],
@@ -217,6 +218,7 @@ function actorView(world: World, id: EntityId): ActorView {
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
     standing: Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick)),
+    faith: (() => { const f = world.faith.get(id); return f ? deityById(f).name : undefined; })(),
   };
 }
 
@@ -308,6 +310,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
       culturalTaboos: ethicsTaboos(s.cultureId),
+      patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
@@ -733,7 +736,7 @@ export function canonicalize(world: World): string {
       `#${id}:${idn.given}.${idn.family}.${idn.speciesId}.${idn.sex}.` +
         `age${lc.ageYears}.alive${lc.alive ? 1 : 0}.death${lc.deathTick ?? -1}.` +
         `fid${world.fidelity.get(id) ?? '-'}.home${world.homeSettlement.get(id) ?? -1}.` +
-        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}`,
+        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}.faith${world.faith.get(id) ?? ''}`,
     );
   };
   for (const id of world.entities) serializeEntity(id);

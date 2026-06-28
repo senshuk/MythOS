@@ -389,6 +389,10 @@ export interface World {
   /** per-actor public standing as witness-weighted, decaying marks (reputation.ts).
    *  Minted by perception when a deed is seen, so notoriety is earned, not assumed. */
   reputation: Map<EntityId, Reputation>;
+  /** per-actor religious faith: the id of the deity they follow, or '' if faithless.
+   *  Assigned at birth from the settlement's patron deity + trait-modified probability;
+   *  stored (not re-derived) so faith is stable for life and survives a save/load. */
+  faith: Map<EntityId, string>;
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
   /** Recent events (last ~10 years). Append-only within the window; compacted yearly.
@@ -516,6 +520,8 @@ export interface ActorView {
   /** public standing in the community (0 = unremarked, − = notorious, + = renowned).
    *  Earned from witnessed deeds — see reputation.ts / perception.ts. */
   standing: number;
+  /** deity name this actor follows, or undefined if faithless. */
+  faith?: string;
 }
 
 /** A clickable reference to an entity named in an event's prose. */
@@ -599,6 +605,7 @@ export interface SettlementView {
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   culture: string; // the people's culture name (e.g. 'the Iron Creed')
   culturalTaboos: string[]; // deed labels this culture especially abhors (ethics weight ≥ 1.5)
+  patronDeity: { name: string; domain: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   // economy

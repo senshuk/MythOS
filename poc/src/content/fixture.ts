@@ -330,9 +330,37 @@ export interface Personality {
   temperament: Record<TemperamentAxis, number>;
 }
 
+// ------------------------------------------------------------- religion -------
+// Each culture is organised around a PATRON DEITY — the divine source whose
+// domain mirrors the culture's highest value. Deities are pack data and engine-
+// agnostic; the engine only cares about ids. A pack may add, rename, or remove
+// deities without touching a single line of engine code.
+
+export interface Deity {
+  id: string;
+  name: string; // display: 'the Rootmother', 'the Iron Father' …
+  domain: string; // what they govern: 'growth and the living world' …
+}
+
+export const DEITIES: Deity[] = [
+  { id: 'iron_father', name: 'the Iron Father', domain: 'war and honour' },
+  { id: 'rootmother', name: 'the Rootmother', domain: 'growth and the living world' },
+  { id: 'forge_spirit', name: 'the Forge Spirit', domain: 'craft and making' },
+  { id: 'windwalker', name: 'the Windwalker', domain: 'freedom and fortune' },
+  { id: 'ancestors', name: 'the Ancestors', domain: 'memory and tradition' },
+];
+
+export function deityById(id: string): Deity {
+  return DEITIES.find((d) => d.id === id) ?? DEITIES[0];
+}
+
+// -----------------------------------------------------------------------------
+
 export interface Culture {
   id: string;
   name: string;
+  /** The deity whose domain mirrors this culture's highest value. */
+  patronDeityId: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
   values: Partial<Record<ValueAxis, number>>;
   /** Per-deed-kind severity multiplier: >1 = this community abhors it (stronger
@@ -344,6 +372,7 @@ export interface Culture {
 export const CULTURES: Culture[] = [
   {
     id: 'martial', name: 'the Iron Creed',
+    patronDeityId: 'iron_father',
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
     // warriors: killing in conflict is expected — bloodshed barely stings standing;
     // brawling is normal; open-handed giving is fine but not a sacred virtue.
@@ -351,6 +380,7 @@ export const CULTURES: Culture[] = [
   },
   {
     id: 'sylvan', name: 'the Green Way',
+    patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
     // peace-keepers: killing is a profound wrong; even brawling draws wide censure;
     // giving is a community bond and earns extra regard.
@@ -358,6 +388,7 @@ export const CULTURES: Culture[] = [
   },
   {
     id: 'artisan', name: 'the Maker Folk',
+    patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
     // civic builders: violence disrupts order and wastes lives; generosity oils the
     // trade network and earns quiet respect.
@@ -365,6 +396,7 @@ export const CULTURES: Culture[] = [
   },
   {
     id: 'free', name: 'the Free Companies',
+    patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
     // mercenaries: pragmatic about violence; generosity is rare and genuinely admired
     // in a world where you keep what you can.
@@ -372,6 +404,7 @@ export const CULTURES: Culture[] = [
   },
   {
     id: 'devout', name: 'the Old Faith',
+    patronDeityId: 'ancestors',
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
     // sacred law governs life: killing is a profound profanity; brawling stains one's
     // honour before the divine; almsgiving is a holy duty and earns deep respect.
@@ -381,6 +414,19 @@ export const CULTURES: Culture[] = [
 
 export function cultureById(id: string): Culture {
   return CULTURES.find((c) => c.id === id) ?? CULTURES[0];
+}
+
+/** The patron deity of a culture — the divine source whose domain mirrors the
+ *  culture's highest value. Used by perception to name religious condemnations. */
+export function patronDeityOf(cultureId: string): Deity {
+  return deityById(cultureById(cultureId).patronDeityId);
+}
+
+/** Probability an actor born into this culture will hold religious faith.
+ *  The `devout` trait pushes it toward certainty; without it most still follow
+ *  their people's patron but a minority are quietly irreligious. */
+export function faithProbability(traitIds: string[]): number {
+  return traitIds.includes('devout') ? 0.9 : 0.6;
 }
 
 /** How much this culture amplifies (>1) or tolerates (<1) a deed of the given kind.
