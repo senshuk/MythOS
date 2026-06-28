@@ -1369,11 +1369,16 @@ describe('reproduction is species DATA (not a hardcoded humanoid model)', () => 
       (e) => e.type === 'born' && e.subjects.length === 2 && w.identity.get(e.subjects[1])?.speciesId === 'grok',
     );
     expect(soloBirths.length).toBeGreaterThan(0);
-    // and no Grok ever took a spouse (of those still present — some may have died/left)
+    // and no Grok ever took a spouse. Checked by id (not by surviving ties), since a
+    // Grok may legitimately have emigrated and later died over the 20 years — what
+    // must hold is that no marriage ever named one.
+    const grokIds = new Set(groks);
     for (const g of groks) {
-      const ties = w.ties.get(g);
-      if (ties) expect(ties.spouses.length).toBe(0);
+      const t = w.ties.get(g);
+      if (t) expect(t.spouses.length).toBe(0); // for any still resident
     }
+    const aGrokWed = w.events.some((e) => e.type === 'married' && e.subjects.some((s) => grokIds.has(s)));
+    expect(aGrokWed).toBe(false);
   });
 });
 
