@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -45,6 +45,7 @@ export interface SaveFile {
   edges: World['edges'];
   entities: number[];
   deadEntities: number[];
+  stats: { born: number; died: number; marriages: number; feuds: number };
   events: World['events'];
   chronicle: World['chronicle'];
   annals: World['annals'];
@@ -116,6 +117,7 @@ export function serializeWorld(world: World): SaveFile {
     edges: world.edges,
     entities: world.entities,
     deadEntities: world.deadEntities,
+    stats: world.stats,
     events: world.events,
     chronicle: world.chronicle,
     annals: world.annals,
@@ -144,7 +146,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -155,6 +157,18 @@ export function deserializeWorld(s: SaveFile): World {
     const lifecycleMap = new Map(s.lifecycle);
     entities = s.entities.filter((id) => lifecycleMap.get(id)?.alive ?? true);
     deadEntities = s.entities.filter((id) => !(lifecycleMap.get(id)?.alive ?? true));
+  }
+
+  // v5/v6 → v7: stats were not stored; reconstruct by scanning events once at load time.
+  let stats = (s as { stats?: { born: number; died: number; marriages: number; feuds: number } }).stats;
+  if (!stats) {
+    stats = { born: 0, died: 0, marriages: 0, feuds: 0 };
+    for (const ev of s.events) {
+      if (ev.type === 'born') stats.born++;
+      else if (ev.type === 'died' || ev.type === 'died_brawl') stats.died++;
+      else if (ev.type === 'married') stats.marriages++;
+      else if (ev.type === 'feud') stats.feuds++;
+    }
   }
 
   // rebuild the relationship graph: one pooled edge object is shared by both
@@ -184,6 +198,7 @@ export function deserializeWorld(s: SaveFile): World {
     nextEventId: s.nextEventId,
     entities,
     deadEntities,
+    stats,
     identity: new Map(s.identity),
     names: new Map(s.names),
     lifecycle: new Map(s.lifecycle),

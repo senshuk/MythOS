@@ -390,6 +390,8 @@ export interface World {
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
   events: WorldEvent[];
+  /** Running tallies incremented in emit() — avoids an O(events) scan per UI render. */
+  stats: { born: number; died: number; marriages: number; feuds: number };
 
   /** Rolling living memory: recent notable events, bounded and FADING. Drives the
    *  Director's sense of recent drama. */

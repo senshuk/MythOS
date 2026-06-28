@@ -74,6 +74,7 @@ export function createWorld(seed: number, focus = true): World {
     nextEventId: 1,
     entities: [],
     deadEntities: [],
+    stats: { born: 0, died: 0, marriages: 0, feuds: 0 },
     identity: new Map(),
     names: new Map(),
     lifecycle: new Map(),
@@ -397,16 +398,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   // may be undefined in headless / worldgen mode (no settlement focused)
   const focused = world.focusedSettlementId >= 0 ? world.settlements[world.focusedSettlementId] : undefined;
 
-  let born = 0;
-  let died = 0;
-  let marriages = 0;
-  let feuds = 0;
-  for (const ev of world.events) {
-    if (ev.type === 'born') born++;
-    else if (ev.type === 'died' || ev.type === 'died_brawl') died++;
-    else if (ev.type === 'married') marriages++;
-    else if (ev.type === 'feud') feuds++;
-  }
+  const { born, died, marriages, feuds } = world.stats;
 
   // world population = focused settlement's full count + every other macro headcount
   // (summary actors are named members already inside those macro headcounts)
@@ -652,6 +644,7 @@ export function canonicalize(world: World): string {
     `rng=${world.rng.state}`,
     `geo=${world.geoRngState}`,
     `events=${world.events.length}`,
+    `stats=born${world.stats.born}.died${world.stats.died}.wed${world.stats.marriages}.feud${world.stats.feuds}`,
     `nextEntity=${world.nextEntityId}`,
   ];
   const serializeEntity = (id: EntityId): void => {

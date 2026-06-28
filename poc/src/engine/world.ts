@@ -189,6 +189,10 @@ export function emit(
     data,
     causes: [...causes],
   });
+  if (type === 'born') world.stats.born++;
+  else if (type === 'died' || type === 'died_brawl') world.stats.died++;
+  else if (type === 'married') world.stats.marriages++;
+  else if (type === 'feud') world.stats.feuds++;
   for (const s of subjects) {
     if (world.memory.has(s)) remember(world, s, id);
   }
