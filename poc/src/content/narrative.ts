@@ -84,6 +84,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
     `${d.winner} seized control of ${d.settlement}, driving out ${d.loser} in open civil war over ${VALUE_PHRASE[d.axis as string] ?? d.axis}.`,
   exile: (n, d) =>
     `${n(0)} of ${d.faction ?? 'the old order'} was expelled from ${d.from} and fled to ${d.to}.`,
+  return_from_exile: (n, d) =>
+    `${n(0)} of ${d.faction ?? 'the old order'} returned to ${d.settlement} after ${d.yearsGone} years in exile.`,
 };
 
 /**
@@ -95,6 +97,7 @@ export function eventInterest(type: string, data: Record<string, number | string
   const age = typeof data.age === 'number' ? data.age : 0;
   switch (type) {
     case 'civil_war': return 65; // a community tearing itself apart — rival to conquest in drama
+    case 'return_from_exile': return 58; // a triumphant return — dramatic resolution of the exile arc
     case 'exile': return 52; // a named expulsion — memorable consequence, below a brawl death
     case 'contested_succession': return 42; // a power shift between factions — between ascension and dynasty
     case 'condemned':
@@ -196,6 +199,7 @@ export const ERA_GRAMMAR: GrammarRules = {
   era_ruler_died: ['the Death of [VICTIM]', 'the Year [VICTIM] Passed', 'the Mourning of [VICTIM]'],
   era_civil_war: ['the Civil War of [PLACE]', 'the Year [PLACE] Tore Itself Apart', 'the Schism of [PLACE]'],
   era_exile: ['the Exile of [VICTIM]', 'the Year [VICTIM] was Cast Out', 'the Banishment of [VICTIM]'],
+  era_return_from_exile: ['the Return of [VICTIM]', 'the Year [VICTIM] Came Home', 'the Homecoming of [VICTIM]'],
   era_conquest: ['the Conquest of [FALLEN]', 'the Year [FALLEN] was Conquered', 'the Sack of [FALLEN]'],
   era_battle: ['the Battle of [PLACE]', 'the Year [PLACE] Met War', 'the Clash at [PLACE]'],
   era_wonder: ['the Raising of [WONDER]', 'the Building of [WONDER]', 'the Year [WONDER] was Made'],
@@ -221,6 +225,7 @@ export const ERA_SYMBOL: Record<string, string> = {
   ruler_died: 'era_ruler_died',
   civil_war: 'era_civil_war',
   exile: 'era_exile',
+  return_from_exile: 'era_return_from_exile',
   conquest: 'era_conquest',
   battle: 'era_battle',
   wonder: 'era_wonder',

@@ -57,12 +57,16 @@ This folder contains a two-part architectural study:
 |------|----------|
 | `10-intent-resolver-design.md` | Intent/resolver seam: the player-as-actor foundation |
 
-6. **Part 6 — Simulation Ontology** (`11-simulation-ontology.md`)
-   The engine's conceptual constitution — defines every entity type (Actor, Organization, Location, Object, Vehicle, Event, Relationship, Resource, Record), their capability matrix, ownership rules, containment rules, mobility rules, and dual-role entity handling (e.g., Vehicle-as-Location). Produced before Phase 1 World Topology implementation to ensure all future systems share a consistent vocabulary.
+6. **Part 6 — Engine Constitution** (`11-simulation-ontology.md`, `12-capabilities.md`, `13-simulation-rules.md`)
+   Three companion documents that together form the conceptual foundation of the engine. Produced before Phase 1 World Topology implementation so all future systems share a consistent vocabulary. Revised after third-party technical review.
 
 | File | Contents |
 |------|----------|
-| `11-simulation-ontology.md` | Entity types, capability matrix, ownership/containment/mobility rules, dual-role entities, universe pack extension contract |
+| `11-simulation-ontology.md` | What exists: Actor (autonomous agent, not individual), Organization, Location, Vehicle (Location sub-type), Object; entity vs. construct vs. data tiers; capability-first classification ("Agency creates Actors"); dual-role entity guidance |
+| `12-capabilities.md` | What each entity type can do: Identity, Agency, Collective Decision Making, Memory, Relationships, Reputation, Influence, Needs, Ownership, Membership, Containment, Mobility, History, Destruction — each specified with mechanism, pack config, and invariants |
+| `13-simulation-rules.md` | How the simulation operates: Time (configurable calendar), Space (three world model types, adjacency, travel), Systems (core + optional modules), Rules (physical/social/economic/supernatural per-universe), Invariants (16 hard constraints), Universe Extension Contract |
+| `14-component-model.md` | Bridge between ontology and implementation: full component catalog (Identity, Lifecycle, Needs, Personality, Traits, Profession, SocialTies, Memory, Reputation, Relationships, Faith, Exile, Fidelity, LocationMeta, MacroPop, Economy, FactionSplit, DirectorState, Substrate) with read/write contracts, system dependency table, component lifecycle, and Phase 1–3 anticipated components |
+| `15-execution-model.md` | How the machine runs: tick pipeline (daily/weekly/yearly cadences with ordering rationale), event emission and perception pipeline, snapshot build pipeline, player input queue and replay log, LOD focus change protocol, save/load lifecycle, worker/thread boundary, and 7 execution invariants — the authoritative answer to "what happens first?" |
 
 ---
 

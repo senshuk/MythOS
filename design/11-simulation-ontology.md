@@ -18,6 +18,28 @@ If a proposed feature uses a concept not defined here, that concept must either 
 
 ---
 
+## How to Classify Anything
+
+Before reading the entity definitions, understand the classification principle:
+
+**Entity types are defined by their capabilities — not the other way around.**
+
+The test for any proposed entity is: *Which capabilities does it need?*
+
+| If it needs... | It is a... |
+|---|---|
+| Agency | Actor |
+| Collective Decision Making | Organization |
+| Containment + Mobility | Vehicle (a movable Location) |
+| Containment | Location |
+| History without any of the above | Object |
+
+This inversion is deliberate. "Actors have Agency" puts the entity first and the capability second. "Agency creates Actors" puts the capability first. The practical consequence: when a universe pack introduces a new concept — a hivemind, a divine force, a sentient ship, a nanobot swarm — the classification question is always the same: *What capabilities does it need?* The answer determines the type. No committee discussion required.
+
+A starship that carries passengers and can be navigated is a Location (Containment) with Mobility — therefore a Vehicle. If the pack assigns it Agency, it becomes an Actor that happens to also be a Vehicle. The question is always about capabilities, never about appearance or physical form.
+
+---
+
 ## What Exists in a MythOS Simulation
 
 A MythOS simulation contains four distinct tiers:

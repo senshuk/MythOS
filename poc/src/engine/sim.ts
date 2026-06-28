@@ -47,7 +47,7 @@ import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 import { religionYearly } from './religion';
-import { factionYearly, factionOf, civilWarYearly } from './factions';
+import { factionYearly, factionOf, civilWarYearly, exileYearly } from './factions';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
@@ -152,6 +152,7 @@ export function stepTick(world: World): void {
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
     if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
+    if (hasFocus) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
   }

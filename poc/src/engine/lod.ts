@@ -976,6 +976,7 @@ export function migrationYearly(world: World): void {
   for (let i = 0; i < immigrants; i++) {
     const id = incomers[rng.int(incomers.length)];
     if (moved.has(id)) continue;
+    if (world.exiles.has(id)) continue; // exiles return only via formal return_from_exile
     moved.add(id);
     const fromId = world.homeSettlement.get(id)!;
     const fromMacro = world.settlements[fromId].macro;

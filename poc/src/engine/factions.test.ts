@@ -1,19 +1,20 @@
 /**
- * Intra-cultural factionalism — Stage 1 (detection, rivalry, contested succession)
- * and Stage 2 (civil war resolution, exile).
+ * Intra-cultural factionalism — Stage 1 (detection, rivalry, contested succession),
+ * Stage 2 (civil war resolution, exile), and Stage 3 (return from exile).
  *
  * Proves: (a) the contested axis is always the most internally-divided one;
  * (b) factionOf correctly assigns actors to opposing poles;
  * (c) opposing-faction actors accumulate factionRivalry thoughts;
- * (d) contested_succession fires when the new ruler's pole differs from the old one;
+ * (d) contested_succession fires when a ruler change crosses faction lines;
  * (e) civil_war fires after the grace period following a contested_succession;
  * (f) the losing faction leader is exiled and tracked in world.exiles;
- * (g) everything is deterministic.
+ * (g) exiled actors return formally after EXILE_RETURN_YEARS (not via migration);
+ * (h) everything is deterministic.
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears } from './sim';
 import { fullActors, allEvents } from './world';
-import { factionOf, factionYearly } from './factions';
+import { factionOf, factionYearly, EXILE_RETURN_YEARS } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR } from './model';
 
@@ -217,5 +218,54 @@ describe('contested succession', () => {
       return; // verified
     }
     // Not firing is also OK — succession may not cross faction lines in these seeds
+  });
+});
+
+describe('return from exile', () => {
+  it('return_from_exile fires after EXILE_RETURN_YEARS, always preceded by an exile event', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 160); // civil war by ~120y + 20y exile wait + buffer
+      const events = allEvents(w);
+      const returnEv = events.find((e) => e.type === 'return_from_exile');
+      if (!returnEv) continue;
+      const id = returnEv.subjects[0];
+      // there must be a prior exile event for the same actor
+      const exileEv = events.find((e) => e.type === 'exile' && e.subjects[0] === id && e.tick < returnEv.tick);
+      expect(exileEv).toBeDefined();
+      // yearsGone is present and at least EXILE_RETURN_YEARS
+      expect(typeof returnEv.data.yearsGone).toBe('number');
+      expect(returnEv.data.yearsGone as number).toBeGreaterThanOrEqual(EXILE_RETURN_YEARS);
+      return;
+    }
+  });
+
+  it('returned exile is removed from world.exiles', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 160);
+      const returnEv = allEvents(w).find((e) => e.type === 'return_from_exile');
+      if (!returnEv) continue;
+      const id = returnEv.subjects[0];
+      expect(w.exiles.has(id)).toBe(false);
+      return;
+    }
+  });
+
+  it('returned actor is back in the focused settlement', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 160);
+      const events = allEvents(w);
+      const returnEv = events.find((e) => e.type === 'return_from_exile');
+      if (!returnEv) continue;
+      const id = returnEv.subjects[0];
+      // if the actor is still alive, they should be in the focused settlement or dead
+      const lc = w.lifecycle.get(id);
+      if (lc?.alive) {
+        expect(w.homeSettlement.get(id)).toBe(w.focusedSettlementId);
+      }
+      return;
+    }
   });
 });

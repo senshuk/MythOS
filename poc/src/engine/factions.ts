@@ -24,6 +24,7 @@ import { VALUES, type ValueAxis, factionNames } from '../content/fixture';
 const SAMPLE_N = 3; // opposing-faction neighbor samples per actor per year
 const MIN_ACTORS = 20; // minimum settlement size for a split to be meaningful
 const CIVIL_WAR_GRACE_YEARS = 10; // years of simmering tension before war erupts
+export const EXILE_RETURN_YEARS = 20; // years in exile before a formal return attempt
 
 function detectSplit(world: World): FactionSplit | undefined {
   const residents = fullActors(world);
@@ -161,6 +162,40 @@ export function civilWarYearly(world: World): void {
   }
 
   focused.civilWarTick = undefined;
+}
+
+/** Yearly: check all pending exiles. After EXILE_RETURN_YEARS the actor returns to the
+ *  focused settlement via a formal return_from_exile event (not via normal migration).
+ *  Dead exiles are pruned from world.exiles. Runs AFTER civilWarYearly. */
+export function exileYearly(world: World): void {
+  if (world.exiles.size === 0) return;
+  const focused = world.settlements[world.focusedSettlementId];
+  if (!focused) return;
+  const currentYear = Math.floor(world.tick / DAYS_PER_YEAR);
+
+  for (const [id, rec] of world.exiles) {
+    if (rec.fromSettlementId !== world.focusedSettlementId) continue;
+
+    const lc = world.lifecycle.get(id);
+    if (!lc || !lc.alive) { world.exiles.delete(id); continue; } // died in exile
+
+    if (currentYear - rec.year < EXILE_RETURN_YEARS) continue;
+
+    // Formal return: move back to the focused settlement regardless of current home.
+    const currentHome = world.homeSettlement.get(id);
+    if (currentHome !== undefined && currentHome !== world.focusedSettlementId) {
+      world.settlements[currentHome].macro.population = Math.max(0, world.settlements[currentHome].macro.population - 1);
+    }
+    world.fidelity.set(id, 'full');
+    world.homeSettlement.set(id, world.focusedSettlementId);
+    emit(world, 'return_from_exile', [id], {
+      settlement: focused.name,
+      faction: rec.factionName,
+      axis: rec.axis,
+      yearsGone: currentYear - rec.year,
+    }, [], [world.focusedSettlementId]);
+    world.exiles.delete(id);
+  }
 }
 
 /** Yearly: recompute the contested split and add factionRivalry thoughts between
