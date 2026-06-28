@@ -20,6 +20,7 @@ import {
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
 import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan } from '../content/fixture';
+import { tongueFor } from '../content/languages';
 
 // ------------------------------------------------------------- houses --------
 // Prestige weights — how much standing a House's deeds earn it. Engine constants for
@@ -89,7 +90,7 @@ export function mintFigure(
   // draw the given name first (preserve the rng order); take the house surname if one
   // was supplied, else coin a new family — so founders/new dynasties stay byte-identical.
   const given = generateGiven(rng, species);
-  const name = `${given} ${family ?? generateFamily(rng)}`;
+  const name = `${given} ${family ?? generateFamily(rng, tongueFor(s.cultureId, world.seed))}`;
   world.names.set(id, name); // so events that reference this figure render its name
   const fig: HistoricalFigure = {
     id,

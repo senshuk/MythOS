@@ -6,6 +6,7 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
+import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec } from '../engine/model';
 import { biomeOf } from './biomes';
@@ -128,12 +129,6 @@ export function fertileWindowOf(speciesId: string): [number, number] {
   const s = speciesById(speciesId);
   return [s.fertileFrom, s.fertileTo];
 }
-
-export const FAMILY_ROOTS = [
-  'Ash', 'Stone', 'Briar', 'Vale', 'Holt', 'Marsh', 'Fenn', 'Crow', 'Dunn',
-  'Ironhand', 'Greycloak', 'Tallow', 'Hart', 'Weald', 'Thorn', 'Mire', 'Bram',
-  'Oak', 'Hollow', 'Ridd', 'Garrow', 'Pike', 'Storr', 'Vane',
-];
 
 export interface Profession {
   id: string;
@@ -500,8 +495,10 @@ export function generateGiven(rng: Rng, speciesId: string): string {
   return parts.join('');
 }
 
-export function generateFamily(rng: Rng): string {
-  return rng.pick(FAMILY_ROOTS);
+/** A lineage surname, coined in a people's own tongue (see engine/language) — so houses
+ *  and families of one culture share a sound. The caller resolves the culture's Language. */
+export function generateFamily(rng: Rng, lang: Language): string {
+  return coinWord(lang, rng, 'person');
 }
 
 export function pickSex(rng: Rng, speciesId: string): Sex {

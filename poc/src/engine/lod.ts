@@ -70,6 +70,8 @@ import {
   BASE_PRICE,
 } from '../content/fixture';
 import { biomeOf } from '../content/biomes';
+import { coinWord } from './language';
+import { tongueFor } from '../content/languages';
 import { deathProbability } from '../systems/lifecycle';
 
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
@@ -77,8 +79,6 @@ const MAX_SUMMARIES_PER_SETTLEMENT = 6;
  *  a species' attrition is scaled by REF_LIFESPAN / its own lifespan, so longer-
  *  lived peoples die more slowly in aggregate (matching their slower maturation). */
 const REF_LIFESPAN = 72;
-const NAME_A = ['Stone', 'Ash', 'Oak', 'Fen', 'Briar', 'Grey', 'Wend', 'Mire', 'Hollow', 'Black', 'Rill', 'Thorn'];
-const NAME_B = ['reach', 'ford', 'hollow', 'mere', 'barrow', 'gate', 'wick', 'fell', 'haven', 'crest', 'moor', 'bury'];
 
 // ----------------------------------------------------------- worldgen --------
 
@@ -139,9 +139,12 @@ export function createSettlements(world: World): void {
   // doomed interior colonies that just become ruins — harsh worlds end up sparse but alive.
   const viable = (site: Site) => terrainYields(site.attributes).food >= 0.8;
   const usedNames = new Set<string>();
-  const mkName = (): string => {
-    let n = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
-    while (usedNames.has(n)) n = NAME_A[gen.int(NAME_A.length)] + NAME_B[gen.int(NAME_B.length)];
+  // a settlement is named in the TONGUE OF ITS PEOPLE — so a region's towns share a sound,
+  // and you can hear a culture's border on the map (see engine/language).
+  const mkName = (cultureId: string): string => {
+    const lang = tongueFor(cultureId, world.seed);
+    let n = coinWord(lang, gen, 'place');
+    for (let guard = 0; usedNames.has(n) && guard < 24; guard++) n = coinWord(lang, gen, 'place');
     usedNames.add(n);
     return n;
   };
@@ -155,7 +158,7 @@ export function createSettlements(world: World): void {
     if (!site) break;
     const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
     protos.push({
-      name: mkName(),
+      name: mkName(culture),
       site,
       people: { species: speciesForCulture(culture, gen), culture, government: pickGovernment(gen) },
       pop: gen.range(45, 70),
@@ -184,7 +187,7 @@ export function createSettlements(world: World): void {
       if (yr - parent.foundedYear < 12 || parent.pop < 120 || !gen.chance(0.03)) continue;
       const site = colonySite(cands, protos, parent, sub);
       if (!site) continue;
-      protos.push({ name: mkName(), site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
+      protos.push({ name: mkName(parent.people.culture), site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
       parent.pop = Math.max(60, parent.pop - 24); // colonists depart
     }
   }
@@ -195,7 +198,7 @@ export function createSettlements(world: World): void {
     if (!c) break;
     const liv = living();
     const near = liv.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
-    protos.push({ name: mkName(), site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
+    protos.push({ name: mkName(near.people.culture), site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
   }
 
   // 3) FOUND each settlement, oldest first, dating its founding & founder to its year. A town
@@ -447,7 +450,7 @@ export function promote(world: World, s: Settlement): void {
     made.push(
       createActor(world, {
         given: generateGiven(rng, species),
-        family: generateFamily(rng),
+        family: generateFamily(rng, tongueFor(s.cultureId, world.seed)),
         sex: pickSex(rng, species),
         speciesId: species,
         profession: pickProfession(rng),
