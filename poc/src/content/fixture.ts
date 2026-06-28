@@ -636,6 +636,9 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // dread of someone whose violence you WITNESSED (perception.ts). Strong, slow to
   // fade, lightly stacking — seeing a neighbour shed blood turns wariness into enmity.
   feared: { base: -90, durationTicks: 7 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'feared their violence' },
+  // admiration for someone whose public generosity you WITNESSED — the positive twin of
+  // `feared`. Warms onlookers toward a renowned giver (can ripen into friendship).
+  admired: { base: 80, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'admired their generosity' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
@@ -652,21 +655,44 @@ export function thoughtSpec(kind: string): ThoughtSpec {
 // in a generation. `base` is the standing delta; `fearValue` is the opinion a
 // witness forms toward the culprit (fed into the normal thought/feud machinery).
 export const REPUTE_SPECS: Record<string, ReputeSpec> = {
-  // a killing: heavy, lasting notoriety; witnesses are personally shaken (fearValue
-  // ≠ 0 ⇒ each witness forms a dread of the killer that can curdle into a feud).
-  bloodshed: { base: -160, durationTicks: 12 * DAYS_PER_YEAR, fearValue: -150, label: 'shed blood' },
+  // a killing: heavy, lasting notoriety; witnesses are personally shaken — each forms a
+  // dread of the killer (witnessThought) that can curdle into a feud (escalates).
+  bloodshed: {
+    base: -160,
+    durationTicks: 12 * DAYS_PER_YEAR,
+    witnessThought: { kind: 'feared', value: -150, escalates: true },
+    label: 'shed blood',
+  },
   // a non-lethal brawl: lesser, shorter notoriety, but NO personal enmity — a scuffle
   // colours how the town regards you without making lasting enemies of every onlooker
-  // (fearValue 0 ⇒ standing-only, so a common brawl doesn't reshape the social graph).
-  violence: { base: -60, durationTicks: 8 * DAYS_PER_YEAR, fearValue: 0, label: 'came to blows' },
+  // (no witnessThought ⇒ standing-only, so a common brawl doesn't reshape the graph).
+  violence: { base: -60, durationTicks: 8 * DAYS_PER_YEAR, label: 'came to blows' },
+  // a public act of generosity: renown, and onlookers warm to the giver (the positive
+  // twin of bloodshed — a deed that EARNS standing rather than spends it).
+  generosity: {
+    base: 90,
+    durationTicks: 8 * DAYS_PER_YEAR,
+    witnessThought: { kind: 'admired', value: 80 },
+    label: 'gave openly',
+  },
 };
 
 // Neutral fallback so an unknown / pack-added kind never crashes the engine.
-const NEUTRAL_REPUTE: ReputeSpec = { base: 0, fearValue: 0, label: 'a deed' };
+const NEUTRAL_REPUTE: ReputeSpec = { base: 0, label: 'a deed' };
 
 export function reputeSpec(kind: string): ReputeSpec {
   return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
 }
+
+// ---- how public standing colours daily life (the consequences of reputation) ----
+// PACK DATA: a status-obsessed culture would crank these; an egalitarian one soften
+// them. Standing runs ~ −1000..1000 (reputation.ts). The engine reads these and never
+// hardcodes the weights.
+export const REPUTATION_EFFECTS = {
+  reception: 0.0004, // pPos shift per standing point in a social encounter (warm welcome / cold shoulder)
+  esteem: 0.35, // how much standing folds into the esteem-need target (renown feels good; notoriety gnaws)
+  courtship: 0.35, // opinion-equivalent appeal shift per standing point when sizing up a match
+};
 
 // ----------------------------------------------------------- needs -----------
 // An actor's drives. NEEDS is the pack's need VECTOR (the engine stores & decays it
