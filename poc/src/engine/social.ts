@@ -117,9 +117,9 @@ function animosityCauses(edge: RelEdge): number[] {
  * safe to call from perception (off the shared stream) as well as from the resolver.
  * A spouse bond is never silently flipped.
  */
-export function escalateAnimosity(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
+export function escalateAnimosity(world: World, a: EntityId, b: EntityId, edge: RelEdge, precomputedOpinion?: number): void {
   if (edge.flags.spouse) return;
-  const v = computeOpinion(edge, world.tick);
+  const v = precomputedOpinion ?? computeOpinion(edge, world.tick);
   if (v <= FEUD_AT && !edge.flags.feud) {
     edge.flags.feud = true;
     edge.flags.rival = true;

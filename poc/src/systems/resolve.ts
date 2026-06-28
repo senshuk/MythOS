@@ -208,7 +208,7 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng
   } else {
     // souring side: rivalry / feud thresholds, shared with perception so a witnessed
     // killing and a private falling-out escalate by exactly the same rule.
-    escalateAnimosity(world, a, b, edge);
+    escalateAnimosity(world, a, b, edge, v);
   }
 }
 
