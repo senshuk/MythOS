@@ -90,10 +90,11 @@ function polish(w: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Coin a word in a tongue: a settlement name ('place'), a surname ('person'), or a short
- *  morpheme ('root', 1–2 syllables) — the building block of MEANINGFUL compound names. */
+/** Coin a word in a tongue: a settlement name ('place'), a surname ('person'), or a single
+ *  morpheme ('root') — the building block of MEANINGFUL compound names, kept to one syllable
+ *  so a two-root name stays short ("Korth" + "ul" = Korthul, not a mouthful). */
 export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'root'): string {
-  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : [1, 2];
+  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : [1, 1];
   const syllables = rng.range(lo, hi);
   let w = '';
   for (let i = 0; i < syllables; i++) {
