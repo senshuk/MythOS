@@ -542,6 +542,10 @@ button { font-family: inherit; }
   .link, .ent { padding-block: 4px; } /* enlarge the touch area of inline names */
   .ev-row, .ev-inspect { padding-block: var(--space-2); }
 
+  /* tighten the feed's scope/detail filters so the pair fits on ONE row, not two */
+  .feed-controls { gap: var(--space-2); }
+  .feed-controls .seg button { padding: 5px 8px; font-size: var(--fs-2xs); }
+
   /* fixed bottom bar: time controls + tab nav, thumb-reachable */
   .bottombar {
     display: flex; flex-direction: column;

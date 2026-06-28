@@ -63,6 +63,30 @@ function onActivate(e: import('react').KeyboardEvent, run: () => void): void {
   }
 }
 
+/** useState that survives a reload — for UI PREFERENCES only (dismissed banners, chosen
+ *  feed view). Kept out of the save file: these are view choices, not world state. */
+function usePersistentState<T>(key: string, initial: T): [T, (v: T | ((p: T) => T)) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw !== null ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = (v: T | ((p: T) => T)) =>
+    setVal((prev) => {
+      const next = typeof v === 'function' ? (v as (p: T) => T)(prev) : v;
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        /* storage unavailable — fall back to in-memory only */
+      }
+      return next;
+    });
+  return [val, set];
+}
+
 // Presentation of a settlement's staple buffer. The label is deliberately pack-flavoured
 // (a food pack reads "starving/fed"); the underlying number is the role-neutral
 // subsistenceSecurity from the snapshot.
@@ -128,7 +152,7 @@ export default function App() {
   const [saveName, setSaveName] = useState('quicksave');
   const [tab, setTab] = useState<'world' | 'chronicle' | 'inspector'>('world');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [onboardDismissed, setOnboardDismissed] = useState(false);
+  const [onboardDismissed, setOnboardDismissed] = usePersistentState('mythos.onboardDismissed', false);
 
   const stat = sim.snapshot;
   // tapping an event/villager/place jumps to the Inspector tab on mobile (harmless on desktop)
@@ -889,9 +913,9 @@ function HistoryFeed({
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
 }) {
-  const [view, setView] = useState<'recent' | 'legends'>('recent');
-  const [scope, setScope] = useState<'world' | 'place'>('world');
-  const [mode, setMode] = useState<'notable' | 'all'>('notable');
+  const [view, setView] = usePersistentState<'recent' | 'legends'>('mythos.feed.view', 'recent');
+  const [scope, setScope] = usePersistentState<'world' | 'place'>('mythos.feed.scope', 'world');
+  const [mode, setMode] = usePersistentState<'notable' | 'all'>('mythos.feed.mode', 'notable');
   const items = useMemo(() => processFeed(events, scope, mode), [events, scope, mode]);
 
   return (
