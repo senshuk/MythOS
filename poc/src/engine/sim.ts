@@ -274,6 +274,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
     return {
       id: s.id,
       name: s.name,
+      nameMeaning: s.nameMeaning,
       detailed: s.detailed,
       population: pop,
       foundedYear: s.foundedYear,
@@ -524,6 +525,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       nodes: world.settlements.map((s) => ({
         id: s.id,
         name: s.name,
+        nameMeaning: s.nameMeaning,
         x: s.pos.x,
         y: s.pos.y,
         population: s.detailed ? full.length : s.macro.population,

@@ -70,8 +70,7 @@ import {
   BASE_PRICE,
 } from '../content/fixture';
 import { biomeOf } from '../content/biomes';
-import { coinWord } from './language';
-import { tongueFor } from '../content/languages';
+import { tongueFor, placeName } from '../content/languages';
 import { deathProbability } from '../systems/lifecycle';
 
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
@@ -92,6 +91,7 @@ interface People {
 /** A settlement-in-the-making during the pre-history. */
 interface Proto {
   name: string;
+  nameMeaning: string; // what the name means in the founders' tongue ("the iron hold")
   site: Site;
   people: People; // may CHANGE if conquered & assimilated by another people
   pop: number;
@@ -141,12 +141,11 @@ export function createSettlements(world: World): void {
   const usedNames = new Set<string>();
   // a settlement is named in the TONGUE OF ITS PEOPLE — so a region's towns share a sound,
   // and you can hear a culture's border on the map (see engine/language).
-  const mkName = (cultureId: string): string => {
-    const lang = tongueFor(cultureId, world.seed);
-    let n = coinWord(lang, gen, 'place');
-    for (let guard = 0; usedNames.has(n) && guard < 24; guard++) n = coinWord(lang, gen, 'place');
-    usedNames.add(n);
-    return n;
+  const mkName = (cultureId: string, attributes: Record<string, number>): { name: string; meaning: string } => {
+    let nm = placeName(cultureId, world.seed, attributes, gen);
+    for (let guard = 0; usedNames.has(nm.name) && guard < 24; guard++) nm = placeName(cultureId, world.seed, attributes, gen);
+    usedNames.add(nm.name);
+    return nm;
   };
 
   // 1) ORIGINS — a few founding peoples on the best, widely-spaced sites (so territories
@@ -157,8 +156,10 @@ export function createSettlements(world: World): void {
     const site = cands.find((c) => !occupied(c.pos, 55) && viable(c)); // origins: viable, far apart
     if (!site) break;
     const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
+    const nm = mkName(culture, site.attributes);
     protos.push({
-      name: mkName(culture),
+      name: nm.name,
+      nameMeaning: nm.meaning,
       site,
       people: { species: speciesForCulture(culture, gen), culture, government: pickGovernment(gen) },
       pop: gen.range(45, 70),
@@ -187,7 +188,8 @@ export function createSettlements(world: World): void {
       if (yr - parent.foundedYear < 12 || parent.pop < 120 || !gen.chance(0.03)) continue;
       const site = colonySite(cands, protos, parent, sub);
       if (!site) continue;
-      protos.push({ name: mkName(parent.people.culture), site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
+      const nm = mkName(parent.people.culture, site.attributes);
+      protos.push({ name: nm.name, nameMeaning: nm.meaning, site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
       parent.pop = Math.max(60, parent.pop - 24); // colonists depart
     }
   }
@@ -198,7 +200,8 @@ export function createSettlements(world: World): void {
     if (!c) break;
     const liv = living();
     const near = liv.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
-    protos.push({ name: mkName(near.people.culture), site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
+    const fnm = mkName(near.people.culture, c.attributes);
+    protos.push({ name: fnm.name, nameMeaning: fnm.meaning, site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
   }
 
   // 3) FOUND each settlement, oldest first, dating its founding & founder to its year. A town
@@ -216,6 +219,7 @@ export function createSettlements(world: World): void {
     const s: Settlement = {
       id: i,
       name: d.name,
+      nameMeaning: d.nameMeaning,
       pos: { ...d.site.pos },
       foundedYear: d.foundedYear,
       detailed: false,

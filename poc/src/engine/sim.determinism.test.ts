@@ -19,7 +19,7 @@ import {
 } from './sim';
 import { serializeWorld, deserializeWorld } from './persistence';
 import { makeLanguage, coinWord } from './language';
-import { tongueFor, kitFor } from '../content/languages';
+import { tongueFor, kitFor, placeName, lexeme } from '../content/languages';
 import { resolveIntent, resolvePlayerIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
 import { fullActors, summaryActors, createActor, emit, canTakeSpouse } from './world';
@@ -1159,6 +1159,26 @@ describe('procedural philology (each culture names the world in its own tongue)'
     expect(sameN).toBeGreaterThan(0);
     expect(crossN).toBeGreaterThan(0);
     expect(same / sameN).toBeGreaterThan(cross / crossN);
+  });
+
+  it('names MEAN something — a descriptor + a land-fitting place-kind, in the tongue', () => {
+    const inland = { coast: 0, elevation: 0.7, moisture: 0.3, temperature: 0.5, freshWater: 0.2 };
+    const nm = placeName('martial', 1, inland, new Rng(3));
+    expect(nm.meaning).toMatch(/^the \w+ \w+$/); // "the iron hold"
+    expect(nm.name).toMatch(/^[A-Z][a-z]+$/);
+    expect(placeName('martial', 1, inland, new Rng(3))).toEqual(nm); // deterministic
+    // the place-kind reflects the LAND: a coastal site is named for the sea
+    const coast = placeName('artisan', 1, { coast: 0.9, elevation: 0.2, moisture: 0.5, temperature: 0.5, freshWater: 0.3 }, new Rng(5));
+    expect(/haven|port|strand/.test(coast.meaning)).toBe(true);
+  });
+
+  it('the lexicon is consistent — one concept keeps one root within a tongue', () => {
+    expect(lexeme('martial', 1, 'iron')).toBe(lexeme('martial', 1, 'iron')); // stable
+    expect(lexeme('martial', 1, 'iron')).not.toBe(lexeme('martial', 1, 'hold')); // distinct concepts
+    expect(lexeme('martial', 1, 'iron').length).toBeGreaterThan(0);
+    // a settlement carries its meaning into the world (createWorld stores it)
+    const w = createWorld(1);
+    expect(w.settlements.some((s) => typeof s.nameMeaning === 'string' && /^the /.test(s.nameMeaning))).toBe(true);
   });
 });
 

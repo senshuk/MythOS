@@ -306,6 +306,9 @@ button { font-family: inherit; }
   padding: 7px 11px; font-size: 12.5px; box-shadow: var(--shadow); max-width: 220px;
 }
 .map-tip strong { font-family: var(--serif); font-size: 14px; color: var(--ink); }
+.tip-meaning { font-family: var(--serif); font-style: italic; font-size: var(--fs-xs); color: var(--gold-dim); }
+/* the name's meaning, under a settlement's title in the inspector */
+.name-gloss { margin: -2px 0 var(--space-2); font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); }
 /* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
 .edge.trade { stroke-dasharray: 2.2 2.4; animation: flow 2.6s linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -4.6; } }

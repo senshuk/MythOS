@@ -395,7 +395,7 @@ function RegionMap({
   const pinchDist = useRef(0);
   const movedRef = useRef(false);
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
-  const [hover, setHover] = useState<{ name: string; sub: string; cx: number; cy: number } | null>(null);
+  const [hover, setHover] = useState<{ name: string; meaning?: string; sub: string; cx: number; cy: number } | null>(null);
 
   // the world IS its substrate (regenerated from the seed); the SUBSTRATE decides the
   // backdrop — a galaxy paints space, a surface world paints its biome terrain. There is
@@ -529,7 +529,7 @@ function RegionMap({
             const r = n.ruined ? 1.9 : radius(n.population);
             const color = cultureColor(n.cultureId);
             const sub = n.ruined ? 'a ruin' : `${CULTURE_NAMES[n.cultureId] ?? n.cultureId} · ${n.population} souls`;
-            const enter = (e: RMouseEvent) => setHover({ name: n.name, sub, cx: e.clientX, cy: e.clientY });
+            const enter = (e: RMouseEvent) => setHover({ name: n.name, meaning: n.nameMeaning, sub, cx: e.clientX, cy: e.clientY });
             return (
               <g
                 key={n.id}
@@ -588,6 +588,7 @@ function RegionMap({
       {hover && (
         <div className="map-tip" style={{ left: hover.cx + 14, top: hover.cy + 14 }}>
           <strong>{hover.name}</strong>
+          {hover.meaning && <span className="tip-meaning">“{hover.meaning}”</span>}
           <span className="muted">{hover.sub}</span>
         </div>
       )}
@@ -1233,6 +1234,7 @@ function Inspector({
       {settlementDetail && (
         <div>
           <h3>{settV?.name ?? 'Settlement'}</h3>
+          {settV?.nameMeaning && <p className="name-gloss">“{settV.nameMeaning}”, in the founders’ tongue</p>}
           {settV && (
             <p className="muted">
               {settV.ruinedYear !== undefined

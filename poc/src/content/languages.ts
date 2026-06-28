@@ -5,7 +5,9 @@
  * this file alone: an elvish kit (soft liquids, open syllables), a Klingon kit (guttural
  * stops, hard codas), a Dovahzul kit — the engine is unchanged.
  */
-import { type PhonologyKit, type Language, languageFor } from '../engine/language';
+import { type PhonologyKit, type Language, languageFor, coinWord } from '../engine/language';
+import { Rng, mixSeed } from '../engine/rng';
+import { biomeOf } from './biomes';
 
 // GUTTURAL — hard stops, heavy codas, few vowels: a creed that sounds like iron.
 const GUTTURAL: PhonologyKit = {
@@ -81,4 +83,83 @@ export function kitFor(cultureId: string): PhonologyKit {
  *  with this via engine/language.coinWord. */
 export function tongueFor(cultureId: string, seed: number): Language {
   return languageFor(cultureId, seed, kitFor(cultureId));
+}
+
+// ----------------------------------------------------- meaningful names ------
+// A settlement's name MEANS something: a descriptor + a place-kind, each a root WORD in the
+// people's tongue (so "iron" is always the same root for the Iron Creed, and its towns share
+// a vocabulary you can learn). The place-kind reflects the LAND, so a name tells you about the
+// site. Concepts (and their English glosses) are pack data; a sci-fi pack would swap them.
+
+interface Concept {
+  id: string;
+  gloss: string;
+}
+const DESCRIPTORS: Concept[] = [
+  { id: 'iron', gloss: 'iron' }, { id: 'grey', gloss: 'grey' }, { id: 'high', gloss: 'high' },
+  { id: 'deep', gloss: 'deep' }, { id: 'old', gloss: 'old' }, { id: 'far', gloss: 'far' },
+  { id: 'cold', gloss: 'cold' }, { id: 'bright', gloss: 'bright' }, { id: 'dark', gloss: 'dark' },
+  { id: 'swift', gloss: 'swift' }, { id: 'red', gloss: 'red' }, { id: 'gold', gloss: 'golden' },
+  { id: 'white', gloss: 'white' }, { id: 'black', gloss: 'black' }, { id: 'lost', gloss: 'lost' },
+  { id: 'holy', gloss: 'hallowed' }, { id: 'stone', gloss: 'stone' }, { id: 'green', gloss: 'green' },
+];
+// place-kinds, grouped by the land that suits them (a coast gets a haven, a peak a hold…).
+const KIND_COAST: Concept[] = [{ id: 'haven', gloss: 'haven' }, { id: 'port', gloss: 'port' }, { id: 'strand', gloss: 'strand' }];
+const KIND_WOOD: Concept[] = [{ id: 'wood', gloss: 'wood' }, { id: 'grove', gloss: 'grove' }, { id: 'holt', gloss: 'holt' }];
+const KIND_PEAK: Concept[] = [{ id: 'hold', gloss: 'hold' }, { id: 'peak', gloss: 'peak' }, { id: 'crag', gloss: 'crag' }];
+const KIND_MARSH: Concept[] = [{ id: 'mere', gloss: 'mere' }, { id: 'marsh', gloss: 'marsh' }, { id: 'fen', gloss: 'fen' }];
+const KIND_DRY: Concept[] = [{ id: 'waste', gloss: 'waste' }, { id: 'reach', gloss: 'reach' }, { id: 'span', gloss: 'span' }];
+const KIND_OPEN: Concept[] = [{ id: 'field', gloss: 'field' }, { id: 'march', gloss: 'march' }, { id: 'down', gloss: 'down' }];
+const KIND_WATER: Concept[] = [{ id: 'ford', gloss: 'ford' }, { id: 'mere', gloss: 'mere' }, { id: 'water', gloss: 'water' }];
+const KIND_ANY: Concept[] = [{ id: 'town', gloss: 'town' }, { id: 'gate', gloss: 'gate' }, { id: 'vale', gloss: 'vale' }, { id: 'watch', gloss: 'watch' }];
+
+/** Which kinds of place-name suit this site's LAND (coast, forest, peak, marsh, …). */
+function kindsForLand(attributes: Record<string, number>): Concept[] {
+  if ((attributes.coast ?? 0) > 0.55) return KIND_COAST;
+  const biome = biomeOf(attributes).id;
+  if (biome === 'alpine' || (attributes.elevation ?? 0) > 0.66) return KIND_PEAK;
+  if (biome === 'wetland') return KIND_MARSH;
+  if (biome === 'taiga' || biome === 'temperate_forest' || biome === 'jungle') return KIND_WOOD;
+  if (biome === 'desert' || biome === 'tundra') return KIND_DRY;
+  if ((attributes.freshWater ?? 0) > 0.6) return KIND_WATER;
+  if (biome === 'grassland' || biome === 'steppe' || biome === 'savanna') return KIND_OPEN;
+  return KIND_ANY;
+}
+
+// a root WORD for a concept in a culture's tongue — STABLE per (culture, concept, world), so
+// the same meaning always sounds the same within a people. Memoised; lowercased for compounding.
+const lexCache = new Map<string, string>();
+export function lexeme(cultureId: string, seed: number, conceptId: string): string {
+  const ck = `${seed}:${cultureId}:${conceptId}`;
+  let root = lexCache.get(ck);
+  if (root === undefined) {
+    root = coinWord(tongueFor(cultureId, seed), new Rng(mixSeed(seed, hashConcept(ck))), 'root').toLowerCase();
+    lexCache.set(ck, root);
+  }
+  return root;
+}
+function hashConcept(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Coin a settlement's name AND its meaning, in the founding people's tongue: a descriptor +
+ *  a land-fitting place-kind, each a root in that tongue. `rng` (the worldgen stream) only
+ *  picks WHICH concepts; the roots themselves are stable, so a people's towns share a lexicon. */
+export function placeName(
+  cultureId: string,
+  seed: number,
+  attributes: Record<string, number>,
+  rng: Rng,
+): { name: string; meaning: string } {
+  const desc = rng.pick(DESCRIPTORS);
+  const kind = rng.pick(kindsForLand(attributes));
+  const joined = (lexeme(cultureId, seed, desc.id) + lexeme(cultureId, seed, kind.id))
+    .replace(/(.)\1{2,}/g, '$1$1'); // soften an awkward seam (e.g. ...thth...)
+  const name = joined.charAt(0).toUpperCase() + joined.slice(1);
+  return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }

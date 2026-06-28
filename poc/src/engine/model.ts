@@ -265,6 +265,8 @@ export interface RegionEdge {
 export interface Settlement {
   id: SettlementId;
   name: string;
+  /** what the name MEANS in the founders' tongue ("the iron hold") — procedural philology. */
+  nameMeaning?: string;
   pos: Vec2;
   foundedYear: number;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
@@ -512,6 +514,7 @@ export interface RelationView {
 export interface SettlementView {
   id: SettlementId;
   name: string;
+  nameMeaning?: string; // "the iron hold" — the name's sense in the founders' tongue
   detailed: boolean;
   population: number;
   foundedYear: number;
@@ -534,6 +537,7 @@ export interface SettlementView {
 export interface MapNodeView {
   id: SettlementId;
   name: string;
+  nameMeaning?: string; // "the iron hold" — shown on hover
   x: number;
   y: number;
   population: number;
