@@ -232,6 +232,7 @@ button { font-family: inherit; }
 .settlements li.focused .set-mark { color: var(--cyan); }
 .set-pop { margin-left: auto; font-family: var(--mono); font-size: var(--fs-xs); color: var(--gold-dim); font-weight: 500; }
 .set-meta { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
+.more-toggle { display: inline-block; margin: var(--space-2) 0 0 var(--space-2); font-size: var(--fs-xs); }
 .figs { color: var(--ink-faint); font-style: italic; }
 .ruin { color: var(--rose); font-style: italic; opacity: 0.85; }
 .ruler { color: var(--violet); }

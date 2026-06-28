@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -251,6 +251,8 @@ export default function App() {
               events={stat.recentEvents}
               eras={stat.eras}
               legends={stat.chronicle}
+              figures={stat.historicalFigures}
+              houses={stat.houses}
               focusedName={stat.settlementName}
               onPickEvent={inspectEvent}
               onRef={inspectRef}
@@ -540,6 +542,14 @@ function Dashboard({
   onPossess: (id: number) => void;
   busy: boolean;
 }) {
+  const [showAllSettlements, setShowAllSettlements] = useState(false);
+  const SETTLEMENT_CAP = 12;
+  // keep the place you're watching at the top; the list is a secondary selector (the map
+  // is the primary one), so cap it and let the player expand for the full roll.
+  const orderedSettlements = [...stat.settlements].sort((a, b) => (b.detailed ? 1 : 0) - (a.detailed ? 1 : 0));
+  const visibleSettlements = showAllSettlements ? orderedSettlements : orderedSettlements.slice(0, SETTLEMENT_CAP);
+  const hiddenCount = stat.settlements.length - visibleSettlements.length;
+
   return (
     <section className="panel dashboard">
       <h2>Year {stat.year}</h2>
@@ -615,7 +625,7 @@ function Dashboard({
 
       <h3>Settlements — turn your gaze elsewhere</h3>
       <ul className="settlements">
-        {stat.settlements.map((s) => (
+        {visibleSettlements.map((s) => (
           <li key={s.id} className={`${s.detailed ? 'focused' : ''} ${s.ruinedYear !== undefined ? 'is-ruin' : ''}`}>
             <button
               className="focus-btn"
@@ -656,47 +666,10 @@ function Dashboard({
           </li>
         ))}
       </ul>
-
-      {stat.historicalFigures.length > 0 && (
-        <>
-          <h3>Figures of history</h3>
-          <ul className="figures-hist">
-            {stat.historicalFigures.slice(0, 8).map((f, i) => (
-              <li key={i}>
-                <span className="fig-name">{f.name}</span>
-                <span className="muted">
-                  {' '}
-                  — {f.role}
-                  {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
-                  {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {stat.houses.length > 0 && (
-        <>
-          <h3>Great Houses — the dynasties of the age</h3>
-          <ul className="houses">
-            {stat.houses.slice(0, 8).map((h, i) => (
-              <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                <span className="house-name">House {h.name}</span>
-                <span className="house-status">
-                  {h.extinctYear !== undefined
-                    ? `fell with its seat, y${h.extinctYear}`
-                    : h.seat
-                      ? `rules ${h.seat}`
-                      : 'out of power'}
-                </span>
-                <span className="muted house-meta">
-                  founded y{h.foundedYear} in {h.origin} · {h.rulers} {h.rulers === 1 ? 'ruler' : 'rulers'} · {h.prestige} renown
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
+      {(hiddenCount > 0 || showAllSettlements) && (
+        <button className="link more-toggle" onClick={() => setShowAllSettlements((v) => !v)}>
+          {showAllSettlements ? 'show fewer' : `show all ${stat.settlements.length} settlements`}
+        </button>
       )}
 
       <h3>The tone of this age</h3>
@@ -902,6 +875,8 @@ function HistoryFeed({
   events,
   eras,
   legends,
+  figures,
+  houses,
   focusedName,
   onPickEvent,
   onRef,
@@ -909,6 +884,8 @@ function HistoryFeed({
   events: EventView[];
   eras: EraView[];
   legends: TaleView[];
+  figures: FigureView[];
+  houses: HouseView[];
   focusedName: string;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
@@ -976,7 +953,7 @@ function HistoryFeed({
             </ul>
           )}
         </>
-      ) : eras.length === 0 && legends.length === 0 ? (
+      ) : eras.length === 0 && legends.length === 0 && figures.length === 0 && houses.length === 0 ? (
         <p className="muted">No legends yet — the great deeds of this age are still being written.</p>
       ) : (
         <>
@@ -987,6 +964,46 @@ function HistoryFeed({
                 {eras.slice(0, 8).map((e, i) => (
                   <li key={i}>
                     <span className="muted">y{e.year}:</span> {e.title}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {houses.length > 0 && (
+            <>
+              <h3>Great Houses — the dynasties of the age</h3>
+              <ul className="houses">
+                {houses.slice(0, 8).map((h, i) => (
+                  <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
+                    <span className="house-name">House {h.name}</span>
+                    <span className="house-status">
+                      {h.extinctYear !== undefined
+                        ? `fell with its seat, y${h.extinctYear}`
+                        : h.seat
+                          ? `rules ${h.seat}`
+                          : 'out of power'}
+                    </span>
+                    <span className="muted house-meta">
+                      founded y{h.foundedYear} in {h.origin} · {h.rulers} {h.rulers === 1 ? 'ruler' : 'rulers'} · {h.prestige} renown
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {figures.length > 0 && (
+            <>
+              <h3>Figures of history</h3>
+              <ul className="figures-hist">
+                {figures.slice(0, 8).map((f, i) => (
+                  <li key={i}>
+                    <span className="fig-name">{f.name}</span>
+                    <span className="muted">
+                      {' '}
+                      — {f.role}
+                      {f.house ? ` of House ${f.house}` : ''} of {f.settlement},{' '}
+                      {f.deathYear !== undefined ? `r.${f.reignStart}–${f.deathYear}` : `since y${f.reignStart}`}
+                    </span>
                   </li>
                 ))}
               </ul>
