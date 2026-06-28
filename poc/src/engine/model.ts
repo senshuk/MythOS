@@ -391,15 +391,23 @@ export interface World {
   reputation: Map<EntityId, Reputation>;
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
+  /** Recent events (last ~10 years). Append-only within the window; compacted yearly.
+   *  The first event in this array always has id === firstEventId. */
   events: WorldEvent[];
+  /** ID of the first event currently in world.events (1 when no compaction has run yet). */
+  firstEventId: number;
+  /** Referenced old events pruned from world.events but kept because annals/chronicle/
+   *  memory or a cause-chain still points at them. Serialized. */
+  eventArchive: Map<EventId, WorldEvent>;
   /** Running tallies incremented in emit() — avoids an O(events) scan per UI render. */
   stats: { born: number; died: number; marriages: number; feuds: number };
   /** Reverse index: subject entity → event IDs it appears in. Maintained by emit() so
    *  inspectActor/inspectFigure/inspectSettlement are O(actor_events) not O(all_events).
-   *  Derived — rebuilt from world.events on load, never serialized. */
+   *  Derived — rebuilt from world.events + eventArchive on load, never serialized. */
   eventsBySubject: Map<EntityId, EventId[]>;
   /** Reverse index: settlement → event IDs that reference it. Maintained by emit() when
-   *  settlementRefs are passed; rebuilt from world.events on load, never serialized. */
+   *  settlementRefs are passed; rebuilt from world.events + eventArchive on load, never
+   *  serialized. */
   eventsBySettlement: Map<SettlementId, EventId[]>;
 
   /** Rolling living memory: recent notable events, bounded and FADING. Drives the
@@ -409,7 +417,8 @@ export interface World {
    *  landmark foundings/ruins. Bounded but does NOT fade, so a deep pre-play past
    *  survives for the player to inherit. Feeds the named ages & legends. */
   annals: Tale[];
-  /** index into `events` up to which the chronicle/annals have been considered. */
+  /** ID of the last event that chronicleYearly has already processed (0 = none yet).
+   *  Stored as an event ID (not an array index) so it survives compaction intact. */
   chronicleCursor: number;
 
   /** The AI Director — paces drama by reading state and firing incidents. */

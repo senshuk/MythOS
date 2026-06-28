@@ -27,7 +27,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse } from './world';
+import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeStanding, standingReasons, emptyReputation } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
@@ -74,6 +74,8 @@ export function createWorld(seed: number, focus = true): World {
     nextEventId: 1,
     entities: [],
     deadEntities: [],
+    firstEventId: 1,
+    eventArchive: new Map(),
     stats: { born: 0, died: 0, marriages: 0, feuds: 0 },
     eventsBySubject: new Map(),
     eventsBySettlement: new Map(),
@@ -142,6 +144,7 @@ export function stepTick(world: World): void {
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
+    compactEvents(world); // prune unreferenced old events; archive referenced ones
   }
 }
 
@@ -247,7 +250,8 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
   const fig = world.figures.find((f) => f.id === id);
   if (!fig) return undefined;
   const lifeEvents = (world.eventsBySubject.get(id) ?? [])
-    .map((eid) => world.events[eid - 1])
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined)
     .map((ev) => eventView(world, ev));
   return {
     id: fig.id,
@@ -279,7 +283,8 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
   }
   const events = [...eventIds]
     .sort((a, b) => b - a) // event IDs are monotonic — descending = newest first
-    .map((eid) => world.events[eid - 1])
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined)
     .map((ev) => eventView(world, ev));
   return { settlementId: id, events };
 }
@@ -430,12 +435,11 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   // The deep past lives in the ANNALS (permanent), so legends and named ages span
   // ALL of history — including a long pre-play worldgen — not just recent memory.
   // legends: the most momentous tales of all time
-  // event IDs are 1-based and the array is append-only, so world.events[id-1] is a direct index.
   const chronicleViews = [...world.annals]
     .sort((a, b) => b.interest - a.interest || a.eventId - b.eventId)
     .slice(0, 14)
     .map((t) => {
-      const ev = world.events[t.eventId - 1];
+      const ev = getEvent(world, t.eventId);
       return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev) } : null;
     })
     .filter((v): v is { year: number; interest: number; text: string } => v !== null);
@@ -461,7 +465,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   const eras = [...landmarks, ...rest]
     .sort((a, b) => a[0] - b[0]) // chronological — a timeline of ages
     .map(([year, best]) => {
-      const ev = world.events[best.eventId - 1];
+      const ev = getEvent(world, best.eventId);
       return ev ? { year, title: eraTitle(world, ev) } : null;
     })
     .filter((v): v is { year: number; title: string } => v !== null);
@@ -590,7 +594,8 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   relationships.sort((a, b) => b.valence - a.valence);
 
   const lifeEvents = (world.eventsBySubject.get(id) ?? [])
-    .map((eid) => world.events[eid - 1])
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined)
     .map((ev) => eventView(world, ev));
 
   const rep = world.reputation.get(id) ?? emptyReputation();
@@ -603,10 +608,9 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
 }
 
 /** Walk the causal ancestry of an event (breadth-first, de-duplicated).
- *  Event IDs are 1-based sequential and world.events is append-only, so
- *  world.events[id - 1] is a direct O(1) lookup — no Map needed. */
+ *  getEvent() handles both the recent buffer and the archive transparently. */
 export function inspectEvent(world: World, id: number): EventChain | undefined {
-  const root = world.events[id - 1];
+  const root = getEvent(world, id);
   if (!root) return undefined;
 
   const ancestors: EventView[] = [];
@@ -617,7 +621,7 @@ export function inspectEvent(world: World, id: number): EventChain | undefined {
     for (const cid of frontier) {
       if (seen.has(cid)) continue;
       seen.add(cid);
-      const ev = world.events[cid - 1];
+      const ev = getEvent(world, cid);
       if (!ev) continue;
       ancestors.push(eventView(world, ev));
       next.push(...ev.causes);
@@ -625,6 +629,61 @@ export function inspectEvent(world: World, id: number): EventChain | undefined {
     frontier = next;
   }
   return { root: eventView(world, root), ancestors };
+}
+
+// -------------------------------------------- event compaction ---------------
+
+/**
+ * Yearly mark-and-sweep: events older than COMPACT_WINDOW_YEARS are either archived
+ * (if still reachable from annals / chronicle / actor memory or their cause chains)
+ * or discarded (if nothing in the world still references them). This bounds
+ * world.events to ~COMPACT_WINDOW_YEARS × events-per-year regardless of how long
+ * the simulation runs, while preserving every causal chain the player can follow.
+ *
+ * Must run AFTER chronicleYearly so this year's events are protected before sweeping.
+ */
+const COMPACT_WINDOW_YEARS = 10;
+
+export function compactEvents(world: World): void {
+  const cutoffTick = world.tick - COMPACT_WINDOW_YEARS * DAYS_PER_YEAR;
+
+  // Find how many leading events are old enough to consider pruning.
+  let cutIdx = 0;
+  while (cutIdx < world.events.length && world.events[cutIdx].tick <= cutoffTick) {
+    cutIdx++;
+  }
+  if (cutIdx === 0) return;
+
+  // Mark phase: BFS from all stable roots to collect referenced event IDs.
+  const live = new Set<number>();
+  for (const t of world.annals) live.add(t.eventId);
+  for (const t of world.chronicle) live.add(t.eventId);
+  for (const [, ids] of world.memory) for (const id of ids) live.add(id);
+
+  // Transitively chase cause[] chains so inspectEvent can still trace full ancestry.
+  const queue = [...live];
+  const visited = new Set<number>(live);
+  while (queue.length) {
+    const evId = queue.pop()!;
+    const ev = getEvent(world, evId);
+    if (!ev) continue;
+    for (const cid of ev.causes) {
+      if (!visited.has(cid)) {
+        visited.add(cid);
+        live.add(cid);
+        queue.push(cid);
+      }
+    }
+  }
+
+  // Sweep: move live old events to the archive; discard the rest.
+  for (let i = 0; i < cutIdx; i++) {
+    const ev = world.events[i];
+    if (live.has(ev.id)) world.eventArchive.set(ev.id, ev);
+  }
+
+  world.events.splice(0, cutIdx);
+  world.firstEventId += cutIdx;
 }
 
 // ------------------------------------------------ determinism support --------
@@ -643,7 +702,7 @@ export function canonicalize(world: World): string {
     `focus=${world.focusedSettlementId}`,
     `rng=${world.rng.state}`,
     `geo=${world.geoRngState}`,
-    `events=${world.events.length}`,
+    `events=${world.nextEventId - 1}.first=${world.firstEventId}.arch=${world.eventArchive.size}`,
     `stats=born${world.stats.born}.died${world.stats.died}.wed${world.stats.marriages}.feud${world.stats.feuds}`,
     `nextEntity=${world.nextEntityId}`,
   ];

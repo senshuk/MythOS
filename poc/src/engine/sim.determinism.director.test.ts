@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, setStoryteller, hashWorld, possess } from './sim';
-import { fullActors } from './world';
+import { fullActors, allEvents } from './world';
 import { hasLeader } from '../content/fixture';
 
 describe('director (storyteller)', () => {
@@ -13,8 +13,11 @@ describe('director (storyteller)', () => {
     runYears(w, 60);
     expect(w.director.incidents).toBeGreaterThan(0);
     const directorTypes = new Set(['boon', 'blight', 'plague', 'wonder', 'beast', 'omen']);
-    const incidentEvents = w.events.filter((e) => directorTypes.has(e.type));
-    expect(incidentEvents.length).toBe(w.director.incidents);
+    const incidentEvents = allEvents(w).filter((e) => directorTypes.has(e.type));
+    // Low-interest incidents (boon, blight) may be pruned by compaction after
+    // COMPACT_WINDOW_YEARS — so the retained count is ≤ total incidents fired.
+    expect(incidentEvents.length).toBeGreaterThan(0);
+    expect(incidentEvents.length).toBeLessThanOrEqual(w.director.incidents);
   });
 
   it('personality changes how much drama is injected (grim > gentle)', () => {

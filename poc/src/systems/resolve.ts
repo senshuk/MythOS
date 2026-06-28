@@ -250,10 +250,7 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   }
   const victim = rng.chance(0.5) ? a : b;
   const killer = victim === a ? b : a;
-  const before = world.events.length;
-  killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
-  // a public KILLING brands the killer and shakes every witness — possibly seeding
-  // fresh feuds. The witnessed deed is the death event killActor emitted first.
-  const deathId = world.events[before].id;
+  // killActor returns the death event ID; that's what witnesses remember.
+  const deathId = killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
   witnessDeed(world, deathId, killer, victim, 'bloodshed');
 }

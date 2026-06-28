@@ -32,7 +32,10 @@ const ANNALS_LIMIT = 240; // the annals keep the top ~N momentous events of all 
 export function chronicleYearly(world: World): void {
   recordRuins(world);
 
-  for (let i = world.chronicleCursor; i < world.events.length; i++) {
+  // chronicleCursor is now an event ID (the last one already processed), not an array
+  // index — this way the cursor survives compaction (which shifts array indices).
+  const startIdx = Math.max(0, world.chronicleCursor + 1 - world.firstEventId);
+  for (let i = startIdx; i < world.events.length; i++) {
     const ev = world.events[i];
     const interest = interestOf(ev);
     const landmark = LANDMARK_TYPES.has(ev.type);
@@ -43,7 +46,8 @@ export function chronicleYearly(world: World): void {
       world.annals.push({ eventId: ev.id, year: ev.year, tick: ev.tick, interest, landmark });
     }
   }
-  world.chronicleCursor = world.events.length;
+  // store the ID of the last event processed (= last event in buffer right now)
+  world.chronicleCursor = world.nextEventId - 1;
 
   // rolling chronicle: prune the *least memorable, most faded* tales (living memory)
   if (world.chronicle.length > CHRONICLE_LIMIT) {

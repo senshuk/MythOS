@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, buildSnapshot, focusSettlement, hashWorld, forgeWorld } from './sim';
-import { fullActors, summaryActors, createActor, emit, canTakeSpouse } from './world';
+import { fullActors, summaryActors, createActor, emit, canTakeSpouse, allEvents } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { worldShapeFor } from './substrate';
 import { ageCompatible } from './social';
@@ -152,7 +152,7 @@ describe('worldgen orchestration (forgeWorld)', () => {
   it('worldgen produces a VARIETY of events, not just plagues & famines', () => {
     const w = createWorld(1492, false);
     runYears(w, 300);
-    const types = new Set(w.events.map((e) => e.type));
+    const types = new Set(allEvents(w).map((e) => e.type));
     const flavour = ['wonder', 'beast', 'omen', 'battle', 'raid'];
     expect(flavour.filter((t) => types.has(t as never)).length).toBeGreaterThanOrEqual(4);
   });
@@ -177,10 +177,11 @@ describe('historical figures', () => {
   it('foundings & ruins name their figures; succession emits events', () => {
     const w = createWorld(1492, false);
     runYears(w, 150);
-    const founding = w.events.find((e) => e.type === 'settlement_founded')!;
+    const all = allEvents(w);
+    const founding = all.find((e) => e.type === 'settlement_founded')!;
     expect(founding.subjects.length).toBe(1); // the founder
-    expect(w.events.some((e) => e.type === 'ruler_died')).toBe(true);
-    expect(w.events.some((e) => e.type === 'ascension')).toBe(true);
+    expect(all.some((e) => e.type === 'ruler_died')).toBe(true);
+    expect(all.some((e) => e.type === 'ascension')).toBe(true);
     // Invariant: whenever a settlement falls to (attrition) ruin, the event names its
     // last ruler. Searched across seeds/centuries so at least one ruin reliably occurs
     // regardless of demographic balance (a healthy world may have none for a while).
@@ -189,7 +190,7 @@ describe('historical figures', () => {
     for (const seed of [1492, 7, 42, 99, 2024]) {
       const w2 = createWorld(seed, false);
       runYears(w2, 600);
-      for (const e of w2.events) {
+      for (const e of allEvents(w2)) {
         if (e.type === 'ruined') {
           sawRuin = true;
           expect(e.subjects.length).toBeLessThanOrEqual(1); // a led polity names its last ruler; a leaderless one names none

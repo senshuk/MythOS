@@ -9,6 +9,7 @@ import {
   type EntityId,
   type EventId,
   type EventType,
+  type WorldEvent,
   type RelEdge,
   type Sex,
   type Needs,
@@ -208,6 +209,19 @@ export function emit(
   return id;
 }
 
+/** O(1) event lookup spanning both the recent buffer and the archive.
+ *  Use this everywhere instead of world.events[id - 1] so compaction is transparent. */
+export function getEvent(world: World, id: EventId): WorldEvent | undefined {
+  if (id >= world.firstEventId) return world.events[id - world.firstEventId];
+  return world.eventArchive.get(id);
+}
+
+/** All events ever emitted, in chronological order. Combines the archive (old referenced
+ *  events) with the recent buffer. For inspection / testing only — not for hot paths. */
+export function allEvents(world: World): WorldEvent[] {
+  return [...world.eventArchive.values(), ...world.events].sort((a, b) => a.id - b.id);
+}
+
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
@@ -226,14 +240,14 @@ export function killActor(
   type: 'died' | 'died_brawl',
   others: EntityId[],
   causes: EventId[],
-): void {
+): EventId {
   const lc = world.lifecycle.get(id)!;
-  if (!lc.alive) return;
+  if (!lc.alive) return -1;
   lc.alive = false;
   lc.deathTick = tick;
 
   const subjects = type === 'died_brawl' ? [id, ...others] : [id];
-  emit(world, type, subjects, { age: lc.ageYears }, causes);
+  const deathId = emit(world, type, subjects, { age: lc.ageYears }, causes);
 
   // widow every surviving spouse (≤1 for a monogamous species)
   for (const spouse of [...world.ties.get(id)!.spouses]) {
@@ -242,7 +256,7 @@ export function killActor(
     removeSpouse(world, id, spouse);
     const e = world.rels.get(id)!.get(spouse);
     if (e) e.flags.spouse = false;
-    emit(world, 'widowed', [spouse], {}, [world.events[world.events.length - 1].id]);
+    emit(world, 'widowed', [spouse], {}, [deathId]);
   }
 
   // sever relationships from the LIVING graph: the dead no longer count as anyone's
@@ -261,6 +275,7 @@ export function killActor(
     world.entities.splice(ei, 1);
     world.deadEntities.push(id);
   }
+  return deathId;
 }
 
 /**

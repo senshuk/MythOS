@@ -46,7 +46,10 @@ export interface SaveFile {
   entities: number[];
   deadEntities: number[];
   stats: { born: number; died: number; marriages: number; feuds: number };
+  firstEventId: number;
   events: World['events'];
+  /** Referenced old events that survived compaction, keyed by event ID. */
+  eventArchive: [number, World['events'][number]][];
   chronicle: World['chronicle'];
   annals: World['annals'];
   director: World['director'];
@@ -118,7 +121,9 @@ export function serializeWorld(world: World): SaveFile {
     entities: world.entities,
     deadEntities: world.deadEntities,
     stats: world.stats,
+    firstEventId: world.firstEventId,
     events: world.events,
+    eventArchive: [...world.eventArchive],
     chronicle: world.chronicle,
     annals: world.annals,
     director: world.director,
@@ -218,11 +223,14 @@ export function deserializeWorld(s: SaveFile): World {
     memory: new Map(s.memory),
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     rels,
+    firstEventId: (s as { firstEventId?: number }).firstEventId ?? 1,
+    eventArchive: new Map((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []),
     events: s.events,
-    // derived indexes — rebuilt from events rather than serialized (no SAVE_VERSION bump needed).
+    // derived indexes — rebuilt from the full event set (recent buffer + archive).
     eventsBySubject: (() => {
+      const archiveEvents = ((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []).map(([, ev]) => ev);
       const m = new Map<number, number[]>();
-      for (const ev of s.events)
+      for (const ev of [...archiveEvents, ...s.events])
         for (const subj of ev.subjects) {
           const list = m.get(subj);
           if (list) list.push(ev.id);
@@ -231,13 +239,12 @@ export function deserializeWorld(s: SaveFile): World {
       return m;
     })(),
     eventsBySettlement: (() => {
-      // For saves predating explicit settlementRefs in emit(), reconstruct by matching
-      // event data string values against the settlement name map — same coverage as the
-      // old O(total_events) scan in inspectSettlement, but paid once at load time.
+      // Reconstruct by matching event data string values against the settlement name map.
+      const archiveEvents = ((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []).map(([, ev]) => ev);
       const nameToId = new Map<string, number>();
       for (const st of s.settlements) nameToId.set(st.name, st.id);
       const m = new Map<number, number[]>();
-      for (const ev of s.events) {
+      for (const ev of [...archiveEvents, ...s.events]) {
         for (const val of Object.values(ev.data)) {
           if (typeof val !== 'string') continue;
           const sid = nameToId.get(val);
