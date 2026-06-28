@@ -1177,6 +1177,22 @@ function Inspector({
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}</p>
 
+          {actorDetail.reputation.reasons.length > 0 && (
+            <>
+              <h4>
+                Standing <span className="muted">({actorDetail.reputation.standing})</span>
+              </h4>
+              <div className="reasons">
+                {actorDetail.reputation.reasons.map((why, i) => (
+                  <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
+                    {why.value >= 0 ? '+' : ''}
+                    {why.value} {why.label}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
           <h4>Relationships</h4>
           {actorDetail.relationships.length === 0 ? (
             <p className="muted">No relationships.</p>

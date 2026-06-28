@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -633,6 +633,9 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   slighted: { base: -85, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 6, mult: 0.88, label: 'a slight' },
   wed: { base: 650, stackLimit: 1, mult: 1, label: 'married' },
   griefShared: { base: 130, durationTicks: 4 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.8, label: 'shared a loss' },
+  // dread of someone whose violence you WITNESSED (perception.ts). Strong, slow to
+  // fade, lightly stacking — seeing a neighbour shed blood turns wariness into enmity.
+  feared: { base: -90, durationTicks: 7 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'feared their violence' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
@@ -640,6 +643,29 @@ const NEUTRAL_THOUGHT: ThoughtSpec = { base: 0, stackLimit: 1, mult: 1, label: '
 
 export function thoughtSpec(kind: string): ThoughtSpec {
   return THOUGHT_SPECS[kind] ?? NEUTRAL_THOUGHT;
+}
+
+// ---- reputation: what each kind of witnessed deed does to public standing ----
+// How a perceived deed marks an actor's standing with the whole community (value,
+// decay, and the dread it sows in each witness). PACK DATA, like THOUGHT_SPECS: a
+// harsher culture might brand a killer for life (permanent), a gentler one forgive
+// in a generation. `base` is the standing delta; `fearValue` is the opinion a
+// witness forms toward the culprit (fed into the normal thought/feud machinery).
+export const REPUTE_SPECS: Record<string, ReputeSpec> = {
+  // a killing: heavy, lasting notoriety; witnesses are personally shaken (fearValue
+  // ≠ 0 ⇒ each witness forms a dread of the killer that can curdle into a feud).
+  bloodshed: { base: -160, durationTicks: 12 * DAYS_PER_YEAR, fearValue: -150, label: 'shed blood' },
+  // a non-lethal brawl: lesser, shorter notoriety, but NO personal enmity — a scuffle
+  // colours how the town regards you without making lasting enemies of every onlooker
+  // (fearValue 0 ⇒ standing-only, so a common brawl doesn't reshape the social graph).
+  violence: { base: -60, durationTicks: 8 * DAYS_PER_YEAR, fearValue: 0, label: 'came to blows' },
+};
+
+// Neutral fallback so an unknown / pack-added kind never crashes the engine.
+const NEUTRAL_REPUTE: ReputeSpec = { base: 0, fearValue: 0, label: 'a deed' };
+
+export function reputeSpec(kind: string): ReputeSpec {
+  return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
 }
 
 // ----------------------------------------------------------- needs -----------

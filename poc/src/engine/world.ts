@@ -86,6 +86,7 @@ export function createActor(world: World, p: ActorProps): EntityId {
   world.profession.set(id, p.profession);
   world.ties.set(id, { spouses: [], parents: p.parents ? [...p.parents] : [], children: [] });
   world.memory.set(id, []);
+  world.reputation.set(id, { marks: [] });
   world.rels.set(id, new Map());
   // new actors are born/created at full fidelity in the focused settlement
   world.fidelity.set(id, 'full');
@@ -271,6 +272,7 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   world.profession.delete(id);
   world.ties.delete(id);
   world.memory.delete(id);
+  world.reputation.delete(id);
   world.rels.delete(id);
   world.homeSettlement.delete(id);
   world.fidelity.delete(id);

@@ -89,6 +89,40 @@ export interface RelEdge {
 }
 
 export type EventId = number;
+
+/**
+ * How a kind of REPUTATION MARK behaves — pack data, read by the reputation engine
+ * (the community-scale parallel of ThoughtSpec: a public deed marks an actor's
+ * standing with everyone, not a single bond). The SET of kinds and their weights is
+ * PACK DATA (`content/fixture.ts` REPUTE_SPECS).
+ */
+export interface ReputeSpec {
+  base: number; // standing delta (− = notoriety, + = renown)
+  durationTicks?: number; // undefined => permanent
+  fearValue: number; // the opinion-thought a witness forms toward the culprit
+  label: string; // shown in the inspector ("shed blood")
+}
+
+/**
+ * A single sourced, witness-weighted, (usually) decaying mark on an actor's public
+ * standing — a deed the community PERCEIVED. Standing is the summed total of these
+ * (see reputation.ts), so reputation is legible ("known for: shed blood, seen by 7")
+ * and earned (only what others witnessed counts).
+ */
+export interface ReputeMark {
+  kind: string; // open id; the SET is pack data (content/fixture REPUTE_SPECS)
+  value: number; // standing delta (+/-)
+  sinceTick: number;
+  expiresTick?: number; // undefined = permanent
+  witnesses: number; // how many saw it — scales how widely it is known
+  cause?: EventId; // the event that produced it (legibility)
+}
+
+/** An actor's public reputation: a bounded list of sourced marks. */
+export interface Reputation {
+  marks: ReputeMark[];
+}
+
 export type FigureId = EntityId; // shares the id space; resolves via the name registry
 
 /**
@@ -342,6 +376,9 @@ export interface World {
   profession: Map<EntityId, string>;
   ties: Map<EntityId, SocialTies>;
   memory: Map<EntityId, EventId[]>; // bounded recent events per actor
+  /** per-actor public standing as witness-weighted, decaying marks (reputation.ts).
+   *  Minted by perception when a deed is seen, so notoriety is earned, not assumed. */
+  reputation: Map<EntityId, Reputation>;
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
   events: WorldEvent[];
@@ -443,6 +480,9 @@ export interface ActorView {
   house: string;
   spouse?: EntityId;
   relationshipCount: number;
+  /** public standing in the community (0 = unremarked, − = notorious, + = renowned).
+   *  Earned from witnessed deeds — see reputation.ts / perception.ts. */
+  standing: number;
 }
 
 /** A clickable reference to an entity named in an event's prose. */
@@ -674,6 +714,9 @@ export interface ActorDetail {
   actor: ActorView;
   relationships: RelationView[];
   lifeEvents: EventView[];
+  /** how the community regards this actor: a standing score plus the witnessed deeds
+   *  behind it ("shed blood", "a public kindness") — reputation made legible. */
+  reputation: { standing: number; reasons: { label: string; value: number }[] };
 }
 
 export interface EventChain {
