@@ -18,9 +18,10 @@ import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible, escalateAnimosity } from '../engine/social';
-import { witnessWrongdoing } from '../engine/perception';
+import { witnessDeed } from '../engine/perception';
+import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
-import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
@@ -110,8 +111,15 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
     temperamentAffinity(pa.temperament, pb.temperament);
   const opinion = computeOpinion(edge, world.tick);
 
-  // probability the encounter goes well rises with affinity & existing warmth.
-  const pPos = clamp(0.56 + bias + affinity * 0.1 + opinion * 0.00025, 0.05, 0.95);
+  // probability the encounter goes well rises with affinity & existing warmth — and
+  // with how the town REGARDS the other: a renowned soul gets a warm welcome, a
+  // notorious one the cold shoulder (REPUTATION_EFFECTS.reception, pack-tunable). This
+  // is "who befriends/avoids you" — public standing colouring everyday encounters.
+  const pPos = clamp(
+    0.56 + bias + affinity * 0.1 + opinion * 0.00025 + standingOf(world, b) * REPUTATION_EFFECTS.reception,
+    0.05,
+    0.95,
+  );
   const positive = rng.chance(pPos);
   const magnitude = positive ? rng.range(25, 120) : rng.range(20, 105);
 
@@ -140,13 +148,16 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   }
 }
 
-/** A deliberate kindness: a guaranteed positive thought, sourced to an event. */
+/** A deliberate kindness: a guaranteed positive thought, sourced to an event. The gift
+ *  is also a PUBLIC act — bystanders see it and the giver earns renown (perception). */
 function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
-  addThought(edge, 'kindness', world.tick, { cause: emit(world, 'kindness', [a, b]) });
+  const giftId = emit(world, 'kindness', [a, b]);
+  addThought(edge, 'kindness', world.tick, { cause: giftId });
   bumpBelonging(world, a, 30);
   bumpBelonging(world, b, 30);
+  witnessDeed(world, giftId, a, b, 'generosity'); // public generosity builds standing
   promote(world, a, b, edge, rng);
 }
 
@@ -226,8 +237,8 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   if (!rng.chance(0.45)) {
     // a public scuffle: bystanders see two neighbours come to blows (perception is
     // off the shared RNG stream, so this doesn't perturb the NPC simulation).
-    witnessWrongdoing(world, brawlId, a, b, 'violence');
-    witnessWrongdoing(world, brawlId, b, a, 'violence');
+    witnessDeed(world, brawlId, a, b, 'violence');
+    witnessDeed(world, brawlId, b, a, 'violence');
     return;
   }
   const victim = rng.chance(0.5) ? a : b;
@@ -237,5 +248,5 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   // a public KILLING brands the killer and shakes every witness — possibly seeding
   // fresh feuds. The witnessed deed is the death event killActor emitted first.
   const deathId = world.events[before].id;
-  witnessWrongdoing(world, deathId, killer, victim, 'bloodshed');
+  witnessDeed(world, deathId, killer, victim, 'bloodshed');
 }

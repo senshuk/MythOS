@@ -99,7 +99,10 @@ export type EventId = number;
 export interface ReputeSpec {
   base: number; // standing delta (− = notoriety, + = renown)
   durationTicks?: number; // undefined => permanent
-  fearValue: number; // the opinion-thought a witness forms toward the culprit
+  /** the opinion-thought each WITNESS forms toward the actor (kind + value), if any.
+   *  Absent ⇒ the deed touches public standing only, not personal bonds. `escalates`
+   *  routes a grave (negative) deed through the rivalry/feud rule. */
+  witnessThought?: { kind: string; value: number; escalates?: boolean };
   label: string; // shown in the inspector ("shed blood")
 }
 
