@@ -145,6 +145,42 @@ function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef
   );
 }
 
+// the mobile bottom-nav tabs — crisp line-art icons (currentColor) over a short label.
+const NAV_TABS = [
+  {
+    id: 'world' as const,
+    label: 'World',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <ellipse cx="12" cy="12" rx="4" ry="9" />
+      </svg>
+    ),
+  },
+  {
+    id: 'chronicle' as const,
+    label: 'Chronicle',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 6.4C10.2 5.2 8 4.6 5.5 4.6c-.8 0-1.5.6-1.5 1.4v11c0 .8.7 1.4 1.5 1.4 2.5 0 4.7.6 6.5 1.8" />
+        <path d="M12 6.4C13.8 5.2 16 4.6 18.5 4.6c.8 0 1.5.6 1.5 1.4v11c0 .8-.7 1.4-1.5 1.4-2.5 0-4.7.6-6.5 1.8" />
+        <line x1="12" y1="6.4" x2="12" y2="20.2" />
+      </svg>
+    ),
+  },
+  {
+    id: 'inspector' as const,
+    label: 'Inspect',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="6.5" />
+        <line x1="20" y1="20" x2="15.6" y2="15.6" />
+      </svg>
+    ),
+  },
+];
+
 export default function App() {
   const sim = useSim(123456);
   const [seedInput, setSeedInput] = useState('123456');
@@ -308,16 +344,20 @@ export default function App() {
               <button onClick={() => sim.advance(10)} disabled={sim.busy}>+10 years</button>
               <button onClick={() => sim.advance(60)} disabled={sim.busy}>+60 years</button>
             </div>
-            <div className="tabs">
-              <button className={tab === 'world' ? 'active' : ''} onClick={() => setTab('world')}>
-                🗺 World
-              </button>
-              <button className={tab === 'chronicle' ? 'active' : ''} onClick={() => setTab('chronicle')}>
-                📜 Chronicle
-              </button>
-              <button className={tab === 'inspector' ? 'active' : ''} onClick={() => setTab('inspector')}>
-                🔍 Inspect
-              </button>
+            <div className="tabs" role="tablist">
+              {NAV_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  className={tab === t.id ? 'active' : ''}
+                  aria-current={tab === t.id ? 'page' : undefined}
+                  aria-label={t.label}
+                  onClick={() => setTab(t.id)}
+                >
+                  <span className="tab-icon">{t.icon}</span>
+                  <span className="tab-label">{t.label}</span>
+                </button>
+              ))}
             </div>
           </nav>
         </>

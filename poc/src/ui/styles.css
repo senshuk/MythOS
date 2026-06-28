@@ -562,14 +562,26 @@ button { font-family: inherit; }
     font: inherit; font-weight: 600; cursor: pointer;
   }
   .time-bar button:disabled { opacity: 0.45; }
-  .tabs { display: flex; gap: 6px; }
+  /* a proper bottom tab bar: icon over label, no boxes — the ACTIVE tab is marked by
+     colour + a soft pill behind its icon (the modern iOS/Material idiom). */
+  .tabs { display: flex; }
   .tabs button {
-    flex: 1; min-height: var(--tap); border-radius: var(--radius-sm);
-    background: none; border: 1px solid transparent; color: var(--muted);
-    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    flex: 1; min-height: var(--tap);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    padding: 5px 0 3px;
+    background: none; border: none; color: var(--muted); cursor: pointer; font: inherit;
+    -webkit-tap-highlight-color: transparent; transition: color 0.15s;
   }
-  .tabs button.active { color: var(--gold); background: rgba(233, 196, 106, 0.1); border-color: rgba(233, 196, 106, 0.25); }
+  .tab-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 26px; border-radius: var(--radius-pill);
+    transition: background 0.18s, transform 0.1s;
+  }
+  .tab-icon svg { width: 21px; height: 21px; display: block; }
+  .tab-label { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: 0.02em; }
+  .tabs button.active { color: var(--gold); }
+  .tabs button.active .tab-icon { background: rgba(233, 196, 106, 0.16); }
+  .tabs button:active .tab-icon { transform: scale(0.9); }
 }
 
 @media (max-width: 420px) {
