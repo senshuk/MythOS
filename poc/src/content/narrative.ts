@@ -76,6 +76,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   kindness: (n) => `${n(0)} did ${n(1)} a kindness.`,
   brawl: (n) => `${n(0)} and ${n(1)} came to blows.`,
   condemned: (n, d) => `${n(0)} was condemned by ${d.deity ?? 'the gods'} for their deed.`,
+  apostasy: (n, d) => `${n(0)} renounced their faith in ${d.deity ?? 'the gods'}.`,
+  converted: (n, d) => `${n(0)} found faith in ${d.deity ?? 'the gods'}.`,
 };
 
 /**
@@ -88,6 +90,10 @@ export function eventInterest(type: string, data: Record<string, number | string
   switch (type) {
     case 'condemned':
       return 55; // a named divine condemnation is notable but not as grave as a death
+    case 'apostasy':
+      return 18; // renouncing faith is personal — comparable to a marriage or ascension
+    case 'converted':
+      return 10; // finding faith is quiet — visible in the recent feed, not the annals
     case 'died_brawl':
       return 72;
     case 'conquest':

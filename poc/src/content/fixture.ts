@@ -730,6 +730,9 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // (ethics weight ≥ 2.0). Stronger and more durable than mere dread — this is not
   // just fear of a violent person but outrage at a transgression against shared belief.
   tabooHorror: { base: -180, durationTicks: 10 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.9, label: 'witnessed a cultural profanity' },
+  // religion: co-religionists gradually warm to each other; the opposing side creates friction.
+  faithBond: { base: 80, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.65, label: 'shares your faith' },
+  faithFriction: { base: -30, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.6, label: 'follows a different creed' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.

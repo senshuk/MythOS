@@ -23,7 +23,7 @@ import { fullActors, getRel, remember, emit } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
 import { escalateAnimosity, personalityOf } from './social';
-import { reputeSpec, ethicsWeightFor, patronDeityOf } from '../content/fixture';
+import { reputeSpec, ethicsWeightFor, patronDeityOf, deityById } from '../content/fixture';
 
 /** A co-resident's chance of having been present to see a public deed. */
 const WITNESS_CHANCE = 0.5;
@@ -97,7 +97,17 @@ export function witnessDeed(
   // Rootmother" is traceable and not just an opaque standing number.
   if (isTaboo && cultureId) {
     const deity = patronDeityOf(cultureId);
-    emit(world, 'condemned', [actor], { deity: deity.name, deed: kind }, [eventId]);
+    const condemnedId = emit(world, 'condemned', [actor], { deity: deity.name, deed: kind }, [eventId]);
+    // A faithful actor publicly condemned may lose faith from the shame — 15 % chance.
+    // The causal chain is preserved: apostasy → condemnation → deed.
+    const actorFaith = world.faith.get(actor);
+    if (actorFaith) {
+      const apostasyRng = new Rng(mixSeed(world.seed, actor, condemnedId));
+      if (apostasyRng.chance(0.15)) {
+        world.faith.set(actor, '');
+        emit(world, 'apostasy', [actor], { deity: deityById(actorFaith).name }, [condemnedId]);
+      }
+    }
   }
 
   return witnesses;

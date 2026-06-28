@@ -46,6 +46,7 @@ import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
+import { religionYearly } from './religion';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
@@ -139,6 +140,7 @@ export function stepTick(world: World): void {
   }
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity
+    if (hasFocus) religionYearly(world); // faith bonds, friction, conversion & apostasy
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes
