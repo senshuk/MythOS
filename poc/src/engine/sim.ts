@@ -76,6 +76,7 @@ export function createWorld(seed: number, focus = true): World {
     deadEntities: [],
     stats: { born: 0, died: 0, marriages: 0, feuds: 0 },
     eventsBySubject: new Map(),
+    eventsBySettlement: new Map(),
     identity: new Map(),
     names: new Map(),
     lifecycle: new Map(),
@@ -269,19 +270,17 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
 export function inspectSettlement(world: World, id: SettlementId): SettlementDetail | undefined {
   const s = world.settlements[id];
   if (!s) return undefined;
-  // Collect event IDs for every figure from this settlement via the reverse index —
-  // O(figures_here × events_per_figure) instead of O(total_events × avg_subjects).
-  const figEventIds = new Set<number>();
+  // Union: events where this settlement is explicitly indexed + events where one of its
+  // figures is a subject. Both indexes are O(1) lookups; no full scan of world.events.
+  const eventIds = new Set<number>(world.eventsBySettlement.get(id) ?? []);
   for (const f of world.figures) {
     if (f.settlementId !== id) continue;
-    for (const eid of world.eventsBySubject.get(f.id) ?? []) figEventIds.add(eid);
+    for (const eid of world.eventsBySubject.get(f.id) ?? []) eventIds.add(eid);
   }
-  // Macro events (raids, battles, trade…) store settlement names in data fields — those
-  // still require a full scan; the subjects check is now an O(1) Set lookup.
-  const events = world.events
-    .filter((ev) => figEventIds.has(ev.id) || Object.values(ev.data).includes(s.name))
-    .map((ev) => eventView(world, ev))
-    .reverse();
+  const events = [...eventIds]
+    .sort((a, b) => b - a) // event IDs are monotonic — descending = newest first
+    .map((eid) => world.events[eid - 1])
+    .map((ev) => eventView(world, ev));
   return { settlementId: id, events };
 }
 
@@ -302,7 +301,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       government: governmentById(s.governmentId).title || 'free folk',
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
-      founder: world.figures.find((f) => f.role === 'founder' && f.settlementId === s.id)?.name,
+      founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
       wealth: Math.round(s.econ.wealth),

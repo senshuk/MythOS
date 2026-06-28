@@ -178,6 +178,7 @@ export function emit(
   subjects: EntityId[],
   data: Record<string, number | string> = {},
   causes: EventId[] = [],
+  settlementRefs: number[] = [],
 ): EventId {
   const id = world.nextEventId++;
   world.events.push({
@@ -198,6 +199,11 @@ export function emit(
     if (idx) idx.push(id);
     else world.eventsBySubject.set(s, [id]);
     if (world.memory.has(s)) remember(world, s, id);
+  }
+  for (const sid of settlementRefs) {
+    const sl = world.eventsBySettlement.get(sid);
+    if (sl) sl.push(id);
+    else world.eventsBySettlement.set(sid, [id]);
   }
   return id;
 }

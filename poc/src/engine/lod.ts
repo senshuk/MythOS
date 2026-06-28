@@ -233,11 +233,12 @@ export function createSettlements(world: World): void {
     };
     world.settlements.push(s);
     const founder = mintFigure(world, s, d.foundedYear, gen, 'founder');
+    s.founderName = founder.name;
     if (hasLeader(s.governmentId)) {
       s.currentRulerId = founder.id;
       foundHouse(world, founder, s.id, d.foundedYear); // the founding family becomes a House
     }
-    emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop });
+    emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop }, [], [s.id]);
   }
 
   // ...and the towns that FELL in those ancient wars become ruins, recorded in the order
@@ -249,8 +250,8 @@ export function createSettlements(world: World): void {
     world.tick = d.ruinedYear! * DAYS_PER_YEAR;
     s.ruinedYear = d.ruinedYear;
     s.macro = { population: 0, children: 0, adults: 0, elders: 0, stability: 0, dominantSpecies: d.people.species };
-    if (d.razedBy) emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) });
-    else emit(world, 'ruined', [], { name: s.name });
+    if (d.razedBy) emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) }, [], [s.id]);
+    else emit(world, 'ruined', [], { name: s.name }, [], [s.id]);
     endHouseAt(world, s, d.ruinedYear!); // the ruling line falls with the city
   }
 
@@ -570,8 +571,9 @@ export function focusSettlement(world: World, targetId: number): void {
   // demote the current settlement — unless we're coming from headless / worldgen
   // (no settlement focused), which is the player-enters-the-world handoff.
   const hadFocus = world.focusedSettlementId >= 0;
-  const fromName = hadFocus ? world.settlements[world.focusedSettlementId].name : undefined;
-  if (hadFocus) demote(world, world.settlements[world.focusedSettlementId]);
+  const fromId = hadFocus ? world.focusedSettlementId : -1;
+  const fromName = hadFocus ? world.settlements[fromId].name : undefined;
+  if (hadFocus) demote(world, world.settlements[fromId]);
 
   world.rng.state = target.rngState; // activate target's own stream
   world.focusedSettlementId = targetId; // set BEFORE promote so new actors home correctly
@@ -579,7 +581,7 @@ export function focusSettlement(world: World, targetId: number): void {
 
   // a focus-shift is only "news" when attention moved between two settlements
   if (hadFocus) {
-    emit(world, 'focus_shift', [], { from: fromName!, to: target.name, population: target.macro.population });
+    emit(world, 'focus_shift', [], { from: fromName!, to: target.name, population: target.macro.population }, [], [fromId, targetId]);
   }
 }
 
@@ -651,17 +653,17 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
     const toll = rng.range(3, 14) + Math.round(Math.max(0, -m.stability) / 12);
     deaths += toll;
     m.stability = clamp(m.stability - rng.range(3, 8), -100, 100);
-    emit(world, 'hardship', [], { name: s.name, toll });
+    emit(world, 'hardship', [], { name: s.name, toll }, [], [s.id]);
   } else if (rng.chance(0.06)) {
     m.stability = clamp(m.stability + rng.range(3, 9), -100, 100);
-    if (m.stability > 30) emit(world, 'prosperity', [], { name: s.name, population: m.population });
+    if (m.stability > 30) emit(world, 'prosperity', [], { name: s.name, population: m.population }, [], [s.id]);
   }
 
   applyDeaths(m, deaths);
   m.population = m.children + m.adults + m.elders;
 
   if (Math.floor(m.population / 100) > Math.floor(before / 100) && m.population > before) {
-    emit(world, 'milestone', [], { name: s.name, population: Math.floor(m.population / 100) * 100 });
+    emit(world, 'milestone', [], { name: s.name, population: Math.floor(m.population / 100) * 100 }, [], [s.id]);
   }
 }
 
@@ -726,7 +728,7 @@ export function geographyYearly(world: World): void {
         weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
-        emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) });
+        emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
         houseConquers(world, strong); // the victor's House gains prestige (the loser's line
         //                               falls when recordRuins registers the emptied town)
       } else {
@@ -740,7 +742,7 @@ export function geographyYearly(world: World): void {
         A.macro.stability = clamp(A.macro.stability - rng.range(3, 8), -100, 100);
         B.macro.stability = clamp(B.macro.stability - rng.range(3, 8), -100, 100);
         const subjects = [A.currentRulerId, B.currentRulerId].filter((x): x is number => x !== undefined);
-        emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) });
+        emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
       }
     } else if (e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
       // a raid along a hostile border. The weaker, non-focused side is the victim;
@@ -758,7 +760,7 @@ export function geographyYearly(world: World): void {
         victim.macro.stability = clamp(victim.macro.stability - rng.range(4, 12), -100, 100);
       }
       e.tradeVolume *= 0.4; // war chokes the route
-      emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll, reason: mostOpposedValue(A.cultureId, B.cultureId) });
+      emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [raider.id, victim.id]);
     }
   }
   world.geoRngState = rng.state;
@@ -804,7 +806,7 @@ export function economyYearly(world: World): void {
   }
 
   // 2) trade goods along non-hostile edges (price equalization + wealth + trust)
-  let busiest = { value: 0, from: '', to: '' };
+  let busiest = { value: 0, from: '', to: '', fromId: 0, toId: 0 };
   for (const edge of world.edges) {
     const A = world.settlements[edge.a];
     const B = world.settlements[edge.b];
@@ -846,12 +848,12 @@ export function economyYearly(world: World): void {
     edge.tradeVolume = edge.tradeVolume * 0.8 + value * 0.05;
     if (value > 0) {
       edge.relation = clamp(edge.relation + 1, -100, 100); // trade builds trust
-      if (value > busiest.value) busiest = { value, from: A.name, to: B.name };
+      if (value > busiest.value) busiest = { value, from: A.name, to: B.name, fromId: A.id, toId: B.id };
     }
   }
   // one event per year for the busiest route — keeps the feed informative, not noisy
   if (busiest.value > 12) {
-    emit(world, 'trade', [], { from: busiest.from, to: busiest.to, goods: Math.round(busiest.value) });
+    emit(world, 'trade', [], { from: busiest.from, to: busiest.to, goods: Math.round(busiest.value) }, [], [busiest.fromId, busiest.toId]);
   }
 
   // 3) food security: famine where the granaries ran dry; plenty lifts stability
@@ -875,7 +877,7 @@ export function economyYearly(world: World): void {
           if (n) n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] - 80, 0, 1000); // lean years pinch the larder
         }
         if (Math.floor(world.tick / DAYS_PER_YEAR) % 4 === 0) {
-          emit(world, 'famine', [], { name: s.name, toll: 0 }); // a hunger warning, no deaths
+          emit(world, 'famine', [], { name: s.name, toll: 0 }, [], [s.id]); // a hunger warning, no deaths
         }
       }
       continue;
@@ -889,7 +891,7 @@ export function economyYearly(world: World): void {
         s.macro.stability = clamp(s.macro.stability - 8, -100, 100);
         // the land bleeds the people every lean year, but only a SEVERE famine is
         // worth remembering — chronic marginal hunger shouldn't flood the chronicle.
-        if (toll >= Math.max(3, pop * 0.025)) emit(world, 'famine', [], { name: s.name, toll });
+        if (toll >= Math.max(3, pop * 0.025)) emit(world, 'famine', [], { name: s.name, toll }, [], [s.id]);
       }
     } else if (foodYears > 1.6) {
       s.macro.stability = clamp(s.macro.stability + 1, -100, 100);
@@ -911,7 +913,7 @@ export function summaryYearly(world: World): void {
       const home = world.homeSettlement.get(id)!;
       lc.alive = false;
       lc.deathTick = world.tick;
-      const deathId = emit(world, 'died', [id], { age: lc.ageYears, settlement: world.settlements[home].name });
+      const deathId = emit(world, 'died', [id], { age: lc.ageYears, settlement: world.settlements[home].name }, [], [home]);
       for (const spouse of world.ties.get(id)!.spouses) {
         if (world.lifecycle.get(spouse)?.alive) emit(world, 'widowed', [spouse], {}, [deathId]);
       }
@@ -964,7 +966,7 @@ export function migrationYearly(world: World): void {
     world.fidelity.set(id, 'summary');
     world.homeSettlement.set(id, target);
     world.settlements[target].macro.population += 1;
-    emit(world, 'emigrated', [id], { from: world.settlements[focusedId].name, to: world.settlements[target].name });
+    emit(world, 'emigrated', [id], { from: world.settlements[focusedId].name, to: world.settlements[target].name }, [], [focusedId, target]);
   }
 
   // IMMIGRATION: a few named people from elsewhere settle in the focused town
@@ -980,6 +982,6 @@ export function migrationYearly(world: World): void {
     fromMacro.population = Math.max(0, fromMacro.population - 1);
     world.fidelity.set(id, 'full');
     world.homeSettlement.set(id, focusedId);
-    emit(world, 'immigrated', [id], { from: world.settlements[fromId].name, to: world.settlements[focusedId].name });
+    emit(world, 'immigrated', [id], { from: world.settlements[fromId].name, to: world.settlements[focusedId].name }, [], [fromId, focusedId]);
   }
 }

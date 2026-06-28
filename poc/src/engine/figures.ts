@@ -73,7 +73,7 @@ export function endHouseAt(world: World, settlement: Settlement, year: number): 
   if (!house || house.extinctYear !== undefined) return;
   house.seatSettlementId = undefined;
   house.extinctYear = year;
-  emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name });
+  emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, [], [settlement.id]);
 }
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
@@ -177,12 +177,12 @@ function installRuler(
     oldHouse.prestige += HOUSE_ASCEND;
     oldHouse.seatSettlementId = s.id;
     s.currentRulerId = heir.id;
-    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name });
+    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, [], [s.id]);
   } else {
     const newHouse = foundHouse(world, heir, s.id, year);
     if (oldHouse && oldHouse.seatSettlementId === s.id) oldHouse.seatSettlementId = undefined; // out of power
     s.currentRulerId = heir.id;
-    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' });
+    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' }, [], [s.id]);
   }
 
   // a heir who is a real SIMULATED actor (rose from the focused settlement, not a minted
@@ -223,7 +223,7 @@ export function figuresYearly(world: World): void {
       if (gov.succession === 'hereditary') {
         ruler.deathYear = year;
         if (oldHouse) oldHouse.prestige += HOUSE_REIGN + (year - ruler.reignStart); // a completed reign
-        emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title });
+        emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
       }
       // In the focused settlement, rule may pass to a real local heir (so an actor — and the
       // player — can actually rise to lead). Otherwise the dynasty continues or a new one rises.

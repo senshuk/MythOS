@@ -73,7 +73,7 @@ function recordRuins(world: World): void {
       s.ruinedYear = year;
       // name the last ruler under whom the settlement fell, if any
       const subjects = s.currentRulerId !== undefined ? [s.currentRulerId] : [];
-      emit(world, 'ruined', subjects, { name: s.name });
+      emit(world, 'ruined', subjects, { name: s.name }, [], [s.id]);
       endHouseAt(world, s, year); // the ruling line falls with the city
     }
   }

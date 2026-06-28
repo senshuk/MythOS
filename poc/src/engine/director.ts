@@ -127,7 +127,7 @@ function wonder(world: World, def: DirectorDef, rng: Rng): void {
   where.macro.stability = clamp(where.macro.stability + 3, -100, 100);
   where.econ.wealth += 120 * def.intensity; // a great work brings renown & wealth
   const subjects = where.currentRulerId !== undefined ? [where.currentRulerId] : [];
-  emit(world, 'wonder', subjects, { name: where.name, wonder: expand(WONDER_GRAMMAR, 'wonder', rng, { PLACE: where.name }) });
+  emit(world, 'wonder', subjects, { name: where.name, wonder: expand(WONDER_GRAMMAR, 'wonder', rng, { PLACE: where.name }) }, [], [where.id]);
 }
 
 /** A legendary beast ravages a settlement. */
@@ -138,7 +138,7 @@ function beast(world: World, def: DirectorDef, rng: Rng): void {
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(6, 14), -100, 100);
-  const beastId = emit(world, 'beast', [], { name: s.name, beast: expand(BEAST_GRAMMAR, 'beast', rng, {}), toll });
+  const beastId = emit(world, 'beast', [], { name: s.name, beast: expand(BEAST_GRAMMAR, 'beast', rng, {}), toll }, [], [s.id]);
   // if the beast fell on the FOCUSED town, its bravest soul stands against it and earns
   // valour (perception is off the shared stream, so this doesn't perturb the director RNG).
   if (s.detailed && s.id === world.focusedSettlementId) standAgainst(world, beastId, s.id);
@@ -148,7 +148,7 @@ function beast(world: World, def: DirectorDef, rng: Rng): void {
 function omen(world: World, rng: Rng): void {
   const s = pickPopulated(world, rng);
   if (!s) return;
-  emit(world, 'omen', [], { name: s.name, omen: expand(OMEN_GRAMMAR, 'omen', rng, {}) });
+  emit(world, 'omen', [], { name: s.name, omen: expand(OMEN_GRAMMAR, 'omen', rng, {}) }, [], [s.id]);
 }
 
 function goodYear(world: World, def: DirectorDef, rng: Rng): void {
@@ -159,7 +159,7 @@ function goodYear(world: World, def: DirectorDef, rng: Rng): void {
   const where = representativeSettlement(world);
   if (where) {
     where.econ.wealth += 180 * def.intensity;
-    emit(world, 'boon', [], { kind: BOONS[rng.int(BOONS.length)], name: where.name });
+    emit(world, 'boon', [], { kind: BOONS[rng.int(BOONS.length)], name: where.name }, [], [where.id]);
   }
 }
 
@@ -183,7 +183,7 @@ function hardYear(world: World, def: DirectorDef, rng: Rng): void {
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(4, 10), -100, 100);
-  emit(world, 'blight', [], { name: s.name, toll });
+  emit(world, 'blight', [], { name: s.name, toll }, [], [s.id]);
 }
 
 function plague(world: World, def: DirectorDef, rng: Rng): void {
@@ -195,7 +195,7 @@ function plague(world: World, def: DirectorDef, rng: Rng): void {
       const victim = live[rng.int(live.length)];
       if (world.lifecycle.get(victim)!.alive) killActor(world, victim, world.tick, 'died', [], []);
     }
-    emit(world, 'plague', [], { name: world.settlements[world.focusedSettlementId].name, toll });
+    emit(world, 'plague', [], { name: world.settlements[world.focusedSettlementId].name, toll }, [], [world.focusedSettlementId]);
     return;
   }
   const aggs = world.settlements.filter((s) => !s.detailed && s.macro.population > 40);
@@ -205,7 +205,7 @@ function plague(world: World, def: DirectorDef, rng: Rng): void {
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(8, 16), -100, 100);
-  emit(world, 'plague', [], { name: s.name, toll });
+  emit(world, 'plague', [], { name: s.name, toll }, [], [s.id]);
 }
 
 function bandKill(m: MacroPop, toll: number): void {

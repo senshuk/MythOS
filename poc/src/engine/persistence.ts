@@ -183,6 +183,14 @@ export function deserializeWorld(s: SaveFile): World {
   const rng = new Rng(0);
   rng.state = s.rngState;
 
+  // B: backfill founderName on settlements that predate the cached field (old saves).
+  for (const st of s.settlements) {
+    if (!st.founderName) {
+      const f = s.figures.find((fig) => fig.role === 'founder' && fig.settlementId === st.id);
+      if (f) st.founderName = f.name;
+    }
+  }
+
   return {
     seed: s.seed,
     substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
@@ -211,7 +219,7 @@ export function deserializeWorld(s: SaveFile): World {
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     rels,
     events: s.events,
-    // derived index — rebuilt from events rather than serialized (no SAVE_VERSION bump needed).
+    // derived indexes — rebuilt from events rather than serialized (no SAVE_VERSION bump needed).
     eventsBySubject: (() => {
       const m = new Map<number, number[]>();
       for (const ev of s.events)
@@ -220,6 +228,25 @@ export function deserializeWorld(s: SaveFile): World {
           if (list) list.push(ev.id);
           else m.set(subj, [ev.id]);
         }
+      return m;
+    })(),
+    eventsBySettlement: (() => {
+      // For saves predating explicit settlementRefs in emit(), reconstruct by matching
+      // event data string values against the settlement name map — same coverage as the
+      // old O(total_events) scan in inspectSettlement, but paid once at load time.
+      const nameToId = new Map<string, number>();
+      for (const st of s.settlements) nameToId.set(st.name, st.id);
+      const m = new Map<number, number[]>();
+      for (const ev of s.events) {
+        for (const val of Object.values(ev.data)) {
+          if (typeof val !== 'string') continue;
+          const sid = nameToId.get(val);
+          if (sid === undefined) continue;
+          const list = m.get(sid);
+          if (list) list.push(ev.id);
+          else m.set(sid, [ev.id]);
+        }
+      }
       return m;
     })(),
     chronicle: s.chronicle,

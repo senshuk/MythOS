@@ -304,6 +304,8 @@ export interface Settlement {
   name: string;
   /** what the name MEANS in the founders' tongue ("the iron hold") — procedural philology. */
   nameMeaning?: string;
+  /** cached name of the founding figure — set at founding, avoids O(figures) scan per snapshot. */
+  founderName?: string;
   pos: Vec2;
   foundedYear: number;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
@@ -396,6 +398,9 @@ export interface World {
    *  inspectActor/inspectFigure/inspectSettlement are O(actor_events) not O(all_events).
    *  Derived — rebuilt from world.events on load, never serialized. */
   eventsBySubject: Map<EntityId, EventId[]>;
+  /** Reverse index: settlement → event IDs that reference it. Maintained by emit() when
+   *  settlementRefs are passed; rebuilt from world.events on load, never serialized. */
+  eventsBySettlement: Map<SettlementId, EventId[]>;
 
   /** Rolling living memory: recent notable events, bounded and FADING. Drives the
    *  Director's sense of recent drama. */
