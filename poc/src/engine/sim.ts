@@ -260,11 +260,17 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
 export function inspectSettlement(world: World, id: SettlementId): SettlementDetail | undefined {
   const s = world.settlements[id];
   if (!s) return undefined;
+  // Map each figure id to the settlement of its FIRST record (an actor re-crowned can
+  // leave duplicate figure records sharing an id; first-match matches the old `.find`).
+  // Hoisted out of the per-event filter so this is O(events + figures) rather than the
+  // old O(events × figures) — both grow unbounded with world age (a click could hitch).
+  const figSettlement = new Map<EntityId, SettlementId>();
+  for (const f of world.figures) if (!figSettlement.has(f.id)) figSettlement.set(f.id, f.settlementId);
   const events = world.events
     .filter(
       (ev) =>
         Object.values(ev.data).includes(s.name) ||
-        ev.subjects.some((sid) => world.figures.find((f) => f.id === sid)?.settlementId === id),
+        ev.subjects.some((sid) => figSettlement.get(sid) === id),
     )
     .map((ev) => eventView(world, ev))
     .reverse();

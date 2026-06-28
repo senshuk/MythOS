@@ -14,7 +14,7 @@
 import { type World } from '../engine/model';
 import { fullActors, relCount, clamp, isWed } from '../engine/world';
 import { standingOf } from '../engine/reputation';
-import { NEEDS, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
+import { REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
 
 /** Move a value a fraction of the way toward a target (deterministic easing). */
 function drift(v: number, target: number, rate: number): number {
@@ -40,6 +40,7 @@ export function needsDaily(world: World): void {
     const socialStanding = 250 + Math.min(relCount(world, id), 16) * 30 + (isWed(world, id) ? 120 : 0);
     const esteemTarget = clamp(socialStanding + standingOf(world, id) * REPUTATION_EFFECTS.esteem, 0, 1000);
     n[ESTEEM_NEED] = clamp(drift(n[ESTEEM_NEED], esteemTarget, 0.04), 0, 1000);
-    for (const k of NEEDS) n[k] = clamp(n[k], 0, 1000);
+    // (every need above is already clamped to [0,1000] as it's written, so no final
+    // re-clamp pass is needed — that just burned cycles per actor, every day.)
   }
 }
