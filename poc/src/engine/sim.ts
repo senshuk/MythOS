@@ -428,15 +428,13 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
 
   // The deep past lives in the ANNALS (permanent), so legends and named ages span
   // ALL of history — including a long pre-play worldgen — not just recent memory.
-  const evById = new Map<number, WorldEvent>();
-  for (const ev of world.events) evById.set(ev.id, ev);
-
   // legends: the most momentous tales of all time
+  // event IDs are 1-based and the array is append-only, so world.events[id-1] is a direct index.
   const chronicleViews = [...world.annals]
     .sort((a, b) => b.interest - a.interest || a.eventId - b.eventId)
     .slice(0, 14)
     .map((t) => {
-      const ev = evById.get(t.eventId);
+      const ev = world.events[t.eventId - 1];
       return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev) } : null;
     })
     .filter((v): v is { year: number; interest: number; text: string } => v !== null);
@@ -462,7 +460,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   const eras = [...landmarks, ...rest]
     .sort((a, b) => a[0] - b[0]) // chronological — a timeline of ages
     .map(([year, best]) => {
-      const ev = evById.get(best.eventId);
+      const ev = world.events[best.eventId - 1];
       return ev ? { year, title: eraTitle(world, ev) } : null;
     })
     .filter((v): v is { year: number; title: string } => v !== null);

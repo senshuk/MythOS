@@ -28,8 +28,9 @@ export function isAdult(world: World, id: EntityId): boolean {
 export function choosePartner(world: World, a: EntityId, adults: EntityId[]): EntityId | undefined {
   const known = world.rels.get(a)!;
   if (known.size > 0 && world.rng.chance(0.88)) {
-    const ids = [...known.keys()].filter((id) => world.lifecycle.get(id)!.alive);
-    if (ids.length) return ids[world.rng.int(ids.length)];
+    // killActor prunes dead actors from all partners' rel maps, so every key here is alive.
+    const ids = [...known.keys()];
+    return ids[world.rng.int(ids.length)];
   }
   for (let tries = 0; tries < 4; tries++) {
     const cand = adults[world.rng.int(adults.length)];
