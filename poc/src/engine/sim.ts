@@ -124,13 +124,14 @@ export function stepTick(world: World): void {
   // Full-fidelity systems only run when a settlement is focused. In headless /
   // worldgen mode there are no live actors, so the world advances purely by the
   // aggregate, geography, economy, director and chronicle passes below.
+  // computed once per tick — shared by daily, weekly, and (on year-end days) yearly systems.
+  const actors = hasFocus ? fullActors(world) : [];
   if (hasFocus) {
-    const actors = fullActors(world); // computed once per tick, shared by all full-fidelity systems
     needsDaily(world, actors);
     if (world.tick % 7 === 0) actWeekly(world, actors);
   }
   if (world.tick % DAYS_PER_YEAR === 0) {
-    if (hasFocus) lifecycleYearly(world); // focused settlement, full fidelity
+    if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes

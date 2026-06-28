@@ -6,7 +6,7 @@
  * 'f'-mother / two-parent assumption.
  */
 import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
-import { fullActors, createActor, emit, primarySpouse } from '../engine/world';
+import { createActor, emit, primarySpouse } from '../engine/world';
 import { killActor } from '../engine/world';
 import {
   speciesById,
@@ -27,10 +27,10 @@ export function deathProbability(age: number, lifespan: number): number {
   return Math.min(0.55, 0.0015 + Math.pow(r, 7) * 0.22);
 }
 
-export function lifecycleYearly(world: World): void {
+export function lifecycleYearly(world: World, actors: EntityId[]): void {
   const rng = world.rng;
 
-  const focused = fullActors(world); // only the focused settlement is full-fidelity
+  const focused = actors; // pre-computed by stepTick, same snapshot used by needsDaily/actWeekly
 
   // 1) age everyone, then roll natural death
   for (const id of focused) {
