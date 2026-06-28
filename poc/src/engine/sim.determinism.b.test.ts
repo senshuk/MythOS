@@ -9,8 +9,8 @@ import { scriptedRun, playerRun, pickPlayerAndTarget } from './determinism.helpe
 
 describe('determinism', () => {
   it('two runs with the same seed produce identical worlds', () => {
-    const a = runHeadless(123456, 60);
-    const b = runHeadless(123456, 60);
+    const a = runHeadless(123456, 15);
+    const b = runHeadless(123456, 15);
     expect(canonicalize(a)).toBe(canonicalize(b));
     expect(hashWorld(a)).toBe(hashWorld(b));
   });

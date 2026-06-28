@@ -40,6 +40,7 @@ import {
   clamp,
 } from './world';
 import { addThought } from './opinion';
+import { registerLocation } from './location';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
   SPECIES,
@@ -68,6 +69,7 @@ import {
   SUBSISTENCE_NEED,
   CONSUMPTION,
   BASE_PRICE,
+  SETTLEMENT_LOCATION_TYPE,
 } from '../content/fixture';
 import { biomeOf } from '../content/biomes';
 import { tongueFor, placeName } from '../content/languages';
@@ -220,6 +222,11 @@ export function createSettlements(world: World): void {
       id: i,
       name: d.name,
       nameMeaning: d.nameMeaning,
+      // a settlement is a Location with a pack-defined type; flat (a root) and fixed
+      // until the world-hierarchy / transportation phases give it a parent or motion.
+      locationType: SETTLEMENT_LOCATION_TYPE,
+      mobility: 'fixed',
+      parentId: undefined,
       pos: { ...d.site.pos },
       foundedYear: d.foundedYear,
       detailed: false,
@@ -232,6 +239,7 @@ export function createSettlements(world: World): void {
       econ: initEconomy(gen, pop, d.site),
     };
     world.settlements.push(s);
+    registerLocation(world, s); // every settlement is also a Location (by reference)
     const founder = mintFigure(world, s, d.foundedYear, gen, 'founder');
     s.founderName = founder.name;
     if (hasLeader(s.governmentId)) {
@@ -258,6 +266,9 @@ export function createSettlements(world: World): void {
   world.tick = PREHISTORY_YEARS * DAYS_PER_YEAR; // the world is "now" at the end of pre-history
   buildRegionGraph(world, gen);
   world.geoRngState = mixSeed(world.seed, 0x6e0);
+  // generic (non-settlement) locations are allocated ids ABOVE the dense settlement range,
+  // so the two id spaces never collide. Settlements are the only locations created here.
+  world.nextLocationId = world.settlements.length;
 }
 
 /**

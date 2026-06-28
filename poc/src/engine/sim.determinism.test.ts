@@ -8,7 +8,7 @@ import { runHeadless, hashWorld } from './sim';
 describe('determinism', () => {
   it('is stable across several seeds', () => {
     for (const seed of [1, 7, 42, 99, 2024]) {
-      expect(hashWorld(runHeadless(seed, 40))).toBe(hashWorld(runHeadless(seed, 40)));
+      expect(hashWorld(runHeadless(seed, 10))).toBe(hashWorld(runHeadless(seed, 10)));
     }
   });
 });

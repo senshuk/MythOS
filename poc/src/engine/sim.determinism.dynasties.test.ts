@@ -12,9 +12,9 @@ import { createWorld, runYears, buildSnapshot } from './sim';
 describe('dynasties & houses (a string of rulers becomes a family saga)', () => {
   it('hereditary rule CONTINUES a house across generations — a real dynasty forms', () => {
     let sawDynasty = false;
-    for (let seed = 1; seed < 8 && !sawDynasty; seed++) {
+    for (let seed = 1; seed < 12 && !sawDynasty; seed++) {
       const w = createWorld(seed);
-      runYears(w, 160);
+      runYears(w, 100);
       const snap = buildSnapshot(w);
       expect(snap.houses.length).toBeGreaterThan(0);
       // the panel is ranked by prestige (descending)

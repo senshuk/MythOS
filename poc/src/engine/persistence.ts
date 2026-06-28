@@ -14,12 +14,12 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId } from './model';
 import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -42,6 +42,12 @@ export interface SaveFile {
 
   // plain arrays / objects (already JSON-safe)
   settlements: World['settlements'];
+  /** GENERIC (non-settlement) locations only — settlements are reconstructed into the
+   *  location registry by reference from `settlements`, so they are not stored twice.
+   *  Optional for saves predating v9 (the spatial foundation). Stored id-sorted. */
+  locations?: Location[];
+  /** allocator cursor for generic location ids. Optional for pre-v9 saves. */
+  nextLocationId?: number;
   edges: World['edges'];
   entities: number[];
   deadEntities: number[];
@@ -119,6 +125,14 @@ export function serializeWorld(world: World): SaveFile {
     playerGoal: world.playerGoal ?? null,
 
     settlements: world.settlements,
+    // store only the generic locations; settlements re-enter the registry by reference on load.
+    locations: (() => {
+      const settlementIds = new Set(world.settlements.map((s) => s.id));
+      return [...world.locations.values()]
+        .filter((l) => !settlementIds.has(l.id))
+        .sort((a, b) => a.id - b.id);
+    })(),
+    nextLocationId: world.nextLocationId,
     edges: world.edges,
     entities: world.entities,
     deadEntities: world.deadEntities,
@@ -155,7 +169,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -200,12 +214,42 @@ export function deserializeWorld(s: SaveFile): World {
     }
   }
 
+  // v8 → v9 (the spatial foundation): settlements gained the Location base fields. Pre-v9
+  // settlements were flat, fixed places — backfill the defaults so each settlement is a
+  // valid root Location. parentId stays undefined (no hierarchy existed before).
+  for (const st of s.settlements) {
+    const loc = st as { locationType?: string; mobility?: string };
+    if (loc.locationType === undefined) loc.locationType = 'settlement';
+    if (loc.mobility === undefined) loc.mobility = 'fixed';
+  }
+
+  // Rebuild the unified location registry: settlements join BY REFERENCE (same objects as
+  // world.settlements) alongside any stored generic locations. nextLocationId defaults to
+  // the settlement count for pre-v9 saves (which had no generic locations).
+  const genericLocations = s.locations ?? [];
+  const locations = new Map<LocationId, Location>();
+  for (const st of s.settlements) locations.set(st.id, st as Location);
+  for (const loc of genericLocations) locations.set(loc.id, loc);
+  const nextLocationId = s.nextLocationId ?? s.settlements.length;
+  // derive childrenByParent in ascending id order so each child-list is naturally sorted.
+  const childrenByParent = new Map<LocationId, LocationId[]>();
+  for (const id of [...locations.keys()].sort((a, b) => a - b)) {
+    const pid = locations.get(id)!.parentId;
+    if (pid === undefined) continue;
+    const list = childrenByParent.get(pid);
+    if (list) list.push(id);
+    else childrenByParent.set(pid, [id]);
+  }
+
   return {
     seed: s.seed,
     substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
     tick: s.tick,
     rng,
     settlements: s.settlements,
+    locations,
+    nextLocationId,
+    childrenByParent,
     edges: s.edges,
     geoRngState: s.geoRngState,
     focusedSettlementId: s.focusedSettlementId,

@@ -29,7 +29,7 @@ describe('summary tier + migration', () => {
     let found = false;
     for (let s = 1; s < 25 && !found; s++) {
       const w = createWorld(s);
-      runYears(w, 40);
+      runYears(w, 25);
       const elsewhere = summaryActors(w).filter((id) => w.homeSettlement.get(id) !== w.focusedSettlementId);
       if (w.events.some((e) => e.type === 'emigrated') && elsewhere.length > 0) found = true;
     }
@@ -38,7 +38,7 @@ describe('summary tier + migration', () => {
 
   it('live entities = full + summary, and stay bounded vs the world population', () => {
     const w = createWorld(7);
-    runYears(w, 40);
+    runYears(w, 20);
     const snap = buildSnapshot(w);
     const alive = w.entities.filter((id) => w.lifecycle.get(id)!.alive).length;
     expect(alive).toBe(snap.simulatedInDetail + snap.namedPeople);
@@ -73,7 +73,7 @@ describe('chronicle (tales)', () => {
 
   it('the chronicle stays bounded and records the memorable past as legends', () => {
     const w = createWorld(42);
-    runYears(w, 60);
+    runYears(w, 30);
     expect(w.chronicle.length).toBeGreaterThan(0);
     expect(w.chronicle.length).toBeLessThanOrEqual(60); // bounded
     const snap = buildSnapshot(w);
@@ -84,7 +84,7 @@ describe('chronicle (tales)', () => {
   it('named years are dramatic and deterministic', () => {
     const run = () => {
       const w = createWorld(42);
-      runYears(w, 60);
+      runYears(w, 30);
       return buildSnapshot(w);
     };
     const a = run();

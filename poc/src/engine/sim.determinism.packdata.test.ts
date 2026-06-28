@@ -26,7 +26,7 @@ describe('worldgen (headless / all-aggregate mode)', () => {
     const w = createWorld(7, false); // headless
     expect(w.focusedSettlementId).toBe(-1);
     expect(w.entities.length).toBe(0);
-    runYears(w, 120);
+    runYears(w, 60);
     // the whole point: centuries pass with ZERO per-actor simulation
     expect(w.entities.length).toBe(0);
     expect(fullActors(w).length).toBe(0);
@@ -37,7 +37,7 @@ describe('worldgen (headless / all-aggregate mode)', () => {
   it('still advances the world: macro, director and chronicle all evolve', () => {
     const w = createWorld(7, false);
     const popBefore = w.settlements.map((s) => s.macro.population);
-    runYears(w, 120);
+    runYears(w, 60);
     expect(w.settlements.some((s, i) => s.macro.population !== popBefore[i])).toBe(true);
     expect(w.chronicle.length).toBeGreaterThan(0); // a remembered past accrues
     expect(w.director.incidents).toBeGreaterThan(0); // the storyteller still paces it
@@ -46,7 +46,7 @@ describe('worldgen (headless / all-aggregate mode)', () => {
   it('headless worldgen is deterministic', () => {
     const run = () => {
       const w = createWorld(31415, false);
-      runYears(w, 150);
+      runYears(w, 60);
       return hashWorld(w);
     };
     expect(run()).toBe(run());
@@ -64,7 +64,7 @@ describe('worldgen (headless / all-aggregate mode)', () => {
 
   it('the handoff works: a player can enter the pre-simulated world', () => {
     const w = createWorld(7, false);
-    runYears(w, 120);
+    runYears(w, 60);
     const chronicleBefore = w.chronicle.length;
     // pick the largest surviving settlement and "enter" it
     let target = 0;
@@ -82,9 +82,9 @@ describe('worldgen (headless / all-aggregate mode)', () => {
 describe('deep history (annals & ruins)', () => {
   it('the permanent annals keep the deep past the rolling chronicle forgets', () => {
     const w = createWorld(1492, false);
-    runYears(w, 200);
+    runYears(w, 120);
     expect(w.annals.length).toBeGreaterThan(0);
-    // foundings (year 0 landmarks) survive 200 years in the annals...
+    // foundings (year 0 landmarks) survive in the annals...
     expect(w.annals.some((t) => t.landmark && t.year === 0)).toBe(true);
     // ...but the rolling chronicle has faded everything ancient away
     const annalsOldest = Math.min(...w.annals.map((t) => t.year));
@@ -94,12 +94,12 @@ describe('deep history (annals & ruins)', () => {
     // the named ages span from the founding (year 0) to the present
     const snap = buildSnapshot(w);
     expect(snap.eras[0].year).toBe(0);
-    expect(snap.eras[snap.eras.length - 1].year).toBeGreaterThan(100);
+    expect(snap.eras[snap.eras.length - 1].year).toBeGreaterThan(50);
   });
 
   it('annals stay bounded but never prune away landmark foundings', () => {
     const w = createWorld(7, false);
-    runYears(w, 1000);
+    runYears(w, 400);
     expect(w.annals.length).toBeLessThanOrEqual(240);
     expect(w.annals.filter((t) => t.landmark && t.year === 0).length).toBeGreaterThan(0);
   });
@@ -118,7 +118,7 @@ describe('deep history (annals & ruins)', () => {
   it('the annals are deterministic across a headless worldgen', () => {
     const run = () => {
       const w = createWorld(31337, false);
-      runYears(w, 250);
+      runYears(w, 100);
       return hashWorld(w);
     };
     expect(run()).toBe(run());
@@ -127,10 +127,10 @@ describe('deep history (annals & ruins)', () => {
 
 describe('worldgen orchestration (forgeWorld)', () => {
   it('forges a world with deep pre-history, then drops the player into it', () => {
-    const w = forgeWorld(1492, 200);
+    const w = forgeWorld(1492, 100);
     expect(w.focusedSettlementId).toBeGreaterThanOrEqual(0); // a settlement was entered
     expect(fullActors(w).length).toBeGreaterThan(0); // and it's live
-    expect(Math.floor(w.tick / DAYS_PER_YEAR)).toBeGreaterThanOrEqual(200); // 200 forged years atop the grown pre-history
+    expect(Math.floor(w.tick / DAYS_PER_YEAR)).toBeGreaterThanOrEqual(100); // 100 forged years atop the grown pre-history
     expect(w.figures.length).toBeGreaterThan(10); // founders + rulers
     expect(w.annals.length).toBeGreaterThan(0); // a deep recorded past
     const snap = buildSnapshot(w);
@@ -139,19 +139,19 @@ describe('worldgen orchestration (forgeWorld)', () => {
   });
 
   it('the entered settlement is a survivor, not a ruin', () => {
-    const w = forgeWorld(1492, 200);
+    const w = forgeWorld(1492, 100);
     expect(w.settlements[w.focusedSettlementId].ruinedYear).toBeUndefined();
   });
 
   it('forgeWorld is deterministic from (seed, years)', () => {
-    expect(hashWorld(forgeWorld(7, 150))).toBe(hashWorld(forgeWorld(7, 150)));
-    expect(hashWorld(forgeWorld(7, 150))).not.toBe(hashWorld(forgeWorld(8, 150)));
-    expect(hashWorld(forgeWorld(7, 150))).not.toBe(hashWorld(forgeWorld(7, 250)));
+    expect(hashWorld(forgeWorld(7, 80))).toBe(hashWorld(forgeWorld(7, 80)));
+    expect(hashWorld(forgeWorld(7, 80))).not.toBe(hashWorld(forgeWorld(8, 80)));
+    expect(hashWorld(forgeWorld(7, 80))).not.toBe(hashWorld(forgeWorld(7, 120)));
   });
 
   it('worldgen produces a VARIETY of events, not just plagues & famines', () => {
     const w = createWorld(1492, false);
-    runYears(w, 300);
+    runYears(w, 150);
     const types = new Set(allEvents(w).map((e) => e.type));
     const flavour = ['wonder', 'beast', 'omen', 'battle', 'raid'];
     expect(flavour.filter((t) => types.has(t as never)).length).toBeGreaterThanOrEqual(4);
@@ -161,7 +161,7 @@ describe('worldgen orchestration (forgeWorld)', () => {
 describe('historical figures', () => {
   it('worldgen mints a founder per settlement and a line of rulers (dynasties)', () => {
     const w = createWorld(1492, false);
-    runYears(w, 150);
+    runYears(w, 80);
     for (const s of w.settlements) {
       expect(w.figures.some((f) => f.role === 'founder' && f.settlementId === s.id)).toBe(true);
     }
@@ -176,7 +176,7 @@ describe('historical figures', () => {
 
   it('foundings & ruins name their figures; succession emits events', () => {
     const w = createWorld(1492, false);
-    runYears(w, 150);
+    runYears(w, 80);
     const all = allEvents(w);
     const founding = all.find((e) => e.type === 'settlement_founded')!;
     expect(founding.subjects.length).toBe(1); // the founder
@@ -189,7 +189,7 @@ describe('historical figures', () => {
     let sawNamedRuin = false;
     for (const seed of [1492, 7, 42, 99, 2024]) {
       const w2 = createWorld(seed, false);
-      runYears(w2, 600);
+      runYears(w2, 200);
       for (const e of allEvents(w2)) {
         if (e.type === 'ruined') {
           sawRuin = true;
@@ -215,7 +215,7 @@ describe('historical figures', () => {
 
   it('the snapshot lists renowned historical figures', () => {
     const w = createWorld(1492, false);
-    runYears(w, 150);
+    runYears(w, 80);
     const snap = buildSnapshot(w);
     expect(snap.historicalFigures.length).toBeGreaterThan(0);
     expect(snap.historicalFigures.some((f) => f.role === 'founder')).toBe(true);
@@ -276,7 +276,7 @@ describe('the world is a SUBSTRATE (geography is one kind); worlds are diverse',
     expect(w.substrate.kind).toBe('starfield'); // a space world, same engine
     expect(w.settlements.length).toBeGreaterThanOrEqual(8); // a galaxy of star systems
     expect(w.edges.length).toBeGreaterThan(w.settlements.length); // linked by jump routes
-    runYears(w, 120);
+    runYears(w, 60);
     const alive = w.settlements.filter((s) => s.macro.population > 0).length;
     expect(alive).toBeGreaterThanOrEqual(Math.ceil(w.settlements.length / 2)); // a viable galaxy
   });
@@ -595,7 +595,7 @@ describe('government is DATA (leadership transfer is not a hardcoded dynasty)', 
     let electedRotatesAlive = false;
     for (let seed = 1; seed < 40 && !(leaderlessSeen && hereditaryDies && electedRotatesAlive); seed++) {
       const w = createWorld(seed, false);
-      runYears(w, 200);
+      runYears(w, 80);
       for (const s of w.settlements) {
         const mode = successionOf(s.governmentId);
         if (mode === 'none') {

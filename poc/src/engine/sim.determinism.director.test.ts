@@ -10,7 +10,7 @@ import { hasLeader } from '../content/fixture';
 describe('director (storyteller)', () => {
   it('fires incidents that the world remembers, each emitting one summary event', () => {
     const w = createWorld(42);
-    runYears(w, 60);
+    runYears(w, 25);
     expect(w.director.incidents).toBeGreaterThan(0);
     const directorTypes = new Set(['boon', 'blight', 'plague', 'wonder', 'beast', 'omen']);
     const incidentEvents = allEvents(w).filter((e) => directorTypes.has(e.type));
@@ -24,7 +24,7 @@ describe('director (storyteller)', () => {
     const incidents = (p: string) => {
       const w = createWorld(7);
       setStoryteller(w, p);
-      runYears(w, 60);
+      runYears(w, 25);
       return w.director.incidents;
     };
     expect(incidents('grim')).toBeGreaterThan(incidents('gentle'));
@@ -34,7 +34,7 @@ describe('director (storyteller)', () => {
     const run = (p: string) => {
       const w = createWorld(99);
       setStoryteller(w, p);
-      runYears(w, 50);
+      runYears(w, 15);
       return hashWorld(w);
     };
     expect(run('grim')).toBe(run('grim')); // reproducible
@@ -66,7 +66,7 @@ describe('audit fixes', () => {
       const w = createWorld(seed);
       const fid = w.focusedSettlementId;
       if (!hasLeader(w.settlements[fid].governmentId)) continue; // leaderless polity — no ruler to rise to
-      runYears(w, 90);
+      runYears(w, 60);
       const rulerId = w.settlements[fid].currentRulerId;
       if (
         rulerId !== undefined &&

@@ -67,6 +67,9 @@ export function createWorld(seed: number, focus = true): World {
     tick: 0,
     rng: new Rng(mixSeed(seed, 0xf0c)), // neutral stream until a settlement is focused
     settlements: [],
+    locations: new Map(),
+    nextLocationId: 0,
+    childrenByParent: new Map(),
     edges: [],
     geoRngState: 0,
     focusedSettlementId: -1, // -1 = no settlement focused (headless / worldgen)

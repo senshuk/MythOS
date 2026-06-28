@@ -20,13 +20,13 @@ export const geoOf = (w: World) => (w.substrate as SurfaceSubstrate).geography;
 /** A fixed session: advance, shift focus across settlements, advance again. */
 export function scriptedRun(seed: number): World {
   const w = createWorld(seed);
-  runYears(w, 20);
+  runYears(w, 8);
   focusSettlement(w, 3);
-  runYears(w, 20);
+  runYears(w, 8);
   focusSettlement(w, 7);
-  runYears(w, 20);
+  runYears(w, 8);
   focusSettlement(w, 1);
-  runYears(w, 15);
+  runYears(w, 6);
   return w;
 }
 

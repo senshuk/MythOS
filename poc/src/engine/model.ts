@@ -214,6 +214,28 @@ export type EventType = string;
 export type SettlementId = number;
 
 /**
+ * A Location's id. The same numeric id space as SettlementId today — every Settlement
+ * IS a Location (see the Location/Settlement relationship below), so a settlement's id
+ * is also its location id. Generic (non-settlement) locations are allocated ids from
+ * world.nextLocationId, starting above the dense settlement range.
+ */
+export type LocationId = number;
+
+/** A pack-defined location-type label ('settlement', 'city', 'starship', 'room', …).
+ *  The engine treats it as an open string — it never enumerates valid types. */
+export type LocationType = string;
+
+/** Whether a Location can move. DECLARATIVE for now — the engine records that a thing
+ *  *can* move; movement mechanics (transit, travel events) are a later phase. A Vehicle
+ *  in the ontology is simply a Location with mobility='mobile'. */
+export type Mobility = 'fixed' | 'mobile';
+
+/** Where a Location sits in the world model. Foundation form: a 2D surface coordinate
+ *  (same shape as Settlement.pos today). Documented to generalize later to a union that
+ *  also admits a graph-node identifier, without disturbing callers that read pos.x/pos.y. */
+export type WorldPosition = Vec2;
+
+/**
  * Aggregate ("macro") population state for a settlement that is NOT being
  * simulated in detail. Evolves by rates, costs O(1) per year, and holds NO
  * individual entities — this is what lets the world be far larger than the set
@@ -299,23 +321,54 @@ export interface RegionEdge {
   tradeVolume: number; // recent trade activity (flavour / display)
 }
 
-export interface Settlement {
-  id: SettlementId;
+/**
+ * A LOCATION — the engine's generic spatial container (constitution: `design/11`,
+ * `design/14`). A Location holds a place in the world tree (parentId), has a
+ * pack-defined type label, declares whether it can move, and may sit at a world
+ * position. This is the canonical spatial type; `Settlement` is one subtype of it
+ * (`Settlement ⊂ Location`). Mutation of the containment tree goes only through
+ * `engine/location.ts`. NB: `pos` is OPTIONAL here — a pure container (a room inside
+ * a building) need not have its own map coordinate; Settlement narrows it to required.
+ */
+export interface Location {
+  id: LocationId;
   name: string;
   /** what the name MEANS in the founders' tongue ("the iron hold") — procedural philology. */
   nameMeaning?: string;
+  /** pack-defined type label ('settlement', 'planet', 'room', 'starship', …). */
+  locationType: LocationType;
+  /** whether this location can move. DECLARATIVE only at this stage — no movement yet. */
+  mobility: Mobility;
+  /** the location that immediately CONTAINS this one (a city inside a kingdom), or
+   *  undefined for a root. The containment tree is acyclic; see engine/location.ts. */
+  parentId?: LocationId;
+  /** position in the world model. Optional: a contained location may inherit/derive its
+   *  place from its parent rather than hold its own coordinate. */
+  pos?: WorldPosition;
+  foundedYear: number;
+  /** set to the year the location fell to ruin / was destroyed. */
+  ruinedYear?: number;
+}
+
+/**
+ * A SETTLEMENT — a populated, simulated Location (the only Location subtype the engine
+ * materializes today). Extends Location with the simulation-heavy state: demographics,
+ * economy, governance, culture, and LOD bookkeeping. Every Settlement is a Location;
+ * not every Location is a Settlement.
+ */
+export interface Settlement extends Location {
+  id: SettlementId;
   /** cached name of the founding figure — set at founding, avoids O(figures) scan per snapshot. */
   founderName?: string;
-  pos: Vec2;
-  foundedYear: number;
+  /** a settlement always has a concrete map position (narrows Location.pos). */
+  pos: WorldPosition;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
   detailed: boolean;
   /** bumps each time the settlement is demoted; keys deterministic re-generation. */
   epoch: number;
   /** this settlement's OWN deterministic RNG stream cursor (locality-independent). */
   rngState: number;
-  /** set to the year the settlement fell to ruin (population reached 0). */
-  ruinedYear?: number;
+  /** NB: ruinedYear lives on the Location base (set when population reaches 0). */
   /** this polity's government (succession model) — a pack id; see content/fixture. */
   governmentId: string;
   /** this people's culture (value profile) — a pack id; drives inter-settlement relations. */
@@ -375,6 +428,21 @@ export interface World {
   rng: Rng;
 
   settlements: Settlement[];
+  /**
+   * The unified containment registry: EVERY Location keyed by its id, including the
+   * settlements (stored BY REFERENCE — the same objects that live in `settlements[]`,
+   * so there is no dual-storage divergence) plus any generic non-settlement locations
+   * (planets, districts, rooms, ships…). The parent/child tree and the traversal API
+   * in `engine/location.ts` operate over this map. Rebuilt on load, not derived during
+   * the sim — no sim system reads it yet, so it does not affect determinism.
+   */
+  locations: Map<LocationId, Location>;
+  /** allocator for generic (non-settlement) location ids. Starts at settlements.length
+   *  (settlement ids are dense 0..N-1, created only at worldgen) so the two never collide. */
+  nextLocationId: LocationId;
+  /** derived index: parent id → its children's ids, kept in ascending id order for
+   *  deterministic traversal. Maintained by engine/location.ts; rebuilt on load. */
+  childrenByParent: Map<LocationId, LocationId[]>;
   /** undirected adjacency graph over settlements (trade routes / borders). */
   edges: RegionEdge[];
   /** dedicated RNG stream for inter-settlement geography (trade/conflict drift). */

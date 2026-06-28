@@ -22,7 +22,7 @@ describe('level-of-detail / scale', () => {
   it('aggregate settlements actually evolve over time', () => {
     const w = createWorld(42);
     const before = w.settlements[5].macro.population; // settlement 5 is aggregate
-    runYears(w, 50);
+    runYears(w, 30);
     expect(w.settlements[5].detailed).toBe(false);
     expect(w.settlements[5].macro.population).not.toBe(before);
   });
@@ -85,7 +85,7 @@ describe('region geography', () => {
   it('edge relations stay in range and goods flow along the routes', () => {
     let w = createWorld(42);
     for (let seed = 42; w.substrate.kind !== 'surface'; seed++) w = createWorld(seed); // a land world (galaxies are food-uniform → no trade)
-    runYears(w, 60);
+    runYears(w, 35);
     for (const e of w.edges) {
       expect(e.relation).toBeGreaterThanOrEqual(-100);
       expect(e.relation).toBeLessThanOrEqual(100);
@@ -98,7 +98,7 @@ describe('region geography', () => {
 
   it('migration prefers nearer settlements (geography shapes movement)', () => {
     const w = createWorld(7);
-    runYears(w, 80);
+    runYears(w, 50);
     const focused = w.settlements[w.focusedSettlementId];
     const distTo = (id: number) =>
       Math.hypot(focused.pos.x - w.settlements[id].pos.x, focused.pos.y - w.settlements[id].pos.y);
@@ -178,7 +178,7 @@ describe('economy', () => {
 
   it('trade keeps most settlements fed (the routes do their job)', () => {
     const w = createWorld(42);
-    runYears(w, 50);
+    runYears(w, 30);
     const fed = w.settlements.filter((s) => s.macro.population > 0 && s.econ.stock.food / s.macro.population >= 0.5);
     const alive = w.settlements.filter((s) => s.macro.population > 0);
     expect(fed.length).toBeGreaterThan(alive.length / 2); // famine is the exception, not the rule

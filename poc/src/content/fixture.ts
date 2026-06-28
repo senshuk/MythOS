@@ -693,6 +693,11 @@ export function pickFounderAge(rng: Rng): number {
 // engine never hardcodes 'food'/'goods': the SUBSISTENCE staple (its depletion
 // causes famine) and the PREMIUM trade good (the main source of accrued wealth).
 
+/** The location-type label this pack uses for its populated, simulated places. The engine
+ *  treats Location.locationType as an open string; a sci-fi pack could found 'colony' or
+ *  'station' places. Defining it here keeps the type label PACK DATA, not an engine literal. */
+export const SETTLEMENT_LOCATION_TYPE = 'settlement';
+
 export const RESOURCES: string[] = ['food', 'materials', 'goods'];
 export const SUBSISTENCE_RESOURCE = 'food'; // running out of this starves a settlement
 export const PREMIUM_RESOURCE = 'goods'; // the high-value good whose production builds wealth

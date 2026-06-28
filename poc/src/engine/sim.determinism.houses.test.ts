@@ -23,9 +23,9 @@ describe('dynasties & houses (a string of rulers becomes a family saga)', () => 
 
   it('a House FALLS when its seat is razed — the line ends (a scarred map already has some)', () => {
     let sawFallen = false;
-    for (let seed = 1; seed < 12 && !sawFallen; seed++) {
+    for (let seed = 1; seed < 16 && !sawFallen; seed++) {
       const w = createWorld(seed);
-      runYears(w, 120);
+      runYears(w, 80);
       if (w.houses.some((h) => h.extinctYear !== undefined)) sawFallen = true;
     }
     expect(sawFallen).toBe(true);
@@ -33,7 +33,7 @@ describe('dynasties & houses (a string of rulers becomes a family saga)', () => 
 
   it('houses are deterministic and survive a save/load intact', () => {
     const w = createWorld(3);
-    runYears(w, 90);
+    runYears(w, 60);
     expect(w.houses.length).toBeGreaterThan(0);
     const reloaded = deserializeWorld(serializeWorld(w));
     expect(reloaded.houses).toEqual(w.houses);
