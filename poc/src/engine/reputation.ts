@@ -47,6 +47,23 @@ export function standingOf(world: World, id: EntityId): number {
   return rep ? computeStanding(rep, world.tick) : 0;
 }
 
+/** Record a public deed on an actor's standing, ensuring they have a reputation record.
+ *  For deeds the WHOLE town knows directly (rising to lead, standing against a beast) —
+ *  as opposed to perception's witness-by-witness path (see perception.ts witnessDeed). */
+export function recordDeed(
+  world: World,
+  id: EntityId,
+  kind: string,
+  opts?: { value?: number; witnesses?: number; cause?: EventId },
+): void {
+  let rep = world.reputation.get(id);
+  if (!rep) {
+    rep = emptyReputation();
+    world.reputation.set(id, rep);
+  }
+  addMark(rep, kind, world.tick, opts);
+}
+
 /** Add a sourced mark to an actor's standing, pruning expired marks and bounding
  *  the list (oldest evicted first). Value defaults to the pack spec's base. */
 export function addMark(
