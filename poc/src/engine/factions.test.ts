@@ -1,14 +1,18 @@
 /**
- * Intra-cultural factionalism.
+ * Intra-cultural factionalism — Stage 1 (detection, rivalry, contested succession)
+ * and Stage 2 (civil war resolution, exile).
+ *
  * Proves: (a) the contested axis is always the most internally-divided one;
  * (b) factionOf correctly assigns actors to opposing poles;
  * (c) opposing-faction actors accumulate factionRivalry thoughts;
  * (d) contested_succession fires when the new ruler's pole differs from the old one;
- * (e) everything is deterministic.
+ * (e) civil_war fires after the grace period following a contested_succession;
+ * (f) the losing faction leader is exiled and tracked in world.exiles;
+ * (g) everything is deterministic.
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears } from './sim';
-import { fullActors } from './world';
+import { fullActors, allEvents } from './world';
 import { factionOf, factionYearly } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR } from './model';
@@ -111,6 +115,78 @@ describe('faction rivalry thoughts', () => {
       for (const [, edge] of w.rels.get(id)!) {
         expect(edge.thoughts.some((t) => t.kind === 'factionRivalry')).toBe(false);
       }
+    }
+  });
+});
+
+describe('civil war and exile', () => {
+  it('civil_war fires within 120 years (after contested_succession + grace period)', () => {
+    let sawWar = false;
+    for (let seed = 1; seed <= 20 && !sawWar; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 120);
+      if (allEvents(w).some((e) => e.type === 'civil_war')) sawWar = true;
+    }
+    expect(sawWar).toBe(true);
+  });
+
+  it('civil_war event names winner, loser, and settlement; winner ≠ loser', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 120);
+      const ev = allEvents(w).find((e) => e.type === 'civil_war');
+      if (!ev) continue;
+      expect(typeof ev.data.winner).toBe('string');
+      expect(typeof ev.data.loser).toBe('string');
+      expect(typeof ev.data.settlement).toBe('string');
+      expect(ev.data.winner).not.toBe(ev.data.loser);
+      return;
+    }
+  });
+
+  it('civil_war is always preceded by contested_succession in the full event log', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 120);
+      const events = allEvents(w);
+      const warEv = events.find((e) => e.type === 'civil_war');
+      if (!warEv) continue;
+      const priorContest = events.find((e) => e.type === 'contested_succession' && e.tick < warEv.tick);
+      expect(priorContest).toBeDefined();
+      return;
+    }
+  });
+
+  it('exile event fires, exiled actor leaves the focused settlement, and world.exiles records them', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 120);
+      const exileEv = allEvents(w).find((e) => e.type === 'exile');
+      if (!exileEv) continue;
+      const id = exileEv.subjects[0];
+      // exile record is in world.exiles
+      expect(w.exiles.has(id)).toBe(true);
+      // exile record has expected fields
+      const rec = w.exiles.get(id)!;
+      expect(typeof rec.axis).toBe('string');
+      expect(typeof rec.factionName).toBe('string');
+      expect(typeof rec.year).toBe('number');
+      // exile record proves they were expelled from the focused settlement
+      // (not checking live homeSettlement — an exiled actor can return via immigration)
+      expect(rec.fromSettlementId).toBe(w.focusedSettlementId);
+      // from/to are both present and differ
+      expect(exileEv.data.from).not.toBe(exileEv.data.to);
+      return;
+    }
+  });
+
+  it('civil war clock clears to undefined after war resolves', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 120);
+      if (!allEvents(w).some((e) => e.type === 'civil_war')) continue;
+      expect(w.settlements[w.focusedSettlementId].civilWarTick).toBeUndefined();
+      return;
     }
   });
 });

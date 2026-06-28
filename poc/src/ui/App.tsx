@@ -1175,7 +1175,7 @@ function Inspector({
             {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
-          <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}</p>
+          <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}{actorDetail.actor.exiledFrom ? <span className="exile-status"> · exile from {actorDetail.actor.exiledFrom}</span> : null}</p>
 
           {actorDetail.reputation.reasons.length > 0 && (
             <>
@@ -1269,6 +1269,9 @@ function Inspector({
           )}
           {settV?.factionSplit && (
             <p className="faction-split">divided over <em>{settV.factionSplit.axis}</em>: <span className="faction-high">{settV.factionSplit.highName}</span> vs <span className="faction-low">{settV.factionSplit.lowName}</span></p>
+          )}
+          {settV?.civilWarYear !== undefined && (
+            <p className="civil-war-tension">⚔ in civil conflict since year {settV.civilWarYear}</p>
           )}
           {settV && !settV.detailed && settV.ruinedYear === undefined && (
             <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>

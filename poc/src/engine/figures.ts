@@ -22,6 +22,7 @@ import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
 import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
 import { tongueFor } from '../content/languages';
+import { startCivilWarClock } from './factions';
 
 // ------------------------------------------------------------- houses --------
 // Prestige weights — how much standing a House's deeds earn it. Engine constants for
@@ -263,6 +264,7 @@ export function figuresYearly(world: World): void {
               newFaction: newHigh ? split.highName : split.lowName,
               oldFaction: oldHigh ? split.highName : split.lowName,
             }, [], [s.id]);
+            startCivilWarClock(world, s);
           }
         }
       }

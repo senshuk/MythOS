@@ -320,6 +320,10 @@ export interface Settlement {
   governmentId: string;
   /** this people's culture (value profile) — a pack id; drives inter-settlement relations. */
   cultureId: string;
+  /** Tick when a contested_succession started a civil war clock. The war resolves
+   *  (expelling the losing faction leader) after CIVIL_WAR_GRACE_YEARS if the split
+   *  persists. Undefined = no active clock. Serialized as part of the settlements array. */
+  civilWarTick?: number;
   /** how much population this site's LAND can sustain — a multiplier on base carrying
    *  capacity, from local fertility/water/coast. Generous land grows great cities. */
   capacity: number;
@@ -328,6 +332,17 @@ export interface Settlement {
   currentRulerId?: FigureId;
   macro: MacroPop;
   econ: Economy;
+}
+
+/** Tracks an actor who has been formally expelled from their home settlement.
+ *  Serialized so Stage 3 (exile-and-return) can send them back. */
+export interface ExileRecord {
+  fromSettlementId: SettlementId;
+  /** The value axis the civil war was fought over. */
+  axis: string;
+  /** Name of the faction they belonged to when expelled. */
+  factionName: string;
+  year: number;
 }
 
 /** The active factional split in the focused settlement: which value axis divides
@@ -414,6 +429,9 @@ export interface World {
   /** The active factional split in the focused settlement. Recomputed yearly by
    *  factionYearly; not serialized — derived from world.personality on reload. */
   factionSplit?: FactionSplit;
+  /** Actors who have been formally expelled from their home settlement.
+   *  Keyed by actor id. Serialized — needed by Stage 3 (exile-and-return). */
+  exiles: Map<EntityId, ExileRecord>;
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
   /** Recent events (last ~10 years). Append-only within the window; compacted yearly.
@@ -546,6 +564,8 @@ export interface ActorView {
   /** which faction this actor belongs to, or undefined if no split is active or the
    *  actor has no personality record (summary actors, minted figures). */
   factionName?: string;
+  /** If this actor was exiled, the name of the settlement they were expelled from. */
+  exiledFrom?: string;
 }
 
 /** A clickable reference to an entity named in an event's prose. */
@@ -639,6 +659,9 @@ export interface SettlementView {
   prices: Record<ResourceKey, number>;
   /** Active faction split in this settlement (only populated for the focused settlement). */
   factionSplit?: { axis: string; highName: string; lowName: string };
+  /** Year the civil war clock started (from a contested_succession event).
+   *  Defined only for the focused settlement while a clock is active. */
+  civilWarYear?: number;
 }
 
 export interface MapNodeView {

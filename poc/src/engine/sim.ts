@@ -47,7 +47,7 @@ import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 import { religionYearly } from './religion';
-import { factionYearly, factionOf } from './factions';
+import { factionYearly, factionOf, civilWarYearly } from './factions';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
@@ -92,6 +92,7 @@ export function createWorld(seed: number, focus = true): World {
     memory: new Map(),
     reputation: new Map(),
     faith: new Map(),
+    exiles: new Map(),
     rels: new Map(),
     events: [],
     chronicle: [],
@@ -150,6 +151,7 @@ export function stepTick(world: World): void {
     migrationYearly(world); // people move between settlements (geography-weighted)
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
+    if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
   }
@@ -227,6 +229,10 @@ function actorView(world: World, id: EntityId): ActorView {
       const pole = factionOf(world, id);
       if (!pole || !world.factionSplit) return undefined;
       return pole === 'high' ? world.factionSplit.highName : world.factionSplit.lowName;
+    })(),
+    exiledFrom: (() => {
+      const rec = world.exiles.get(id);
+      return rec ? world.settlements[rec.fromSettlementId]?.name : undefined;
     })(),
   };
 }
@@ -328,6 +334,9 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       prices: { ...s.econ.price },
       factionSplit: s.id === world.focusedSettlementId && world.factionSplit
         ? { axis: world.factionSplit.axis, highName: world.factionSplit.highName, lowName: world.factionSplit.lowName }
+        : undefined,
+      civilWarYear: s.id === world.focusedSettlementId && s.civilWarTick !== undefined
+        ? Math.floor(s.civilWarTick / DAYS_PER_YEAR)
         : undefined,
     };
   });

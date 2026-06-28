@@ -14,7 +14,7 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord } from './model';
 import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
@@ -71,6 +71,7 @@ export interface SaveFile {
   memory: [number, number[]][];
   reputation: [number, Reputation][];
   faith?: [number, string][]; // actor → deity id ('' = faithless); optional for v7 compat
+  exiles?: [number, ExileRecord][]; // optional for saves pre-dating Stage 2
 
   // relationship graph. `relPool` holds each unique edge ONCE; `relAdj` lists, per
   // entity (in original order), its neighbours as [neighbourId, poolIndex]. This
@@ -145,6 +146,7 @@ export function serializeWorld(world: World): SaveFile {
     memory: [...world.memory],
     reputation: [...world.reputation],
     faith: [...world.faith],
+    exiles: [...world.exiles],
 
     relPool,
     relAdj,
@@ -225,6 +227,7 @@ export function deserializeWorld(s: SaveFile): World {
     memory: new Map(s.memory),
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     faith: new Map(s.faith ?? []),           // religious affiliation, stable from birth
+    exiles: new Map(s.exiles ?? []),         // exile records — empty on pre-Stage-2 saves
     rels,
     firstEventId: (s as { firstEventId?: number }).firstEventId ?? 1,
     eventArchive: new Map((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []),
