@@ -103,11 +103,12 @@ export function createActor(world: World, p: ActorProps): EntityId {
   return id;
 }
 
-/** Live full-fidelity actors (the focused settlement), in id order. */
+/** Live full-fidelity actors (the focused settlement), in id order.
+ *  world.entities contains only alive actors — dead are in world.deadEntities. */
 export function fullActors(world: World): EntityId[] {
   const out: EntityId[] = [];
   for (const id of world.entities) {
-    if (world.lifecycle.get(id)!.alive && world.fidelity.get(id) === 'full') out.push(id);
+    if (world.fidelity.get(id) === 'full') out.push(id);
   }
   return out;
 }
@@ -116,7 +117,7 @@ export function fullActors(world: World): EntityId[] {
 export function summaryActors(world: World): EntityId[] {
   const out: EntityId[] = [];
   for (const id of world.entities) {
-    if (world.lifecycle.get(id)!.alive && world.fidelity.get(id) === 'summary') out.push(id);
+    if (world.fidelity.get(id) === 'summary') out.push(id);
   }
   return out;
 }
@@ -132,11 +133,7 @@ export function isAlive(world: World, id: EntityId): boolean {
 }
 
 export function aliveActors(world: World): EntityId[] {
-  const out: EntityId[] = [];
-  for (const id of world.entities) {
-    if (world.lifecycle.get(id)!.alive) out.push(id);
-  }
-  return out; // already in id order
+  return [...world.entities]; // all entities are alive; dead actors are in world.deadEntities
 }
 
 export function fullName(world: World, id: EntityId): string {
@@ -243,6 +240,14 @@ export function killActor(
     for (const partner of myRels.keys()) world.rels.get(partner)?.delete(id);
     myRels.clear();
   }
+
+  // move from the live roster to the dead roster so fullActors/summaryActors never
+  // scan past this actor again; components stay intact for the UI and hash.
+  const ei = world.entities.indexOf(id);
+  if (ei >= 0) {
+    world.entities.splice(ei, 1);
+    world.deadEntities.push(id);
+  }
 }
 
 /**
@@ -277,6 +282,11 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   world.homeSettlement.delete(id);
   world.fidelity.delete(id);
   // NB: world.names is intentionally NOT deleted (history outlives the entity)
+  // dead actors were already moved to world.deadEntities by killActor; check both.
   const i = world.entities.indexOf(id);
   if (i >= 0) world.entities.splice(i, 1);
+  else {
+    const di = world.deadEntities.indexOf(id);
+    if (di >= 0) world.deadEntities.splice(di, 1);
+  }
 }

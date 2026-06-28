@@ -19,7 +19,7 @@ import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -44,6 +44,7 @@ export interface SaveFile {
   settlements: World['settlements'];
   edges: World['edges'];
   entities: number[];
+  deadEntities: number[];
   events: World['events'];
   chronicle: World['chronicle'];
   annals: World['annals'];
@@ -114,6 +115,7 @@ export function serializeWorld(world: World): SaveFile {
     settlements: world.settlements,
     edges: world.edges,
     entities: world.entities,
+    deadEntities: world.deadEntities,
     events: world.events,
     chronicle: world.chronicle,
     annals: world.annals,
@@ -142,8 +144,17 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION) {
+  if (s.version !== SAVE_VERSION && s.version !== 5) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
+  }
+
+  // v5 → v6: dead actors were stored in entities; split them out by alive status.
+  let entities = s.entities;
+  let deadEntities = (s as { deadEntities?: number[] }).deadEntities ?? [];
+  if (s.version === 5) {
+    const lifecycleMap = new Map(s.lifecycle);
+    entities = s.entities.filter((id) => lifecycleMap.get(id)?.alive ?? true);
+    deadEntities = s.entities.filter((id) => !(lifecycleMap.get(id)?.alive ?? true));
   }
 
   // rebuild the relationship graph: one pooled edge object is shared by both
@@ -171,7 +182,8 @@ export function deserializeWorld(s: SaveFile): World {
     fidelity: new Map(s.fidelity),
     nextEntityId: s.nextEntityId,
     nextEventId: s.nextEventId,
-    entities: s.entities,
+    entities,
+    deadEntities,
     identity: new Map(s.identity),
     names: new Map(s.names),
     lifecycle: new Map(s.lifecycle),

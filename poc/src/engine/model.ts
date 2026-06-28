@@ -357,8 +357,13 @@ export interface World {
   nextEntityId: EntityId;
   nextEventId: EventId;
 
-  /** All entities ever created, in creation (id) order — deterministic iteration. */
+  /** Live entities (alive actors), in creation (id) order. Dead actors are moved to
+   *  deadEntities on kill so fullActors/summaryActors never scan past them. */
   entities: EntityId[];
+
+  /** Actors that have died naturally — kept for the UI roster and the determinism
+   *  hash but excluded from every live simulation scan. In death-time order. */
+  deadEntities: EntityId[];
 
   identity: Map<EntityId, Identity>;
   /**

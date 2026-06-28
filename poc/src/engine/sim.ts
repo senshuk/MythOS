@@ -73,6 +73,7 @@ export function createWorld(seed: number, focus = true): World {
     nextEntityId: 1,
     nextEventId: 1,
     entities: [],
+    deadEntities: [],
     identity: new Map(),
     names: new Map(),
     lifecycle: new Map(),
@@ -524,7 +525,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     marriages,
     feuds,
     notable,
-    actors: world.entities.map((id) => actorView(world, id)),
+    actors: [...world.entities, ...world.deadEntities].map((id) => actorView(world, id)),
     recentEvents: recent,
 
     focusedSettlementId: world.focusedSettlementId,
@@ -653,7 +654,7 @@ export function canonicalize(world: World): string {
     `events=${world.events.length}`,
     `nextEntity=${world.nextEntityId}`,
   ];
-  for (const id of world.entities) {
+  const serializeEntity = (id: EntityId): void => {
     const idn = world.identity.get(id)!;
     const lc = world.lifecycle.get(id)!;
     const ties = world.ties.get(id)!;
@@ -667,7 +668,9 @@ export function canonicalize(world: World): string {
         `fid${world.fidelity.get(id) ?? '-'}.home${world.homeSettlement.get(id) ?? -1}.` +
         `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}`,
     );
-  }
+  };
+  for (const id of world.entities) serializeEntity(id);
+  for (const id of world.deadEntities) serializeEntity(id);
   for (const s of world.settlements) {
     const m = s.macro;
     parts.push(
