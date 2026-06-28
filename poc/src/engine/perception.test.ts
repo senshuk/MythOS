@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
-import { witnessWrongdoing } from './perception';
+import { witnessDeed } from './perception';
 import { computeStanding } from './reputation';
 import { computeOpinion, addThought } from './opinion';
 import { fullActors, getRel, emit } from './world';
@@ -20,7 +20,7 @@ describe('perception: a witnessed wrongdoing', () => {
     const [culprit, victim] = actors;
 
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 30 });
-    const witnesses = witnessWrongdoing(w, eid, culprit, victim, 'bloodshed');
+    const witnesses = witnessDeed(w, eid, culprit, victim, 'bloodshed');
 
     expect(witnesses.length).toBeGreaterThan(0);
     expect(witnesses).not.toContain(culprit);
@@ -53,7 +53,7 @@ describe('perception: a witnessed wrongdoing', () => {
       const w = createWorld(777);
       const [c, v] = fullActors(w);
       const rngBefore = w.rng.state;
-      const witnesses = witnessWrongdoing(w, emit(w, 'died_brawl', [v, c], {}), c, v, 'bloodshed');
+      const witnesses = witnessDeed(w, emit(w, 'died_brawl', [v, c], {}), c, v, 'bloodshed');
       return { w, c, witnesses, rngBefore };
     };
     const a = build();
@@ -85,7 +85,7 @@ describe('perception: a witnessed wrongdoing', () => {
     let saw = false;
     for (let i = 0; i < 60 && !saw; i++) {
       const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
-      if (witnessWrongdoing(w, eid, culprit, victim, 'bloodshed').includes(bystander)) saw = true;
+      if (witnessDeed(w, eid, culprit, victim, 'bloodshed').includes(bystander)) saw = true;
     }
     expect(saw).toBe(true);
 
@@ -101,7 +101,7 @@ describe('perception: a witnessed wrongdoing', () => {
 });
 
 describe('perception through the real resolver (the live weekly loop)', () => {
-  // Drive the actual decide→resolve→brawl path (not witnessWrongdoing directly), so
+  // Drive the actual decide→resolve→brawl path (not witnessDeed directly), so
   // this proves the wiring AND that the path stays deterministic. Kept light: only
   // the weekly social pass runs, so it's fast and not a 100-year simulation.
   const build = () => {

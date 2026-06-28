@@ -8,9 +8,10 @@
  */
 import { type World, type EntityId, type RelEdge } from './model';
 import { computeOpinion } from './opinion';
+import { standingOf } from './reputation';
 import { isKin, canTakeSpouse, emit } from './world';
 import { Rng, mixSeed } from './rng';
-import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, type Personality } from '../content/fixture';
+import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, REPUTATION_EFFECTS, type Personality } from '../content/fixture';
 
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
 
@@ -64,9 +65,12 @@ export function bestSuitor(world: World, id: EntityId): EntityId | undefined {
     if (!canTakeSpouse(world, other)) continue;
     if (!ageCompatible(world, id, other)) continue; // only pine for the marriageable
     if (isKin(world, id, other)) continue;
-    const op = computeOpinion(edge, world.tick);
-    if (op > bestOpinion) {
-      bestOpinion = op;
+    // appeal = warmth toward them, lifted or lowered by their public STANDING: a
+    // renowned soul is a sought-after match, a notorious one shunned even by the fond
+    // (REPUTATION_EFFECTS.courtship, pack-tunable). So reputation shapes who you pine for.
+    const appeal = computeOpinion(edge, world.tick) + standingOf(world, other) * REPUTATION_EFFECTS.courtship;
+    if (appeal > bestOpinion) {
+      bestOpinion = appeal;
       best = other;
     }
   }

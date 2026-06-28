@@ -15,7 +15,7 @@
  * Fully deterministic (no wall-clock; expiry is by tick), exactly like opinion.ts.
  * What each kind of mark is worth is PACK DATA (content/fixture REPUTE_SPECS).
  */
-import { type Reputation, type ReputeMark, type EventId } from './model';
+import { type World, type EntityId, type Reputation, type ReputeMark, type EventId } from './model';
 import { reputeSpec } from '../content/fixture';
 
 /** Bound the marks kept on one actor (housekeeping; the deep past lives in events). */
@@ -37,6 +37,14 @@ export function knownFactor(witnesses: number): number {
 
 export function emptyReputation(): Reputation {
   return { marks: [] };
+}
+
+/** An actor's current public standing (0 if they have no reputation record). The
+ *  convenience the live systems read so reputation can colour decisions without each
+ *  call site re-deriving it. */
+export function standingOf(world: World, id: EntityId): number {
+  const rep = world.reputation.get(id);
+  return rep ? computeStanding(rep, world.tick) : 0;
 }
 
 /** Add a sourced mark to an actor's standing, pruning expired marks and bounding
