@@ -392,6 +392,10 @@ export interface World {
   events: WorldEvent[];
   /** Running tallies incremented in emit() — avoids an O(events) scan per UI render. */
   stats: { born: number; died: number; marriages: number; feuds: number };
+  /** Reverse index: subject entity → event IDs it appears in. Maintained by emit() so
+   *  inspectActor/inspectFigure/inspectSettlement are O(actor_events) not O(all_events).
+   *  Derived — rebuilt from world.events on load, never serialized. */
+  eventsBySubject: Map<EntityId, EventId[]>;
 
   /** Rolling living memory: recent notable events, bounded and FADING. Drives the
    *  Director's sense of recent drama. */

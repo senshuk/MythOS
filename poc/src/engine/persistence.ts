@@ -211,6 +211,17 @@ export function deserializeWorld(s: SaveFile): World {
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     rels,
     events: s.events,
+    // derived index — rebuilt from events rather than serialized (no SAVE_VERSION bump needed).
+    eventsBySubject: (() => {
+      const m = new Map<number, number[]>();
+      for (const ev of s.events)
+        for (const subj of ev.subjects) {
+          const list = m.get(subj);
+          if (list) list.push(ev.id);
+          else m.set(subj, [ev.id]);
+        }
+      return m;
+    })(),
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

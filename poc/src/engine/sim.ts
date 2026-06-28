@@ -75,6 +75,7 @@ export function createWorld(seed: number, focus = true): World {
     entities: [],
     deadEntities: [],
     stats: { born: 0, died: 0, marriages: 0, feuds: 0 },
+    eventsBySubject: new Map(),
     identity: new Map(),
     names: new Map(),
     lifecycle: new Map(),
@@ -244,7 +245,9 @@ function eventView(world: World, ev: WorldEvent): EventView {
 export function inspectFigure(world: World, id: EntityId): FigureDetail | undefined {
   const fig = world.figures.find((f) => f.id === id);
   if (!fig) return undefined;
-  const lifeEvents = world.events.filter((ev) => ev.subjects.includes(id)).map((ev) => eventView(world, ev));
+  const lifeEvents = (world.eventsBySubject.get(id) ?? [])
+    .map((eid) => world.events[eid - 1])
+    .map((ev) => eventView(world, ev));
   return {
     id: fig.id,
     name: fig.name,
@@ -266,18 +269,17 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
 export function inspectSettlement(world: World, id: SettlementId): SettlementDetail | undefined {
   const s = world.settlements[id];
   if (!s) return undefined;
-  // Map each figure id to the settlement of its FIRST record (an actor re-crowned can
-  // leave duplicate figure records sharing an id; first-match matches the old `.find`).
-  // Hoisted out of the per-event filter so this is O(events + figures) rather than the
-  // old O(events × figures) — both grow unbounded with world age (a click could hitch).
-  const figSettlement = new Map<EntityId, SettlementId>();
-  for (const f of world.figures) if (!figSettlement.has(f.id)) figSettlement.set(f.id, f.settlementId);
+  // Collect event IDs for every figure from this settlement via the reverse index —
+  // O(figures_here × events_per_figure) instead of O(total_events × avg_subjects).
+  const figEventIds = new Set<number>();
+  for (const f of world.figures) {
+    if (f.settlementId !== id) continue;
+    for (const eid of world.eventsBySubject.get(f.id) ?? []) figEventIds.add(eid);
+  }
+  // Macro events (raids, battles, trade…) store settlement names in data fields — those
+  // still require a full scan; the subjects check is now an O(1) Set lookup.
   const events = world.events
-    .filter(
-      (ev) =>
-        Object.values(ev.data).includes(s.name) ||
-        ev.subjects.some((sid) => figSettlement.get(sid) === id),
-    )
+    .filter((ev) => figEventIds.has(ev.id) || Object.values(ev.data).includes(s.name))
     .map((ev) => eventView(world, ev))
     .reverse();
   return { settlementId: id, events };
@@ -588,8 +590,8 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   }
   relationships.sort((a, b) => b.valence - a.valence);
 
-  const lifeEvents = world.events
-    .filter((ev) => ev.subjects.includes(id))
+  const lifeEvents = (world.eventsBySubject.get(id) ?? [])
+    .map((eid) => world.events[eid - 1])
     .map((ev) => eventView(world, ev));
 
   const rep = world.reputation.get(id) ?? emptyReputation();
@@ -601,11 +603,11 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   return { actor: actorView(world, id), relationships, lifeEvents, reputation };
 }
 
-/** Walk the causal ancestry of an event (breadth-first, de-duplicated). */
+/** Walk the causal ancestry of an event (breadth-first, de-duplicated).
+ *  Event IDs are 1-based sequential and world.events is append-only, so
+ *  world.events[id - 1] is a direct O(1) lookup — no Map needed. */
 export function inspectEvent(world: World, id: number): EventChain | undefined {
-  const byId = new Map<number, WorldEvent>();
-  for (const ev of world.events) byId.set(ev.id, ev);
-  const root = byId.get(id);
+  const root = world.events[id - 1];
   if (!root) return undefined;
 
   const ancestors: EventView[] = [];
@@ -616,7 +618,7 @@ export function inspectEvent(world: World, id: number): EventChain | undefined {
     for (const cid of frontier) {
       if (seen.has(cid)) continue;
       seen.add(cid);
-      const ev = byId.get(cid);
+      const ev = world.events[cid - 1];
       if (!ev) continue;
       ancestors.push(eventView(world, ev));
       next.push(...ev.causes);

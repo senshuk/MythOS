@@ -194,6 +194,9 @@ export function emit(
   else if (type === 'married') world.stats.marriages++;
   else if (type === 'feud') world.stats.feuds++;
   for (const s of subjects) {
+    const idx = world.eventsBySubject.get(s);
+    if (idx) idx.push(id);
+    else world.eventsBySubject.set(s, [id]);
     if (world.memory.has(s)) remember(world, s, id);
   }
   return id;
