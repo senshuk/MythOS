@@ -6,9 +6,9 @@
  * polity makes canSeekRule false. Kept OUT of aspiration.ts so the pack can import them
  * without a cycle (aspiration.ts imports the pack's ladder).
  */
-import { type World, type EntityId } from './model';
+import { type World, type EntityId, type RelEdge } from './model';
 import { computeOpinion } from './opinion';
-import { isKin, canTakeSpouse } from './world';
+import { isKin, canTakeSpouse, emit } from './world';
 import { Rng, mixSeed } from './rng';
 import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, type Personality } from '../content/fixture';
 
@@ -87,6 +87,45 @@ export function strongestFeud(world: World, id: EntityId): EntityId | undefined 
     }
   }
   return worst;
+}
+
+// Opinion thresholds that turn a souring bond into open enmity. They live HERE (not
+// only in the courtship resolver) so that BOTH the social loop AND perception (a
+// witnessed killing curdling into a feud) escalate animosity through ONE shared rule
+// with one source of truth for the numbers. (The positive thresholds — friendship,
+// marriage — stay with courtship in systems/resolve.ts.)
+export const RIVAL_AT = -190;
+export const FEUD_AT = -350;
+
+/** Causes for an enmity milestone: the negative, sourced thoughts on the edge, so
+ *  "why are they enemies" traces back to the real moments (a slight, a witnessed
+ *  killing). */
+function animosityCauses(edge: RelEdge): number[] {
+  const out: number[] = [];
+  for (const t of edge.thoughts) if (t.cause !== undefined && t.value < 0) out.push(t.cause);
+  return out;
+}
+
+/**
+ * Escalate a souring relationship: if the summed opinion has crossed into rivalry or
+ * feud and that flag isn't set yet, set it and emit the milestone (tracing its
+ * causes). Idempotent and RNG-FREE — negative escalation has no chance roll, so it is
+ * safe to call from perception (off the shared stream) as well as from the resolver.
+ * A spouse bond is never silently flipped.
+ */
+export function escalateAnimosity(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
+  if (edge.flags.spouse) return;
+  const v = computeOpinion(edge, world.tick);
+  if (v <= FEUD_AT && !edge.flags.feud) {
+    edge.flags.feud = true;
+    edge.flags.rival = true;
+    edge.flags.friend = false;
+    emit(world, 'feud', [a, b], {}, animosityCauses(edge));
+  } else if (v <= RIVAL_AT && !edge.flags.rival) {
+    edge.flags.rival = true;
+    edge.flags.friend = false;
+    emit(world, 'rivalry', [a, b], {}, animosityCauses(edge));
+  }
 }
 
 /** Whether this actor currently holds its settlement's ruler seat. */

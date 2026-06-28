@@ -14,12 +14,12 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation } from './model';
 import { type Intent } from './intent';
 import { Rng } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -64,6 +64,7 @@ export interface SaveFile {
   profession: [number, string][];
   ties: [number, SocialTies][];
   memory: [number, number[]][];
+  reputation: [number, Reputation][];
 
   // relationship graph. `relPool` holds each unique edge ONCE; `relAdj` lists, per
   // entity (in original order), its neighbours as [neighbourId, poolIndex]. This
@@ -132,6 +133,7 @@ export function serializeWorld(world: World): SaveFile {
     profession: [...world.profession],
     ties: [...world.ties],
     memory: [...world.memory],
+    reputation: [...world.reputation],
 
     relPool,
     relAdj,
@@ -179,6 +181,7 @@ export function deserializeWorld(s: SaveFile): World {
     profession: new Map(s.profession),
     ties: new Map(s.ties),
     memory: new Map(s.memory),
+    reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     rels,
     events: s.events,
     chronicle: s.chronicle,

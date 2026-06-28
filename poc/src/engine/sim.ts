@@ -29,6 +29,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
+import { computeStanding, standingReasons, emptyReputation } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById } from './figures';
@@ -81,6 +82,7 @@ export function createWorld(seed: number, focus = true): World {
     profession: new Map(),
     ties: new Map(),
     memory: new Map(),
+    reputation: new Map(),
     rels: new Map(),
     events: [],
     chronicle: [],
@@ -201,6 +203,7 @@ function actorView(world: World, id: EntityId): ActorView {
     house: idn.family, // their lineage — the surname carried down their family line
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
+    standing: Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick)),
   };
 }
 
@@ -588,7 +591,13 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
     .filter((ev) => ev.subjects.includes(id))
     .map((ev) => eventView(world, ev));
 
-  return { actor: actorView(world, id), relationships, lifeEvents };
+  const rep = world.reputation.get(id) ?? emptyReputation();
+  const reputation = {
+    standing: Math.round(computeStanding(rep, world.tick)),
+    reasons: standingReasons(rep, world.tick),
+  };
+
+  return { actor: actorView(world, id), relationships, lifeEvents, reputation };
 }
 
 /** Walk the causal ancestry of an event (breadth-first, de-duplicated). */
@@ -642,11 +651,12 @@ export function canonicalize(world: World): string {
     let relSum = 0;
     for (const [, e] of world.rels.get(id)!) relSum += computeOpinion(e, world.tick);
     relSum = Math.round(relSum);
+    const standing = Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick));
     parts.push(
       `#${id}:${idn.given}.${idn.family}.${idn.speciesId}.${idn.sex}.` +
         `age${lc.ageYears}.alive${lc.alive ? 1 : 0}.death${lc.deathTick ?? -1}.` +
         `fid${world.fidelity.get(id) ?? '-'}.home${world.homeSettlement.get(id) ?? -1}.` +
-        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}`,
+        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}`,
     );
   }
   for (const s of world.settlements) {

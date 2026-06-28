@@ -17,17 +17,18 @@ import { type World, type EntityId, type RelEdge } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
-import { ageCompatible } from '../engine/social';
+import { ageCompatible, escalateAnimosity } from '../engine/social';
+import { witnessWrongdoing } from '../engine/perception';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
-// opinion scale produced by the thought model (see opinion.ts).
+// opinion scale produced by the thought model (see opinion.ts). The NEGATIVE
+// thresholds (rivalry/feud) live in engine/social.ts (escalateAnimosity) so that
+// perception — a witnessed killing curdling into a feud — shares the same rule.
 const FRIEND_AT = 240;
-const RIVAL_AT = -190;
-const FEUD_AT = -350;
 const MARRY_AT = 310;
 
 /** Nudge an actor's belonging need (companionship is built and frayed socially). */
@@ -186,15 +187,10 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng
     edge.flags.rival = false;
     edge.flags.feud = false;
     emit(world, 'friendship', [a, b], {}, thoughtCauses(edge, true));
-  } else if (v <= FEUD_AT && !edge.flags.feud) {
-    edge.flags.feud = true;
-    edge.flags.rival = true;
-    edge.flags.friend = false;
-    emit(world, 'feud', [a, b], {}, thoughtCauses(edge, false));
-  } else if (v <= RIVAL_AT && !edge.flags.rival) {
-    edge.flags.rival = true;
-    edge.flags.friend = false;
-    emit(world, 'rivalry', [a, b], {}, thoughtCauses(edge, false));
+  } else {
+    // souring side: rivalry / feud thresholds, shared with perception so a witnessed
+    // killing and a private falling-out escalate by exactly the same rule.
+    escalateAnimosity(world, a, b, edge);
   }
 }
 
@@ -227,8 +223,19 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   const brawlId = emit(world, 'brawl', [a, b], {}, thoughtCauses(edge, false));
 
   // someone may die; most brawls are non-lethal
-  if (!rng.chance(0.45)) return;
+  if (!rng.chance(0.45)) {
+    // a public scuffle: bystanders see two neighbours come to blows (perception is
+    // off the shared RNG stream, so this doesn't perturb the NPC simulation).
+    witnessWrongdoing(world, brawlId, a, b, 'violence');
+    witnessWrongdoing(world, brawlId, b, a, 'violence');
+    return;
+  }
   const victim = rng.chance(0.5) ? a : b;
   const killer = victim === a ? b : a;
+  const before = world.events.length;
   killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
+  // a public KILLING brands the killer and shakes every witness — possibly seeding
+  // fresh feuds. The witnessed deed is the death event killActor emitted first.
+  const deathId = world.events[before].id;
+  witnessWrongdoing(world, deathId, killer, victim, 'bloodshed');
 }
