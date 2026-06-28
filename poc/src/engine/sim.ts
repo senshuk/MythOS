@@ -314,7 +314,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
 
 /** The controlled actor's actionable state, or undefined if no one is possessed
  *  (or the player has been freed from the world). */
-function buildPlayerView(world: World): PlayerView | undefined {
+function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefined {
   const id = world.playerId;
   if (id === undefined || !world.identity.has(id)) return undefined;
   const idn = world.identity.get(id)!;
@@ -325,7 +325,7 @@ function buildPlayerView(world: World): PlayerView | undefined {
   // with the current bond surfaced; known relations first, then strangers.
   const myRels = world.rels.get(id)!;
   const targets: PlayerTargetView[] = [];
-  for (const other of fullActors(world)) {
+  for (const other of actors) {
     if (other === id) continue;
     if (world.lifecycle.get(other)!.ageYears < maturityOf(world.identity.get(other)!.speciesId)) continue;
     const edge = myRels.get(other);
@@ -559,7 +559,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     },
     historicalFigures,
     houses,
-    player: buildPlayerView(world),
+    player: buildPlayerView(world, full),
   };
 }
 
