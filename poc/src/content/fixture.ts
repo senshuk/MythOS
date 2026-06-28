@@ -436,6 +436,25 @@ export function ethicsWeightFor(cultureId: string, deedKind: string): number {
   return cultureById(cultureId).ethics?.[deedKind] ?? 1.0;
 }
 
+// ----------------------------------------------------------- factions ---------
+// When a community is internally divided the two wings of the contested value axis
+// are NAMED. Names are pack data: a table maps each axis to a [highName, lowName]
+// pair so a different universe can swap them (sci-fi: 'Hawkish / Dovish', etc.).
+
+const FACTION_NAMES: Record<string, [string, string]> = {
+  war:       ['the Swords',  'the Shields'],
+  tradition: ['the Old Way', 'the New Way'],
+  honor:     ['the Sworn',   'the Free'],
+  freedom:   ['the Unbowed', 'the Ordered'],
+  nature:    ['the Wild',    'the Tamed'],
+  craft:     ['the Guild',   'the Common'],
+};
+
+/** [highName, lowName] for the contested value axis — the two wings of the split. */
+export function factionNames(axis: string): [string, string] {
+  return (FACTION_NAMES[axis] as [string, string]) ?? ['the High', 'the Low'];
+}
+
 /** A settlement's culture is seeded from its species' default, but may diverge — so a
  *  people tends toward one creed while colonies and frontier towns drift to others. */
 export function pickCulture(rng: Rng, speciesId: string): string {
@@ -733,6 +752,8 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // religion: co-religionists gradually warm to each other; the opposing side creates friction.
   faithBond: { base: 80, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.65, label: 'shares your faith' },
   faithFriction: { base: -30, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.6, label: 'follows a different creed' },
+  // factionalism: opposing-faction members grate on each other politically.
+  factionRivalry: { base: -45, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.65, label: 'stands against your faction' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.

@@ -330,6 +330,24 @@ export interface Settlement {
   econ: Economy;
 }
 
+/** The active factional split in the focused settlement: which value axis divides
+ *  the community and who leads each wing. Recomputed yearly; NOT serialized (fully
+ *  derived from world.personality which IS saved). */
+export interface FactionSplit {
+  /** The value axis the community is most divided on ('war', 'tradition', …). */
+  axis: string;
+  /** Name for the pro-axis wing (high values), e.g. 'the Swords'. */
+  highName: string;
+  /** Name for the anti-axis wing (low values), e.g. 'the Shields'. */
+  lowName: string;
+  /** Resident with the most extreme high value — de-facto champion of the pro-axis side. */
+  highLeaderId?: EntityId;
+  /** Resident with the most extreme low value. */
+  lowLeaderId?: EntityId;
+  /** Cached settlement mean for this axis so factionOf() is O(1), not O(n). */
+  axisMean: number;
+}
+
 /** The whole world state. Everything needed to reconstruct the sim lives here. */
 export interface World {
   seed: number;
@@ -393,6 +411,9 @@ export interface World {
    *  Assigned at birth from the settlement's patron deity + trait-modified probability;
    *  stored (not re-derived) so faith is stable for life and survives a save/load. */
   faith: Map<EntityId, string>;
+  /** The active factional split in the focused settlement. Recomputed yearly by
+   *  factionYearly; not serialized — derived from world.personality on reload. */
+  factionSplit?: FactionSplit;
   rels: Map<EntityId, Map<EntityId, RelEdge>>;
 
   /** Recent events (last ~10 years). Append-only within the window; compacted yearly.
@@ -522,6 +543,9 @@ export interface ActorView {
   standing: number;
   /** deity name this actor follows, or undefined if faithless. */
   faith?: string;
+  /** which faction this actor belongs to, or undefined if no split is active or the
+   *  actor has no personality record (summary actors, minted figures). */
+  factionName?: string;
 }
 
 /** A clickable reference to an entity named in an event's prose. */
@@ -613,6 +637,8 @@ export interface SettlementView {
   wealth: number;
   subsistenceSecurity: number; // stock[SUBSISTENCE_RESOURCE] / population => years of staple buffer
   prices: Record<ResourceKey, number>;
+  /** Active faction split in this settlement (only populated for the focused settlement). */
+  factionSplit?: { axis: string; highName: string; lowName: string };
 }
 
 export interface MapNodeView {

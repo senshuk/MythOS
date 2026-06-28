@@ -244,6 +244,28 @@ export function figuresYearly(world: World): void {
         heir = mintFigure(world, s, year, rng, 'ruler', continues ? oldHouse!.name : undefined);
       }
       installRuler(world, s, heir, oldHouse, year, title);
+
+      // Contested succession: when power crosses faction lines, note it.
+      // Both parties must be real actors (personality.has) — minted figures have
+      // no value profiles, so the check is silently skipped for aggregate settlements.
+      if (world.factionSplit) {
+        const split = world.factionSplit;
+        const ax = split.axis; // string index into Record<string, number>
+        const oldPers = world.personality.get(ruler.id);
+        const newPers = world.personality.get(heir.id);
+        if (oldPers && newPers) {
+          const oldHigh = (oldPers.values[ax] ?? 0) >= split.axisMean;
+          const newHigh = (newPers.values[ax] ?? 0) >= split.axisMean;
+          if (oldHigh !== newHigh) {
+            emit(world, 'contested_succession', [heir.id], {
+              settlement: s.name,
+              axis: ax,
+              newFaction: newHigh ? split.highName : split.lowName,
+              oldFaction: oldHigh ? split.highName : split.lowName,
+            }, [], [s.id]);
+          }
+        }
+      }
     }
   }
 

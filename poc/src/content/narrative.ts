@@ -78,6 +78,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   condemned: (n, d) => `${n(0)} was condemned by ${d.deity ?? 'the gods'} for their deed.`,
   apostasy: (n, d) => `${n(0)} renounced their faith in ${d.deity ?? 'the gods'}.`,
   converted: (n, d) => `${n(0)} found faith in ${d.deity ?? 'the gods'}.`,
+  contested_succession: (n, d) =>
+    `${n(0)} of ${d.newFaction ?? 'the new order'} took power in ${d.settlement}, wresting it from ${d.oldFaction ?? 'the old guard'}${d.axis ? ` in the struggle over ${VALUE_PHRASE[d.axis as string] ?? d.axis}` : ''}.`,
 };
 
 /**
@@ -88,6 +90,7 @@ export function eventInterest(type: string, data: Record<string, number | string
   const toll = typeof data.toll === 'number' ? data.toll : 0;
   const age = typeof data.age === 'number' ? data.age : 0;
   switch (type) {
+    case 'contested_succession': return 42; // a power shift between factions — between ascension and dynasty
     case 'condemned':
       return 55; // a named divine condemnation is notable but not as grave as a death
     case 'apostasy':

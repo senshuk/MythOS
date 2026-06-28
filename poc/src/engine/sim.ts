@@ -47,6 +47,7 @@ import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 import { religionYearly } from './religion';
+import { factionYearly, factionOf } from './factions';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
@@ -141,6 +142,7 @@ export function stepTick(world: World): void {
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity
     if (hasFocus) religionYearly(world); // faith bonds, friction, conversion & apostasy
+    if (hasFocus) factionYearly(world); // faction split recomputed before succession check
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes
@@ -221,6 +223,11 @@ function actorView(world: World, id: EntityId): ActorView {
     relationshipCount: relCount(world, id),
     standing: Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick)),
     faith: (() => { const f = world.faith.get(id); return f ? deityById(f).name : undefined; })(),
+    factionName: (() => {
+      const pole = factionOf(world, id);
+      if (!pole || !world.factionSplit) return undefined;
+      return pole === 'high' ? world.factionSplit.highName : world.factionSplit.lowName;
+    })(),
   };
 }
 
@@ -319,6 +326,9 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       wealth: Math.round(s.econ.wealth),
       subsistenceSecurity: pop > 0 ? s.econ.stock[SUBSISTENCE_RESOURCE] / pop : 0,
       prices: { ...s.econ.price },
+      factionSplit: s.id === world.focusedSettlementId && world.factionSplit
+        ? { axis: world.factionSplit.axis, highName: world.factionSplit.highName, lowName: world.factionSplit.lowName }
+        : undefined,
     };
   });
 }

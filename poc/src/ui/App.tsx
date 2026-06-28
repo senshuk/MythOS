@@ -1175,7 +1175,7 @@ function Inspector({
             {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
-          <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}</p>
+          <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}</p>
 
           {actorDetail.reputation.reasons.length > 0 && (
             <>
@@ -1266,6 +1266,9 @@ function Inspector({
           )}
           {settV?.culturalTaboos && settV.culturalTaboos.length > 0 && (
             <p className="culture-taboos">taboo: {settV.culturalTaboos.join(' · ')}</p>
+          )}
+          {settV?.factionSplit && (
+            <p className="faction-split">divided over <em>{settV.factionSplit.axis}</em>: <span className="faction-high">{settV.factionSplit.highName}</span> vs <span className="faction-low">{settV.factionSplit.lowName}</span></p>
           )}
           {settV && !settV.detailed && settV.ruinedYear === undefined && (
             <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>
