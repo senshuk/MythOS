@@ -335,18 +335,59 @@ export interface Culture {
   name: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
   values: Partial<Record<ValueAxis, number>>;
+  /** Per-deed-kind severity multiplier: >1 = this community abhors it (stronger
+   *  standing damage, stronger witness thoughts); <1 = tolerates/expects it.
+   *  Omitted deed kinds default to 1.0 (neutral). Keys match REPUTE_SPECS kinds. */
+  ethics?: Partial<Record<string, number>>;
 }
 
 export const CULTURES: Culture[] = [
-  { id: 'martial', name: 'the Iron Creed', values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 } },
-  { id: 'sylvan', name: 'the Green Way', values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 } },
-  { id: 'artisan', name: 'the Maker Folk', values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 } },
-  { id: 'free', name: 'the Free Companies', values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 } },
-  { id: 'devout', name: 'the Old Faith', values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 } },
+  {
+    id: 'martial', name: 'the Iron Creed',
+    values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
+    // warriors: killing in conflict is expected — bloodshed barely stings standing;
+    // brawling is normal; open-handed giving is fine but not a sacred virtue.
+    ethics: { bloodshed: 0.5, violence: 0.35, generosity: 0.9 },
+  },
+  {
+    id: 'sylvan', name: 'the Green Way',
+    values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
+    // peace-keepers: killing is a profound wrong; even brawling draws wide censure;
+    // giving is a community bond and earns extra regard.
+    ethics: { bloodshed: 2.4, violence: 1.8, generosity: 1.2 },
+  },
+  {
+    id: 'artisan', name: 'the Maker Folk',
+    values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
+    // civic builders: violence disrupts order and wastes lives; generosity oils the
+    // trade network and earns quiet respect.
+    ethics: { bloodshed: 1.6, violence: 1.3, generosity: 1.2 },
+  },
+  {
+    id: 'free', name: 'the Free Companies',
+    values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
+    // mercenaries: pragmatic about violence; generosity is rare and genuinely admired
+    // in a world where you keep what you can.
+    ethics: { bloodshed: 0.7, violence: 0.5, generosity: 1.4 },
+  },
+  {
+    id: 'devout', name: 'the Old Faith',
+    values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
+    // sacred law governs life: killing is a profound profanity; brawling stains one's
+    // honour before the divine; almsgiving is a holy duty and earns deep respect.
+    ethics: { bloodshed: 2.8, violence: 1.4, generosity: 1.5 },
+  },
 ];
 
 export function cultureById(id: string): Culture {
   return CULTURES.find((c) => c.id === id) ?? CULTURES[0];
+}
+
+/** How much this culture amplifies (>1) or tolerates (<1) a deed of the given kind.
+ *  1.0 = neutral (omitted kinds). Used by perception.ts to scale standing damage and
+ *  witness-thought strength so the same act lands differently across peoples. */
+export function ethicsWeightFor(cultureId: string, deedKind: string): number {
+  return cultureById(cultureId).ethics?.[deedKind] ?? 1.0;
 }
 
 /** A settlement's culture is seeded from its species' default, but may diverge — so a
@@ -639,6 +680,10 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // admiration for someone whose public generosity you WITNESSED — the positive twin of
   // `feared`. Warms onlookers toward a renowned giver (can ripen into friendship).
   admired: { base: 80, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'admired their generosity' },
+  // moral revulsion: witnessed a deed the community considers a cultural profanity
+  // (ethics weight ≥ 2.0). Stronger and more durable than mere dread — this is not
+  // just fear of a violent person but outrage at a transgression against shared belief.
+  tabooHorror: { base: -180, durationTicks: 10 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.9, label: 'witnessed a cultural profanity' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
@@ -695,6 +740,15 @@ const NEUTRAL_REPUTE: ReputeSpec = { base: 0, label: 'a deed' };
 
 export function reputeSpec(kind: string): ReputeSpec {
   return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
+}
+
+/** Deed labels this culture especially abhors (ethics weight ≥ 1.5) — used by the
+ *  view layer to surface what a settlement's people hold as sacred/forbidden. */
+export function ethicsTaboos(cultureId: string): string[] {
+  const e = cultureById(cultureId).ethics ?? {};
+  return Object.entries(e)
+    .filter(([, w]) => (w ?? 0) >= 1.5)
+    .map(([kind]) => reputeSpec(kind).label);
 }
 
 // ---- how public standing colours daily life (the consequences of reputation) ----

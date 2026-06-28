@@ -598,6 +598,7 @@ export interface SettlementView {
   government: string; // the polity's government (display label, e.g. 'Lord'/'Speaker'/'free folk')
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   culture: string; // the people's culture name (e.g. 'the Iron Creed')
+  culturalTaboos: string[]; // deed labels this culture especially abhors (ethics weight ≥ 1.5)
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   // economy

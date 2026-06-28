@@ -1261,6 +1261,9 @@ function Inspector({
               {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
             </p>
           )}
+          {settV?.culturalTaboos && settV.culturalTaboos.length > 0 && (
+            <p className="culture-taboos">taboo: {settV.culturalTaboos.join(' · ')}</p>
+          )}
           {settV && !settV.detailed && settV.ruinedYear === undefined && (
             <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>
               ◉ turn your gaze here

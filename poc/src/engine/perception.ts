@@ -23,7 +23,7 @@ import { fullActors, getRel, remember } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
 import { escalateAnimosity, personalityOf } from './social';
-import { reputeSpec } from '../content/fixture';
+import { reputeSpec, ethicsWeightFor } from '../content/fixture';
 
 /** A co-resident's chance of having been present to see a public deed. */
 const WITNESS_CHANCE = 0.5;
@@ -50,6 +50,9 @@ export function witnessDeed(
   kind: string,
 ): EntityId[] {
   const spec = reputeSpec(kind);
+  // how much this settlement's culture amplifies or tolerates this kind of deed
+  const cultureId = world.settlements[world.focusedSettlementId]?.cultureId ?? '';
+  const culturalWeight = ethicsWeightFor(cultureId, kind);
   // local stream — salted by actor so two deeds in one event (a mutual brawl) pick
   // independent crowds, and the shared settlement RNG is never advanced.
   const rng = new Rng(mixSeed(world.seed, eventId, actor));
@@ -69,14 +72,25 @@ export function witnessDeed(
     // standing only — it doesn't reshape the social graph or perturb the wider sim.
     if (wt) {
       const edge = getRel(world, w, actor);
-      addThought(edge, wt.kind, world.tick, { value: wt.value, cause: eventId });
-      // grave deeds can curdle into open enmity — via the SAME rule courtship uses
-      if (wt.escalates) escalateAnimosity(world, w, actor, edge);
+      // a deed the community treats as a cultural profanity (weight ≥ 2.0) triggers
+      // moral revulsion — a stronger, distinct thought — rather than personal dread.
+      // Below that threshold the thought kind is unchanged; the value scales with
+      // cultural weight in both cases.
+      const isTaboo = culturalWeight >= 2.0;
+      const thoughtKind = isTaboo ? 'tabooHorror' : wt.kind;
+      const thoughtValue = Math.round((wt.value ?? -150) * culturalWeight);
+      addThought(edge, thoughtKind, world.tick, { value: thoughtValue, cause: eventId });
+      // profanities always escalate animosity (moral outrage is never idle)
+      if (wt.escalates || isTaboo) escalateAnimosity(world, w, actor, edge);
     }
   }
 
-  // the actor's public standing shifts, scaled by how many saw it
-  recordDeed(world, actor, kind, { witnesses: witnesses.length, cause: eventId });
+  // standing cost is scaled by the community's ethical stance on this deed type
+  recordDeed(world, actor, kind, {
+    value: Math.round(spec.base * culturalWeight),
+    witnesses: witnesses.length,
+    cause: eventId,
+  });
   return witnesses;
 }
 

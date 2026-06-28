@@ -38,7 +38,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -307,6 +307,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       government: governmentById(s.governmentId).title || 'free folk',
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
+      culturalTaboos: ethicsTaboos(s.cultureId),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
       specialization: s.econ.specialization,
