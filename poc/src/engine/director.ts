@@ -16,6 +16,7 @@ import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PE
 import { Rng } from './rng';
 import { fullActors, emit, clamp } from './world';
 import { killActor } from './world';
+import { standAgainst } from './perception';
 import { expand } from './grammar';
 import { WONDER_GRAMMAR, BEAST_GRAMMAR, OMEN_GRAMMAR, BOONS } from '../content/narrative';
 
@@ -137,7 +138,10 @@ function beast(world: World, def: DirectorDef, rng: Rng): void {
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(6, 14), -100, 100);
-  emit(world, 'beast', [], { name: s.name, beast: expand(BEAST_GRAMMAR, 'beast', rng, {}), toll });
+  const beastId = emit(world, 'beast', [], { name: s.name, beast: expand(BEAST_GRAMMAR, 'beast', rng, {}), toll });
+  // if the beast fell on the FOCUSED town, its bravest soul stands against it and earns
+  // valour (perception is off the shared stream, so this doesn't perturb the director RNG).
+  if (s.detailed && s.id === world.focusedSettlementId) standAgainst(world, beastId, s.id);
 }
 
 /** A strange portent — flavor, no mechanical effect. */

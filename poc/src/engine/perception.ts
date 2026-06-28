@@ -21,8 +21,8 @@ import { type World, type EntityId, type EventId } from './model';
 import { Rng, mixSeed } from './rng';
 import { fullActors, getRel, remember } from './world';
 import { addThought } from './opinion';
-import { addMark, emptyReputation } from './reputation';
-import { escalateAnimosity } from './social';
+import { recordDeed } from './reputation';
+import { escalateAnimosity, personalityOf } from './social';
 import { reputeSpec } from '../content/fixture';
 
 /** A co-resident's chance of having been present to see a public deed. */
@@ -76,12 +76,33 @@ export function witnessDeed(
   }
 
   // the actor's public standing shifts, scaled by how many saw it
-  let rep = world.reputation.get(actor);
-  if (!rep) {
-    rep = emptyReputation();
-    world.reputation.set(actor, rep);
-  }
-  addMark(rep, kind, world.tick, { witnesses: witnesses.length, cause: eventId });
-
+  recordDeed(world, actor, kind, { witnesses: witnesses.length, cause: eventId });
   return witnesses;
+}
+
+/**
+ * Someone STANDS AGAINST a public threat (today: a beast that fell on the settlement).
+ * The bravest resident on hand steps up — boldness is innate temperament, so who plays
+ * the hero is character, not a die roll — and earns lasting VALOUR renown, known
+ * town-wide. Returns the hero (or undefined if no one bold enough was there).
+ *
+ * Deterministic: scans residents in id order, picks the boldest (strict `>` keeps the
+ * lowest id on a tie); no RNG. A purely positive, earned counterpart to wrongdoing.
+ */
+export function standAgainst(world: World, threatEventId: EventId, settlementId: number): EntityId | undefined {
+  let hero: EntityId | undefined;
+  let bravest = 0; // a hero needs positive nerve — a town of cowards yields none
+  let residents = 0;
+  for (const id of fullActors(world)) {
+    if (world.homeSettlement.get(id) !== settlementId) continue;
+    residents++;
+    const boldness = personalityOf(world, id).temperament.boldness ?? 0;
+    if (boldness > bravest) {
+      bravest = boldness;
+      hero = id;
+    }
+  }
+  if (hero === undefined) return undefined;
+  recordDeed(world, hero, 'valor', { witnesses: residents, cause: threatEventId });
+  return hero;
 }

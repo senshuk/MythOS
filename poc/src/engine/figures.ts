@@ -19,7 +19,8 @@ import {
 } from './model';
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
-import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan } from '../content/fixture';
+import { standingOf, recordDeed } from './reputation';
+import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
 import { tongueFor } from '../content/languages';
 
 // ------------------------------------------------------------- houses --------
@@ -113,21 +114,25 @@ export function getFigure(world: World, id: FigureId | undefined): HistoricalFig
   return undefined;
 }
 
-/** The local heir to a focused settlement's rule: the most prominent living adult,
- *  the more ambitious favoured (ambition is data on their traits, not a hardcoded
- *  trait name). Deterministic — no RNG (fullActors is id-order, strict `>` keeps the
- *  lowest-id winner on ties). */
-function chooseHeir(world: World, settlementId: number): EntityId | undefined {
+/** The local heir to a focused settlement's rule: the most PROMINENT living adult —
+ *  weighing ambition (do they want it), RENOWN (public standing), and ties (their
+ *  place in the community). Ambition still dominates, but a celebrated soul can now be
+ *  raised to lead — the renown→opportunity loop (HEIR_WEIGHTS, pack data). With nobody
+ *  renowned this reduces to the old ambition-first, ties-tiebreak order. Deterministic —
+ *  no RNG (fullActors is id-order; strict `>` keeps the lowest-id winner on ties). */
+export function chooseHeir(world: World, settlementId: number): EntityId | undefined {
   let best: EntityId | undefined;
-  let bestAmbition = -1;
+  let bestProminence = -Infinity;
   let bestTies = -1;
   for (const id of fullActors(world)) {
     if (world.homeSettlement.get(id) !== settlementId) continue;
     if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
-    const ambition = ambitionOf(world.traits.get(id)!);
+    // prominence = ambition + renown (these compete); ties only break a tie. With no
+    // renown this is exactly the old ambition-first, ties-tiebreak order.
+    const prominence = ambitionOf(world.traits.get(id)!) * HEIR_WEIGHTS.ambition + standingOf(world, id) * HEIR_WEIGHTS.renown;
     const ties = relCount(world, id);
-    if (ambition > bestAmbition || (ambition === bestAmbition && ties > bestTies)) {
-      bestAmbition = ambition;
+    if (prominence > bestProminence || (prominence === bestProminence && ties > bestTies)) {
+      bestProminence = prominence;
       bestTies = ties;
       best = id;
     }
@@ -166,17 +171,27 @@ function installRuler(
   year: number,
   title: string,
 ): void {
+  let evId: number;
   if (oldHouse && oldHouse.extinctYear === undefined && surnameOf(heir.name) === oldHouse.name) {
     heir.houseId = oldHouse.id;
     oldHouse.prestige += HOUSE_ASCEND;
     oldHouse.seatSettlementId = s.id;
     s.currentRulerId = heir.id;
-    emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name });
+    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name });
   } else {
     const newHouse = foundHouse(world, heir, s.id, year);
     if (oldHouse && oldHouse.seatSettlementId === s.id) oldHouse.seatSettlementId = undefined; // out of power
     s.currentRulerId = heir.id;
-    emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' });
+    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' });
+  }
+
+  // a heir who is a real SIMULATED actor (rose from the focused settlement, not a minted
+  // record) earns ASCENSION renown — a public elevation the whole town knows. This feeds
+  // the renown→opportunity loop: standing helped raise them, and rule now lifts it further.
+  if (world.identity.has(heir.id)) {
+    let residents = 0;
+    for (const id of fullActors(world)) if (world.homeSettlement.get(id) === s.id) residents++;
+    recordDeed(world, heir.id, 'ascension', { witnesses: residents, cause: evId });
   }
 }
 

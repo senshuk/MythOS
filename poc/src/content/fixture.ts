@@ -648,12 +648,12 @@ export function thoughtSpec(kind: string): ThoughtSpec {
   return THOUGHT_SPECS[kind] ?? NEUTRAL_THOUGHT;
 }
 
-// ---- reputation: what each kind of witnessed deed does to public standing ----
-// How a perceived deed marks an actor's standing with the whole community (value,
-// decay, and the dread it sows in each witness). PACK DATA, like THOUGHT_SPECS: a
-// harsher culture might brand a killer for life (permanent), a gentler one forgive
-// in a generation. `base` is the standing delta; `fearValue` is the opinion a
-// witness forms toward the culprit (fed into the normal thought/feud machinery).
+// ---- reputation: what each kind of deed does to public standing ----
+// How a deed marks an actor's standing with the whole community (value, decay, and
+// any opinion it sows in each witness). PACK DATA, like THOUGHT_SPECS: a harsher
+// culture might brand a killer for life (permanent), a gentler one forgive in a
+// generation. `base` is the standing delta; `witnessThought` (if any) is the opinion
+// each witness forms toward the actor, fed into the normal thought/feud machinery.
 export const REPUTE_SPECS: Record<string, ReputeSpec> = {
   // a killing: heavy, lasting notoriety; witnesses are personally shaken — each forms a
   // dread of the killer (witnessThought) that can curdle into a feud (escalates).
@@ -675,6 +675,19 @@ export const REPUTE_SPECS: Record<string, ReputeSpec> = {
     witnessThought: { kind: 'admired', value: 80 },
     label: 'gave openly',
   },
+  // rose to lead: taking a settlement's seat is a public elevation — lasting renown
+  // (granted directly, town-wide; no per-witness thought needed).
+  ascension: { base: 130, durationTicks: 15 * DAYS_PER_YEAR, label: 'rose to lead' },
+  // valour: standing against a beast that fell on the town — a remembered, heroic deed.
+  valor: { base: 110, durationTicks: 10 * DAYS_PER_YEAR, label: 'stood against the beast' },
+  // peacemaking: ending one's OWN feud in public reconciliation earns quiet renown, and
+  // onlookers think the better of you for it.
+  reconciliation: {
+    base: 70,
+    durationTicks: 6 * DAYS_PER_YEAR,
+    witnessThought: { kind: 'admired', value: 55 },
+    label: 'made peace',
+  },
 };
 
 // Neutral fallback so an unknown / pack-added kind never crashes the engine.
@@ -693,6 +706,14 @@ export const REPUTATION_EFFECTS = {
   esteem: 0.35, // how much standing folds into the esteem-need target (renown feels good; notoriety gnaws)
   courtship: 0.35, // opinion-equivalent appeal shift per standing point when sizing up a match
 };
+
+// ---- who inherits a settlement's seat (the renown→opportunity loop) ----
+// PACK DATA. An heir's "prominence" weighs AMBITION (do they want it) and RENOWN (public
+// standing) together; community TIES then break ties. So a celebrated commoner can now be
+// raised to lead — closing the loop (build renown → become leader → ascension renown) —
+// yet with NOBODY renowned (standing 0, the common case) prominence is just ambition and
+// the choice is exactly the old ambition-first, ties-tiebreak order.
+export const HEIR_WEIGHTS = { ambition: 100, renown: 0.3 };
 
 // ----------------------------------------------------------- needs -----------
 // An actor's drives. NEEDS is the pack's need VECTOR (the engine stores & decays it

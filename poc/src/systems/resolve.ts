@@ -194,10 +194,17 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng
     return;
   }
   if (v >= FRIEND_AT && !edge.flags.friend) {
+    const wasFeud = edge.flags.feud; // warming out of an open feud = a public reconciliation
     edge.flags.friend = true;
     edge.flags.rival = false;
     edge.flags.feud = false;
-    emit(world, 'friendship', [a, b], {}, thoughtCauses(edge, true));
+    const fid = emit(world, 'friendship', [a, b], {}, thoughtCauses(edge, true));
+    if (wasFeud) {
+      // peacemaking is a public good — both former enemies earn renown, and onlookers
+      // think the better of them for laying the feud down.
+      witnessDeed(world, fid, a, b, 'reconciliation');
+      witnessDeed(world, fid, b, a, 'reconciliation');
+    }
   } else {
     // souring side: rivalry / feud thresholds, shared with perception so a witnessed
     // killing and a private falling-out escalate by exactly the same rule.
