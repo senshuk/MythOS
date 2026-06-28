@@ -465,10 +465,16 @@ button { font-family: inherit; }
 
 /* onboard / goal / celebration */
 .onboard {
+  display: flex; align-items: flex-start; gap: var(--space-3);
   margin: 14px 20px 0; padding: 12px 16px;
   border: 1px solid rgba(127, 178, 255, 0.35); border-radius: var(--radius-sm);
   background: rgba(127, 178, 255, 0.06); color: var(--ink-dim);
 }
+.onboard-x {
+  flex: none; margin-left: auto; background: none; border: none; color: var(--muted);
+  font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.onboard-x:hover { color: var(--ink); }
 .goal {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 12px; padding: 10px 12px;

@@ -128,6 +128,7 @@ export default function App() {
   const [saveName, setSaveName] = useState('quicksave');
   const [tab, setTab] = useState<'world' | 'chronicle' | 'inspector'>('world');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [onboardDismissed, setOnboardDismissed] = useState(false);
 
   const stat = sim.snapshot;
   // tapping an event/villager/place jumps to the Inspector tab on mobile (harmless on desktop)
@@ -230,11 +231,16 @@ export default function App() {
               onInspect={(id) => sim.inspectActor(id)}
               busy={sim.busy}
             />
-          ) : (
+          ) : onboardDismissed ? null : (
             <div className="onboard">
-              ▶ <strong>Live as one of them.</strong> Click the ▶ beside any soul
-              (in “Notable folk” below, or in the inspector) to take up their life. You’ll
-              be given a purpose and live a week at a time — and the world goes on around you.
+              <span>
+                ▶ <strong>Live as one of them.</strong> Click the ▶ beside any soul
+                (in “Notable folk” below, or in the inspector) to take up their life. You’ll
+                be given a purpose and live a week at a time — and the world goes on around you.
+              </span>
+              <button className="onboard-x" aria-label="dismiss" onClick={() => setOnboardDismissed(true)}>
+                ×
+              </button>
             </div>
           )}
           <main className="grid" data-tab={tab}>
@@ -560,15 +566,8 @@ function Dashboard({
           across {stat.settlements.length} settlements
         </div>
         <div className="muted">
-          Your gaze rests on {stat.settlementName}, where its <strong>{stat.simulatedInDetail}</strong>{' '}
-          souls are each known by name and deed — beyond it, the world lives on in chronicle and rumour
-        </div>
-        <div className="muted">
-          <strong>{stat.namedPeople}</strong> figures of note are followed across the wider world,
-          their bonds travelling with them
-        </div>
-        <div className="muted">
-          <strong>{stat.worldWealth.toLocaleString()}</strong> in wealth flows along the trade roads below
+          Only {stat.settlementName} is lived in full — its <strong>{stat.simulatedInDetail}</strong> souls
+          known by name and deed; the rest live on in chronicle and rumour.
         </div>
       </div>
 
