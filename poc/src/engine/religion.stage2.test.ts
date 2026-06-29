@@ -7,7 +7,7 @@
  * deterministic; (g) apostasy traces causally back to the condemning event.
  */
 import { describe, it, expect } from 'vitest';
-import { createWorld, runYears } from './sim';
+import { createWorld } from './sim';
 import { religionYearly } from './religion';
 import { witnessDeed } from './perception';
 import { fullActors, emit, getRel } from './world';
@@ -128,17 +128,17 @@ describe('conversion & apostasy', () => {
   });
 
   it('spontaneous yearly apostasy can occur', () => {
-    // With APOSTATE_CHANCE = 0.005 and many faithful actors over many years, we expect at
-    // least one spontaneous apostasy. Use runYears to advance the full sim.
-    let sawApostasy = false;
-    for (let seed = 1; seed <= 10 && !sawApostasy; seed++) {
-      const w = createWorld(seed);
-      runYears(w, 200); // 200 years × ~60% faithful actors each → many chances
-      if (w.events.some((e) => e.type === 'apostasy' && !w.events.some((c) => c.type === 'condemned' && e.causes.includes(c.id)))) {
-        sawApostasy = true;
-      }
+    // With APOSTATE_CHANCE = 0.005 and a forced faithful population over many yearly
+    // religion passes, at least one spontaneous apostasy should occur. This isolates the
+    // religion mechanic without paying for 200 years of daily/social simulation.
+    const w = createWorld(1);
+    const patron = patronDeityOf(w.settlements[w.focusedSettlementId].cultureId).id;
+    for (const id of fullActors(w)) w.faith.set(id, patron);
+    for (let y = 0; y < 200; y++) {
+      w.tick += DAYS_PER_YEAR;
+      religionYearly(w);
     }
-    expect(sawApostasy).toBe(true);
+    expect(w.events.some((e) => e.type === 'apostasy' && e.causes.length === 0)).toBe(true);
   });
 });
 

@@ -27,7 +27,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent } from './world';
+import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeStanding, standingReasons, emptyReputation } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
@@ -166,6 +166,7 @@ export function stepTick(world: World): void {
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
     if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
     if (hasFocus) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
+    if (hasFocus) pruneRelationshipGraph(world); // drop expired, non-milestone acquaintances
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
   }
