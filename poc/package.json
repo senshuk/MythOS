@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:fast": "vitest run --changed",
     "test:det": "vitest run --config vitest.full.config.ts sim.determinism.test",
     "test:det-full": "vitest run --config vitest.full.config.ts determinism",
     "test:full": "vitest run --config vitest.full.config.ts",
