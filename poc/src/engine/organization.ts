@@ -228,3 +228,53 @@ export function closeRoster(world: World, orgId: OrgId): void {
   if (!list) return;
   for (const m of list) if (m.untilTick === undefined) m.untilTick = world.tick;
 }
+
+// ---- historical queries (read the roster as institutional memory) ----------
+//
+// These answer "who held what, when" purely from the stored roster — no special-case
+// code per question. A record covers tick t when sinceTick <= t AND (it is still open OR
+// t < untilTick): held-at is inclusive of the start, exclusive of the end, so a handover
+// tick belongs to the successor (matching how appointLeader closes/opens at the same tick).
+
+/** Did membership record `m` cover tick `t`? */
+function coversTick(m: OrgMember, t: number): boolean {
+  return m.sinceTick <= t && (m.untilTick === undefined || t < m.untilTick);
+}
+
+/** Who held `role` in this org at `tick`? (May be several for a multi-seat role; for a
+ *  singular role like leader, zero or one.) "Who ruled this kingdom 300 years ago?" */
+export function holderAt(world: World, orgId: OrgId, role: string, tick: number): EntityId[] {
+  const list = world.orgMembers.get(orgId) ?? [];
+  return list.filter((m) => m.role === role && coversTick(m, tick)).map((m) => m.actorId);
+}
+
+/** The leader of this org at `tick`, or undefined if none held the seat then. */
+export function leaderAt(world: World, orgId: OrgId, tick: number): EntityId | undefined {
+  return holderAt(world, orgId, ROLE_LEADER, tick)[0];
+}
+
+/** Everyone who has EVER held a role in this org (distinct actor ids), in first-seen order.
+ *  "Who has ever belonged to this organization?" */
+export function membershipOf(world: World, orgId: OrgId): EntityId[] {
+  const seen = new Set<EntityId>();
+  const out: EntityId[] = [];
+  for (const m of world.orgMembers.get(orgId) ?? []) {
+    if (!seen.has(m.actorId)) {
+      seen.add(m.actorId);
+      out.push(m.actorId);
+    }
+  }
+  return out;
+}
+
+/** Every (org, role) an actor has served in, across all organizations — the reverse of the
+ *  roster. "Which organizations has this actor served?" O(total records); fine for queries. */
+export function organizationsServedBy(world: World, actorId: EntityId): { orgId: OrgId; role: string; sinceTick: number; untilTick?: number }[] {
+  const out: { orgId: OrgId; role: string; sinceTick: number; untilTick?: number }[] = [];
+  for (const org of world.organizations) {
+    for (const m of world.orgMembers.get(org.id) ?? []) {
+      if (m.actorId === actorId) out.push({ orgId: org.id, role: m.role, sinceTick: m.sinceTick, untilTick: m.untilTick });
+    }
+  }
+  return out;
+}

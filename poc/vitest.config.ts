@@ -6,6 +6,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/*.determinism*',
+      '**/*.validation*', // heavy, centuries-long org validation — runs under test:full only
     ],
   },
 });
