@@ -225,10 +225,29 @@ export type LocationId = number;
  *  The engine treats it as an open string — it never enumerates valid types. */
 export type LocationType = string;
 
-/** Whether a Location can move. DECLARATIVE for now — the engine records that a thing
- *  *can* move; movement mechanics (transit, travel events) are a later phase. A Vehicle
- *  in the ontology is simply a Location with mobility='mobile'. */
+/** Whether a Location can move. A Vehicle in the ontology is simply a Location with
+ *  mobility='mobile'. Only a mobile Location may enter transit (see Transit). */
 export type Mobility = 'fixed' | 'mobile';
+
+/**
+ * The transit state of a mobile Location currently travelling between two world positions.
+ * Travel has DURATION (constitution `design/13` "Travel is an action … not a teleport"):
+ * the location occupies `fromPos` at departTick and `toPos` at arriveTick, and may be
+ * delayed by hazards in between. Resolved deterministically each tick by engine/travel.ts.
+ */
+export interface Transit {
+  fromPos: WorldPosition;
+  toPos: WorldPosition;
+  /** the Location the journey ends at (a dock/berth), if the destination is a place. */
+  toLocationId?: LocationId;
+  departTick: number;
+  arriveTick: number;
+  /** per-tick chance (0..1) of a hazard delaying the journey; 0 = a safe route. At most
+   *  one mishap occurs per journey, so a high hazard cannot strand the vehicle forever. */
+  hazard: number;
+  /** ticks of delay a hazard has added (0 until a mishap strikes; gates further rolls). */
+  delayTicks: number;
+}
 
 /** Where a Location sits in the world model. Foundation form: a 2D surface coordinate
  *  (same shape as Settlement.pos today). Documented to generalize later to a union that
@@ -343,8 +362,16 @@ export interface Location {
    *  undefined for a root. The containment tree is acyclic; see engine/location.ts. */
   parentId?: LocationId;
   /** position in the world model. Optional: a contained location may inherit/derive its
-   *  place from its parent rather than hold its own coordinate. */
+   *  place from its parent rather than hold its own coordinate. For a mobile Location this
+   *  is MUTABLE — it is updated on arrival from a journey (see engine/travel.ts). For a
+   *  fixed Location it is immutable. */
   pos?: WorldPosition;
+  /** present while a mobile Location is en route between two positions. Absent when at
+   *  rest. Only a mobility='mobile' Location may have a transit. */
+  transit?: Transit;
+  /** the Location this (mobile) one is currently docked at — adjacent with a permeable
+   *  boundary, not contained. Set on arrival at a destination place; cleared on departure. */
+  dockedAt?: LocationId;
   foundedYear: number;
   /** set to the year the location fell to ruin / was destroyed. */
   ruinedYear?: number;
@@ -447,6 +474,9 @@ export interface World {
   edges: RegionEdge[];
   /** dedicated RNG stream for inter-settlement geography (trade/conflict drift). */
   geoRngState: number;
+  /** dedicated RNG stream for travel hazards (transit delays), isolated like the
+   *  geo/director/player streams so transit randomness never perturbs other outcomes. */
+  travelRngState: number;
   focusedSettlementId: SettlementId;
   /** which settlement each live actor (full or summary) belongs to. */
   homeSettlement: Map<EntityId, SettlementId>;

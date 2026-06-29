@@ -16,10 +16,10 @@
  */
 import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId } from './model';
 import { type Intent } from './intent';
-import { Rng } from './rng';
+import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -30,6 +30,7 @@ export interface SaveFile {
   tick: number;
   rngState: number;
   geoRngState: number;
+  travelRngState?: number; // optional for saves predating v10 (transportation)
   focusedSettlementId: number;
   nextEntityId: number;
   nextEventId: number;
@@ -114,6 +115,7 @@ export function serializeWorld(world: World): SaveFile {
     tick: world.tick,
     rngState: world.rng.state,
     geoRngState: world.geoRngState,
+    travelRngState: world.travelRngState,
     focusedSettlementId: world.focusedSettlementId,
     nextEntityId: world.nextEntityId,
     nextEventId: world.nextEventId,
@@ -169,7 +171,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -250,6 +252,8 @@ export function deserializeWorld(s: SaveFile): World {
     locations,
     nextLocationId,
     childrenByParent,
+    // pre-v10 saves had no transit stream; reseed deterministically from the world seed.
+    travelRngState: s.travelRngState ?? mixSeed(s.seed, 0x713a),
     edges: s.edges,
     geoRngState: s.geoRngState,
     focusedSettlementId: s.focusedSettlementId,

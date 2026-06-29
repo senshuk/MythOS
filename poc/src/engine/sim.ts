@@ -43,6 +43,7 @@ import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
+import { travelTick } from './travel';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
@@ -72,6 +73,8 @@ export function createWorld(seed: number, focus = true): World {
     childrenByParent: new Map(),
     edges: [],
     geoRngState: 0,
+    travelRngState: mixSeed(seed, 0x713a), // dedicated transit-hazard stream
+
     focusedSettlementId: -1, // -1 = no settlement focused (headless / worldgen)
     homeSettlement: new Map(),
     fidelity: new Map(),
@@ -133,6 +136,9 @@ export function createWorld(seed: number, focus = true): World {
  */
 export function stepTick(world: World): void {
   world.tick += 1;
+  // resolve in-flight journeys first, every tick and regardless of focus (vehicles travel
+  // world-wide). A no-op when nothing is in transit — the default world founds no vehicles.
+  travelTick(world);
   const hasFocus = world.focusedSettlementId >= 0;
   // Full-fidelity systems only run when a settlement is focused. In headless /
   // worldgen mode there are no live actors, so the world advances purely by the
@@ -745,6 +751,7 @@ export function canonicalize(world: World): string {
     `focus=${world.focusedSettlementId}`,
     `rng=${world.rng.state}`,
     `geo=${world.geoRngState}`,
+    `travel=${world.travelRngState}`,
     `events=${world.nextEventId - 1}.first=${world.firstEventId}.arch=${world.eventArchive.size}`,
     `stats=born${world.stats.born}.died${world.stats.died}.wed${world.stats.marriages}.feud${world.stats.feuds}`,
     `nextEntity=${world.nextEntityId}`,
@@ -774,6 +781,19 @@ export function canonicalize(world: World): string {
         `dom${m.dominantSpecies}.spec${s.econ.specialization}.w${Math.round(s.econ.wealth)}.` +
         // resources serialized generically over the pack's RESOURCES vector
         RESOURCES.map((r) => `s_${r}${Math.round(s.econ.stock[r] ?? 0)}.p_${r}${Math.round((s.econ.price[r] ?? 0) * 100)}`).join('.'),
+    );
+  }
+  // generic (non-settlement) locations: the spatial tree + any in-flight transit. Empty in
+  // the default world, so this appends nothing there and existing hashes are unaffected.
+  const settlementIdSet = new Set(world.settlements.map((s) => s.id));
+  for (const id of [...world.locations.keys()].sort((a, b) => a - b)) {
+    if (settlementIdSet.has(id)) continue;
+    const l = world.locations.get(id)!;
+    const t = l.transit;
+    parts.push(
+      `L${l.id}:${l.locationType}.mob${l.mobility === 'mobile' ? 1 : 0}.par${l.parentId ?? -1}.dock${l.dockedAt ?? -1}.` +
+        `pos${l.pos ? `${Math.round(l.pos.x)},${Math.round(l.pos.y)}` : '-'}.` +
+        (t ? `tr${Math.round(t.toPos.x)},${Math.round(t.toPos.y)}.arr${t.arriveTick}.dly${t.delayTicks}` : 'tr-'),
     );
   }
   for (const e of world.edges) {

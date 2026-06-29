@@ -698,6 +698,13 @@ export function pickFounderAge(rng: Rng): number {
  *  'station' places. Defining it here keeps the type label PACK DATA, not an engine literal. */
 export const SETTLEMENT_LOCATION_TYPE = 'settlement';
 
+/** Default travel speed in substrate-distance units per tick (1 tick = 1 day here). The
+ *  engine computes transit duration = distance / speed; speed is PACK DATA (a sci-fi pack's
+ *  warp drive is far faster). Callers may override per journey/vehicle. */
+export const TRAVEL_SPEED = 6;
+/** How many ticks a single hazard adds to a journey when it strikes (pack-tunable). */
+export const HAZARD_DELAY_TICKS = 2;
+
 export const RESOURCES: string[] = ['food', 'materials', 'goods'];
 export const SUBSISTENCE_RESOURCE = 'food'; // running out of this starves a settlement
 export const PREMIUM_RESOURCE = 'goods'; // the high-value good whose production builds wealth

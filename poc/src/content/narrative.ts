@@ -86,6 +86,11 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
     `${n(0)} of ${d.faction ?? 'the old order'} was expelled from ${d.from} and fled to ${d.to}.`,
   return_from_exile: (n, d) =>
     `${n(0)} of ${d.faction ?? 'the old order'} returned to ${d.settlement} after ${d.yearsGone} years in exile.`,
+  travel_started: (_n, d) =>
+    `${d.vehicle} set out${d.dest ? ` for ${d.dest}` : ''}${d.eta ? ` (a journey of ${d.eta} days)` : ''}.`,
+  travel_arrived: (_n, d) =>
+    `${d.vehicle} arrived${d.dest ? ` at ${d.dest}` : ''}${d.days ? ` after ${d.days} days` : ''}.`,
+  travel_delayed: (_n, d) => `${d.vehicle} was delayed on its journey${d.by ? ` by ${d.by} days` : ''}.`,
 };
 
 /**
@@ -154,6 +159,12 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 12;
     case 'omen':
       return 16; // a portent — minor, but it stirs the feed
+    case 'travel_delayed':
+      return 14; // a journey interrupted — piracy/storm/breakdown stirs the feed
+    case 'travel_arrived':
+      return 6; // a journey completed — routine unless the cargo/passengers matter
+    case 'travel_started':
+      return 4; // setting out — minor news
     default:
       return 0; // born, friendship, dispute, kindness, brawl, trade, migration, focus…
   }
