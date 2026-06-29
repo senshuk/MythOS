@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
 
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -65,6 +65,8 @@ export interface SaveFile {
   houses: World['houses'];
   /** First-class organizations (plain objects). Optional for saves predating v11. */
   organizations?: Organization[];
+  /** per-org membership rosters as entries. Optional for saves predating v12. */
+  orgMembers?: [OrgId, OrgMember[]][];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -151,6 +153,7 @@ export function serializeWorld(world: World): SaveFile {
     figures: world.figures,
     houses: world.houses,
     organizations: world.organizations,
+    orgMembers: [...world.orgMembers],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -175,7 +178,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -277,6 +280,19 @@ export function deserializeWorld(s: SaveFile): World {
   }
   const organizationsById = new Map<OrgId, Organization>(organizations.map((o) => [o.id, o]));
 
+  // v11 → v12 (institutional memory): if no roster was stored, reconstruct a current 'leader'
+  // record for each org that has a leader, dated to its founding (the historical line of
+  // prior leaders is not recoverable from an older save, only the sitting one).
+  const orgMembers = new Map<OrgId, OrgMember[]>();
+  if (s.orgMembers) {
+    for (const [id, list] of s.orgMembers) orgMembers.set(id, list);
+  } else {
+    for (const org of organizations) {
+      if (org.leaderId === undefined) continue;
+      orgMembers.set(org.id, [{ actorId: org.leaderId, role: 'leader', sinceTick: org.foundedYear * DAYS_PER_YEAR }]);
+    }
+  }
+
   return {
     seed: s.seed,
     substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
@@ -358,6 +374,7 @@ export function deserializeWorld(s: SaveFile): World {
     houses: s.houses ?? [],
     organizations,
     organizationsById,
+    orgMembers,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

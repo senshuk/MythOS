@@ -23,7 +23,7 @@ import { standingOf, recordDeed } from './reputation';
 import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
 import { tongueFor } from '../content/languages';
 import { startCivilWarClock } from './factions';
-import { setLeader, dissolve } from './organization';
+import { appointLeader, dissolve } from './organization';
 
 // ------------------------------------------------------------- houses --------
 // Prestige weights — how much standing a House's deeds earn it. Engine constants for
@@ -197,7 +197,9 @@ function installRuler(
   }
   // succession operates on the ORGANIZATION: the polity this settlement hosts gets the new
   // leader (currentRulerId above is now a compatibility mirror of the org's leaderId).
-  setLeader(world, s.polityId, heir.id);
+  // appointLeader closes the previous leader's roster record and opens the heir's — the org
+  // remembers its line of leaders.
+  appointLeader(world, s.polityId, heir.id);
 
   // a heir who is a real SIMULATED actor (rose from the focused settlement, not a minted
   // record) earns ASCENSION renown — a public elevation the whole town knows. This feeds
@@ -229,7 +231,7 @@ export function figuresYearly(world: World): void {
       const f = mintFigure(world, s, year, rng, 'ruler');
       foundHouse(world, f, s.id, year);
       s.currentRulerId = f.id;
-      setLeader(world, s.polityId, f.id);
+      appointLeader(world, s.polityId, f.id);
       continue;
     }
     if (year >= ruler.reignEnd) {

@@ -8,7 +8,20 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, hashWorld, buildSnapshot } from './sim';
 import { serializeWorld, deserializeWorld } from './persistence';
-import { getOrganization, membersOf, moveSeat, createOrganization } from './organization';
+import {
+  getOrganization,
+  membersOf,
+  moveSeat,
+  createOrganization,
+  enroll,
+  appointLeader,
+  vacateRole,
+  membersWithRole,
+  roleHistory,
+  currentMembers,
+  ROLE_LEADER,
+  ROLE_FOUNDER,
+} from './organization';
 import { createLocation } from './location';
 import { recordDeed, standingOf } from './reputation';
 import { hasLeader, ORG_CATEGORY_POLITICAL } from '../content/fixture';
@@ -159,5 +172,107 @@ describe('Organizations: visibility & persistence', () => {
     expect(org.category).toBe('economic');
     expect(org.seatId).toBeUndefined(); // a seatless org is valid
     expect(org.seatHistory).toEqual([]);
+  });
+});
+
+describe('Organizations remember (Phase 2B: membership & roles)', () => {
+  it('a founded polity records its founder as both founder and leader', () => {
+    const w = createWorld(1);
+    const s = w.settlements.find((st) => st.polityId !== undefined)!;
+    const org = getOrganization(w, s.polityId)!;
+    const founders = membersWithRole(w, org.id, ROLE_FOUNDER);
+    const leaders = membersWithRole(w, org.id, ROLE_LEADER);
+    expect(founders.length).toBe(1);
+    expect(leaders.length).toBe(1);
+    expect(founders[0].actorId).toBe(leaders[0].actorId); // founder is the first leader
+    expect(leaders[0].actorId).toBe(org.leaderId); // and matches the convenience mirror
+    expect(founders[0].untilTick).toBeUndefined(); // founder role is permanent/open
+  });
+
+  it('succession turns the leadership over: old record closes, the org remembers the line', () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const w = createWorld(seed);
+      const s = w.settlements[w.focusedSettlementId];
+      if (s.polityId === undefined) continue;
+      const orgId = s.polityId;
+      runYears(w, 120);
+      const history = roleHistory(w, orgId, ROLE_LEADER);
+      if (history.length < 2) continue; // need at least one succession this seed
+      // exactly one leader is currently open; all earlier ones are closed
+      const open = history.filter((m) => m.untilTick === undefined);
+      expect(open.length).toBe(1);
+      expect(open[0].actorId).toBe(getOrganization(w, orgId)!.leaderId);
+      // closed records are remembered in order, each closing at-or-after it began
+      for (const m of history) if (m.untilTick !== undefined) expect(m.untilTick).toBeGreaterThanOrEqual(m.sinceTick);
+      return;
+    }
+  });
+
+  it('vacating a role closes it without deleting the record (institutional memory)', () => {
+    const w = createWorld(3);
+    const id = createOrganization(w, { name: 'Test Guild', category: 'economic', subtype: 'guild', governanceId: 'council', foundedYear: 0 });
+    enroll(w, id, 101, 'master');
+    expect(membersWithRole(w, id, 'master').length).toBe(1);
+    w.tick += 100;
+    vacateRole(w, id, 'master');
+    expect(membersWithRole(w, id, 'master').length).toBe(0); // none currently held
+    expect(roleHistory(w, id, 'master').length).toBe(1); // but remembered
+    expect(roleHistory(w, id, 'master')[0].untilTick).toBe(w.tick);
+  });
+
+  it('appointLeader keeps the roster and the leaderId mirror in lockstep', () => {
+    const w = createWorld(4);
+    const id = createOrganization(w, { name: 'Test Polity', category: ORG_CATEGORY_POLITICAL, subtype: 'kingdom', governanceId: 'monarchy', foundedYear: 0, leaderId: 50 });
+    enroll(w, id, 50, ROLE_LEADER);
+    w.tick += 50;
+    appointLeader(w, id, 60);
+    expect(getOrganization(w, id)!.leaderId).toBe(60);
+    expect(membersWithRole(w, id, ROLE_LEADER).map((m) => m.actorId)).toEqual([60]); // only the new one is open
+    expect(roleHistory(w, id, ROLE_LEADER).length).toBe(2); // both remembered
+  });
+
+  it('bulk membership stays derived (residents), distinct from the role roster', () => {
+    const w = createWorld(3);
+    const s = w.settlements[w.focusedSettlementId];
+    if (s.polityId === undefined) return;
+    const derived = membersOf(w, s.polityId); // residents — many
+    const roleRoster = currentMembers(w, s.polityId); // notable roles — few
+    expect(derived.length).toBeGreaterThan(roleRoster.length);
+  });
+
+  it('dissolving an org closes its whole roster but keeps the records', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = createWorld(seed);
+      runYears(w, 150);
+      const dissolved = w.organizations.find((o) => o.dissolvedYear !== undefined);
+      if (!dissolved) continue;
+      const open = currentMembers(w, dissolved.id);
+      expect(open.length).toBe(0); // nothing currently held
+      expect((w.orgMembers.get(dissolved.id) ?? []).length).toBeGreaterThan(0); // but remembered
+      return;
+    }
+  });
+
+  it('surfaces founder and leader-count in the snapshot polity view', () => {
+    for (let seed = 1; seed <= 8; seed++) {
+      const w = createWorld(seed);
+      const s = w.settlements[w.focusedSettlementId];
+      if (s.polityId === undefined) continue;
+      runYears(w, 120);
+      const sv = buildSnapshot(w).settlements[w.focusedSettlementId];
+      expect(sv.polity).toBeDefined();
+      expect(sv.polity!.leaderCount).toBeGreaterThanOrEqual(1);
+      return;
+    }
+  });
+
+  it('round-trips the membership roster through save/load identically', () => {
+    const w = createWorld(8);
+    runYears(w, 80);
+    const loaded = roundTrip(w);
+    expect(hashWorld(loaded)).toBe(hashWorld(w)); // roster is in the determinism hash
+    for (const org of w.organizations) {
+      expect(loaded.orgMembers.get(org.id) ?? []).toEqual(w.orgMembers.get(org.id) ?? []);
+    }
   });
 });

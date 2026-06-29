@@ -21,6 +21,7 @@ import {
   type Organization,
   type OrgId,
   type OrgCategory,
+  type OrgMember,
   type Settlement,
   type LocationId,
   type FigureId,
@@ -98,6 +99,11 @@ export function foundPolity(world: World, s: Settlement, year: number): OrgId {
     seatId: s.id,
   });
   s.polityId = id;
+  // institutional memory: the founder is recorded as both founder and first leader.
+  if (s.currentRulerId !== undefined) {
+    enroll(world, id, s.currentRulerId, ROLE_FOUNDER);
+    enroll(world, id, s.currentRulerId, ROLE_LEADER);
+  }
   emit(world, 'polity_founded', [id], { name: world.organizationsById.get(id)!.name, seat: seatName }, [], [s.id]);
   return id;
 }
@@ -120,12 +126,6 @@ export function membersOf(world: World, orgId: OrgId): EntityId[] {
   return out;
 }
 
-/** Set (or clear) the figure who speaks for an organization. Used by succession. */
-export function setLeader(world: World, orgId: OrgId | undefined, figureId: FigureId | undefined): void {
-  const org = getOrganization(world, orgId);
-  if (org) org.leaderId = figureId;
-}
-
 /**
  * Move an organization's seat to another Location, recording the old seat in its history
  * — so a moved capital leaves a coherent trail and the org's identity is independent of
@@ -146,10 +146,85 @@ export function dissolve(world: World, orgId: OrgId | undefined, year: number): 
   const org = getOrganization(world, orgId);
   if (!org || org.dissolvedYear !== undefined) return;
   org.dissolvedYear = year;
+  closeRoster(world, org.id); // the institution ends — all open roles close, but are remembered
   emit(world, 'polity_dissolved', [org.id], { name: org.name });
 }
 
 /** The current year, for callers that need it (mirrors figures.ts's derivation). */
 export function currentYear(world: World): number {
   return Math.floor(world.tick / DAYS_PER_YEAR);
+}
+
+// ---- membership & roles (institutional memory, Phase 2B) -------------------
+//
+// The org REMEMBERS its notable members by role. Records are CLOSED (untilTick), not
+// deleted, when a role ends — so the roster is a legible history ("who has led this
+// polity, and when"). The 'leader' role is the head office; 'founder' marks the founder.
+// Roles are open strings (structural defaults below; a guild could mint 'master'). Bulk
+// population stays DERIVED via membersOf — only meaningful roles are recorded here.
+
+export const ROLE_LEADER = 'leader';
+export const ROLE_FOUNDER = 'founder';
+
+/** The org's roster array, created on first use. */
+function roster(world: World, orgId: OrgId): OrgMember[] {
+  let list = world.orgMembers.get(orgId);
+  if (!list) {
+    list = [];
+    world.orgMembers.set(orgId, list);
+  }
+  return list;
+}
+
+/** Enrol an actor in an organization under a role, effective now. Appends a record;
+ *  does not check for duplicates (a founder is both 'founder' and 'leader', say). */
+export function enroll(world: World, orgId: OrgId, actorId: EntityId, role: string): void {
+  roster(world, orgId).push({ actorId, role, sinceTick: world.tick });
+}
+
+/** Close every currently-open record of `role` (optionally only for `actorId`), recording
+ *  that the role ended now. The records remain — the org remembers them. */
+export function vacateRole(world: World, orgId: OrgId, role: string, actorId?: EntityId): void {
+  const list = world.orgMembers.get(orgId);
+  if (!list) return;
+  for (const m of list) {
+    if (m.role === role && m.untilTick === undefined && (actorId === undefined || m.actorId === actorId)) {
+      m.untilTick = world.tick;
+    }
+  }
+}
+
+/** Install a new leader: close the previous 'leader' record, open a fresh one, and mirror
+ *  the org's `leaderId`. The single entry point succession uses, so the roster and the
+ *  convenience leaderId never diverge. */
+export function appointLeader(world: World, orgId: OrgId | undefined, actorId: FigureId | undefined): void {
+  const org = getOrganization(world, orgId);
+  if (!org) return;
+  vacateRole(world, org.id, ROLE_LEADER);
+  if (actorId !== undefined) enroll(world, org.id, actorId, ROLE_LEADER);
+  org.leaderId = actorId;
+}
+
+/** Records of a role on an org. By default only CURRENTLY-held; pass includeClosed for the
+ *  full history (ordered as recorded, i.e. by sinceTick). */
+export function membersWithRole(world: World, orgId: OrgId, role: string, includeClosed = false): OrgMember[] {
+  const list = world.orgMembers.get(orgId) ?? [];
+  return list.filter((m) => m.role === role && (includeClosed || m.untilTick === undefined));
+}
+
+/** The full line of holders of a role over time (current + past), in order held. */
+export function roleHistory(world: World, orgId: OrgId, role: string): OrgMember[] {
+  return membersWithRole(world, orgId, role, true);
+}
+
+/** All currently-open membership records on an org (any role). */
+export function currentMembers(world: World, orgId: OrgId): OrgMember[] {
+  return (world.orgMembers.get(orgId) ?? []).filter((m) => m.untilTick === undefined);
+}
+
+/** Close every open record on an org (used when it dissolves — the institution ends). */
+export function closeRoster(world: World, orgId: OrgId): void {
+  const list = world.orgMembers.get(orgId);
+  if (!list) return;
+  for (const m of list) if (m.untilTick === undefined) m.untilTick = world.tick;
 }

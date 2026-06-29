@@ -44,7 +44,7 @@ import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
-import { getOrganization } from './organization';
+import { getOrganization, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
@@ -113,6 +113,7 @@ export function createWorld(seed: number, focus = true): World {
     houses: [],
     organizations: [],
     organizationsById: new Map(),
+    orgMembers: new Map(),
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -344,10 +345,13 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       polity: (() => {
         const org = getOrganization(world, s.polityId);
         if (!org) return undefined;
+        const founder = roleHistory(world, org.id, ROLE_FOUNDER)[0];
         return {
           name: org.name,
           subtype: org.subtype,
           leaderName: getFigure(world, org.leaderId)?.name,
+          founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
+          leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
         };
       })(),
@@ -831,7 +835,11 @@ export function canonicalize(world: World): string {
   }
   for (const o of world.organizations) {
     const standing = Math.round(computeStanding(world.reputation.get(o.id) ?? emptyReputation(), world.tick));
-    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}`);
+    // roster digest: each record as role@actor[since:until] so institutional memory is hashed
+    const roster = (world.orgMembers.get(o.id) ?? [])
+      .map((m) => `${m.role}@${m.actorId}:${m.sinceTick}-${m.untilTick ?? -1}`)
+      .join(',');
+    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.mem[${roster}]`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

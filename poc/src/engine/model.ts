@@ -228,6 +228,23 @@ export interface Organization {
 }
 
 /**
+ * A role an actor holds within an organization — the unit of an org's INSTITUTIONAL MEMORY
+ * (Phase 2B). The org REMEMBERS who held which role and when, so a record is closed
+ * (untilTick set) rather than deleted when the role ends. `role` is an open, pack-defined
+ * string — the head office of a polity is the 'leader' role; a guild might use 'master'.
+ * NB: this is the roster of NOTABLE roles (leader, founder, office-holders), not the bulk
+ * population — general membership stays DERIVED (organization.ts `membersOf`) to avoid the
+ * synchronization burden of mirroring every resident.
+ */
+export interface OrgMember {
+  actorId: EntityId;
+  role: string;
+  sinceTick: number;
+  /** the tick the role ended (left, died, replaced); undefined while currently held. */
+  untilTick?: number;
+}
+
+/**
  * A structured, dated, entity-referencing record of something that happened.
  * Text is NOT stored here — it is rendered from this structure on demand (see
  * render.ts), so history stays queryable and free of delimiter hazards.
@@ -631,6 +648,9 @@ export interface World {
   organizations: Organization[];
   /** O(1) lookup: org id → record. Maintained alongside organizations[]; rebuilt on load. */
   organizationsById: Map<OrgId, Organization>;
+  /** per-organization roster of role-tagged, time-stamped memberships — the org's
+   *  institutional memory (current + closed records). Keyed by org id. */
+  orgMembers: Map<OrgId, OrgMember[]>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -806,8 +826,9 @@ export interface SettlementView {
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
-   *  government as a first-class entity, distinct from the place. */
-  polity?: { name: string; subtype: string; leaderName?: string; standing: number };
+   *  government as a first-class entity, distinct from the place. `founderName` and
+   *  `leaderCount` expose the org's institutional memory (its remembered line of leaders). */
+  polity?: { name: string; subtype: string; leaderName?: string; founderName?: string; leaderCount: number; standing: number };
   // economy
   specialization: Specialization;
   wealth: number;
