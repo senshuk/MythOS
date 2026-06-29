@@ -548,6 +548,10 @@ The following must hold at all times during execution:
 5. **The snapshot builder does not write to world state.** It is strictly read-only. Any write inside the snapshot builder is a bug.
 6. **Player intents do not bypass the resolver.** The player's intent goes through `resolveIntent()` like every other intent. There is no `applyPlayerAction()` that bypasses the shared logic.
 7. **Math.random() is never called.** All randomness uses the seeded RNG through one of the declared streams (settlement, geography, director, figures, player).
+8. **Observation does not constitute history; only actions become history.** A purely informational layer — perception, worldview, intent, any derived reading of the world — must never emit Events, write to the chronicle/annals, or alter another system's state. It produces an inspectable record (e.g. `world.currentIntent`) read only by the snapshot builder and the determinism hash. The moment such a layer emits an Event, it becomes *causative*: that Event can feed the Director, shift seeded drama, and perturb otherwise-stable outcomes. Reasoning is not a participant in history. (Discovered in Phase 2C: an `intent_changed` event from the reasoning overlay entered the chronicle, the Director read it, and seed-tuned drama diverged. Run-vs-run determinism held; the leak was architectural, not numeric.)
+9. **Reasoning must never emit historical Events directly — only the attempt or outcome of an ACTION may enter the event log.** Intent answers *"what should I do?"*; it is inert. Execution answers *"can I do it?"* and produces the Event. An attempt that fails is still history ("attempted expansion — failed"); an intent that is never acted on is not. This is the bright line between the Reasoning layer (Perception → Worldview → Intent) and the Execution layer (Intent → Attempt → Outcome → Event).
+
+These two invariants formalize the engine's layering of civilization: **Perception → Reasoning → Action → History**, each a distinct stage. The first two stages are observation (no events); only the Action stage writes to the event log.
 
 ---
 
@@ -556,3 +560,4 @@ The following must hold at all times during execution:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-06-28 | Initial execution model — defines tick pipeline (daily/weekly/yearly cadences), system execution order within yearly pass with ordering rationale, event emission and perception pipeline, snapshot build pipeline, player input queue, LOD focus change protocol, save/load lifecycle, worker/thread boundary, and 7 execution invariants |
+| 1.1 | 2026-06-29 | Added execution invariants 8 (observation does not constitute history) and 9 (only an action's attempt/outcome may emit historical Events), formalizing the Perception → Reasoning → Action → History layering. Narrowly justified amendment exposed by the Phase 2C reasoning overlay (an intent event leaked into the Director and perturbed seed-tuned drama). |
