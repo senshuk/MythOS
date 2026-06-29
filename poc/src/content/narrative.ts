@@ -91,6 +91,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   travel_arrived: (_n, d) =>
     `${d.vehicle} arrived${d.dest ? ` at ${d.dest}` : ''}${d.days ? ` after ${d.days} days` : ''}.`,
   travel_delayed: (_n, d) => `${d.vehicle} was delayed on its journey${d.by ? ` by ${d.by} days` : ''}.`,
+  polity_founded: (_n, d) => `The ${d.name} was established${d.seat ? `, seated at ${d.seat}` : ''}.`,
+  polity_dissolved: (_n, d) => `The ${d.name} was dissolved.`,
 };
 
 /**
@@ -165,6 +167,10 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 6; // a journey completed — routine unless the cargo/passengers matter
     case 'travel_started':
       return 4; // setting out — minor news
+    case 'polity_founded':
+      return 36; // a government established — a landmark beside the settlement's founding
+    case 'polity_dissolved':
+      return 46; // a government falling — long remembered, beside its seat's ruin
     default:
       return 0; // born, friendship, dispute, kindness, brawl, trade, migration, focus…
   }

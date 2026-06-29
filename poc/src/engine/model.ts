@@ -183,6 +183,50 @@ export interface House {
   extinctYear?: number;
 }
 
+export type OrgId = EntityId; // shares the monotonic entity id space (like FigureId/HouseId)
+
+/** An Organization's broad, engine-level CATEGORY — an open string, pack-defined
+ *  ('political', 'economic', 'religious', 'military', …). The engine never enumerates
+ *  these; a universe pack maps its concrete kinds (kingdom, guild, church) onto a
+ *  category. Distinct from `subtype`, which is the pack's display label. */
+export type OrgCategory = string;
+
+/**
+ * An ORGANIZATION — a persistent collective entity that acts through a governance
+ * structure (constitution `design/11`, `design/12`). The enduring actor of civilization:
+ * a kingdom, guild, church, company, fleet. Deliberately SMALL at this stage (Phase 2A):
+ * it EXISTS — it has identity, a category, governance (a leader), a seat, reputation
+ * (via the shared reputation map), and a history (via events). It does NOT yet hold
+ * goals, a treasury, or relationships — those are later stages.
+ *
+ * Crucially, an Organization's identity is INDEPENDENT OF GEOGRAPHY: its seat can move
+ * (seatHistory records the line of seats) and the place it occupies can fall, while the
+ * Organization — and its history — endure. The settlement HOSTS the organization; it is
+ * not the organization.
+ */
+export interface Organization {
+  id: OrgId;
+  name: string;
+  /** engine-level category (open string; e.g. 'political'). */
+  category: OrgCategory;
+  /** pack display label for this kind ('kingdom', 'tribe', 'republic', …). */
+  subtype: string;
+  foundedYear: number;
+  /** the year the organization was dissolved (seat razed, membership lost); absent while
+   *  it endures. Like a ruin, a dissolved org keeps its identity and history. */
+  dissolvedYear?: number;
+  /** the governance MODEL — reuses the pack's government ids (monarchy/council/…); it
+   *  answers "who speaks for this organization?" via the succession rule. */
+  governanceId: string;
+  /** the figure who currently leads/speaks for the organization, if any. */
+  leaderId?: FigureId;
+  /** the Location that is currently the organization's seat (HQ/throne/temple), if any. */
+  seatId?: LocationId;
+  /** the line of seats this organization has held, oldest first — so a moved capital or a
+   *  fallen seat leaves a coherent trail. The current seatId is appended here on a move. */
+  seatHistory: LocationId[];
+}
+
 /**
  * A structured, dated, entity-referencing record of something that happened.
  * Text is NOT stored here — it is rendered from this structure on demand (see
@@ -408,8 +452,14 @@ export interface Settlement extends Location {
    *  capacity, from local fertility/water/coast. Generous land grows great cities. */
   capacity: number;
   /** the figure who currently rules here (founder, then a line of successors). Absent
-   *  in a leaderless polity (government with no leader). */
+   *  in a leaderless polity (government with no leader). NB: from Phase 2A this is a
+   *  compatibility MIRROR of the hosting Polity's leaderId — the Organization owns
+   *  governance now; the settlement merely hosts it. */
   currentRulerId?: FigureId;
+  /** the governing Organization (a Polity) this settlement HOSTS, if it is governed.
+   *  Absent for leaderless (freefolk) settlements. The settlement is the place; the
+   *  polity is the government — see engine/organization.ts. */
+  polityId?: OrgId;
   macro: MacroPop;
   econ: Economy;
 }
@@ -576,6 +626,11 @@ export interface World {
   figuresBySettlement: Map<SettlementId, FigureId[]>;
   /** The great Houses — lineages that hold seats and endure across generations. */
   houses: House[];
+  /** First-class Organizations — the enduring collective actors (polities today;
+   *  guilds/churches later). In creation (id) order. */
+  organizations: Organization[];
+  /** O(1) lookup: org id → record. Maintained alongside organizations[]; rebuilt on load. */
+  organizationsById: Map<OrgId, Organization>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -750,6 +805,9 @@ export interface SettlementView {
   patronDeity: { name: string; domain: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
+  /** the Organization (a Polity) this settlement hosts, if it is governed — the
+   *  government as a first-class entity, distinct from the place. */
+  polity?: { name: string; subtype: string; leaderName?: string; standing: number };
   // economy
   specialization: Specialization;
   wealth: number;

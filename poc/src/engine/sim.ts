@@ -44,6 +44,7 @@ import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
+import { getOrganization } from './organization';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
@@ -110,6 +111,8 @@ export function createWorld(seed: number, focus = true): World {
     figuresById: new Map(),
     figuresBySettlement: new Map(),
     houses: [],
+    organizations: [],
+    organizationsById: new Map(),
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -338,6 +341,16 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
+      polity: (() => {
+        const org = getOrganization(world, s.polityId);
+        if (!org) return undefined;
+        return {
+          name: org.name,
+          subtype: org.subtype,
+          leaderName: getFigure(world, org.leaderId)?.name,
+          standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
+        };
+      })(),
       specialization: s.econ.specialization,
       wealth: Math.round(s.econ.wealth),
       subsistenceSecurity: pop > 0 ? s.econ.stock[SUBSISTENCE_RESOURCE] / pop : 0,
@@ -815,6 +828,10 @@ export function canonicalize(world: World): string {
   }
   for (const h of world.houses) {
     parts.push(`H${h.id}:${h.name}.f${h.founderId}.y${h.foundedYear}.p${Math.round(h.prestige)}.seat${h.seatSettlementId ?? -1}.x${h.extinctYear ?? -1}`);
+  }
+  for (const o of world.organizations) {
+    const standing = Math.round(computeStanding(world.reputation.get(o.id) ?? emptyReputation(), world.tick));
+    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

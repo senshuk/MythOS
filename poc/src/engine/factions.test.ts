@@ -161,23 +161,27 @@ describe('civil war and exile', () => {
   it('exile event fires, exiled actor leaves the focused settlement, and world.exiles records them', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const w = createWorld(seed);
-      runYears(w, 120);
-      const exileEv = allEvents(w).find((e) => e.type === 'exile');
-      if (!exileEv) continue;
-      const id = exileEv.subjects[0];
-      // exile record is in world.exiles
-      expect(w.exiles.has(id)).toBe(true);
-      // exile record has expected fields
-      const rec = w.exiles.get(id)!;
-      expect(typeof rec.axis).toBe('string');
-      expect(typeof rec.factionName).toBe('string');
-      expect(typeof rec.year).toBe('number');
-      // exile record proves they were expelled from the focused settlement
-      // (not checking live homeSettlement — an exiled actor can return via immigration)
-      expect(rec.fromSettlementId).toBe(w.focusedSettlementId);
-      // from/to are both present and differ
-      expect(exileEv.data.from).not.toBe(exileEv.data.to);
-      return;
+      // Advance year-by-year and inspect the record AT the first exile. A returning exile is
+      // pruned from world.exiles after EXILE_RETURN_YEARS (and a dead one immediately), so
+      // checking after a full multi-decade run would miss a record that legitimately existed.
+      for (let y = 0; y < 120; y++) {
+        runYears(w, 1);
+        const exileEv = allEvents(w).find((e) => e.type === 'exile');
+        if (!exileEv) continue;
+        const id = exileEv.subjects[0];
+        // exile record is in world.exiles
+        expect(w.exiles.has(id)).toBe(true);
+        // exile record has expected fields
+        const rec = w.exiles.get(id)!;
+        expect(typeof rec.axis).toBe('string');
+        expect(typeof rec.factionName).toBe('string');
+        expect(typeof rec.year).toBe('number');
+        // exile record proves they were expelled from the focused settlement
+        expect(rec.fromSettlementId).toBe(w.focusedSettlementId);
+        // from/to are both present and differ
+        expect(exileEv.data.from).not.toBe(exileEv.data.to);
+        return;
+      }
     }
   });
 

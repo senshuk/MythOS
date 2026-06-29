@@ -41,6 +41,7 @@ import {
 } from './world';
 import { addThought } from './opinion';
 import { registerLocation } from './location';
+import { foundPolity } from './organization';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
   SPECIES,
@@ -245,6 +246,7 @@ export function createSettlements(world: World): void {
     if (hasLeader(s.governmentId)) {
       s.currentRulerId = founder.id;
       foundHouse(world, founder, s.id, d.foundedYear); // the founding family becomes a House
+      foundPolity(world, s, d.foundedYear); // ...and the government it hosts becomes a Polity
     }
     emit(world, 'settlement_founded', [founder.id], { name: s.name, population: pop }, [], [s.id]);
   }

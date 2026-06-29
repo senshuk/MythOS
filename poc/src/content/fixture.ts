@@ -284,6 +284,20 @@ export const GOVERNMENTS: Government[] = [
   { id: 'freefolk', title: '', succession: 'none' },
 ];
 
+/** The engine-level CATEGORY this pack files political organizations under. The engine
+ *  treats Organization.category as an open string; this keeps the category PACK DATA. */
+export const ORG_CATEGORY_POLITICAL = 'political';
+
+/** Display label for the POLITY a settlement of each government kind hosts — pack data, so
+ *  a sci-fi pack reads the same governments as 'Federation'/'Collective'. Keyed by
+ *  government id; leaderless 'freefolk' hosts no polity, so it is absent. */
+export const POLITY_LABELS: Record<string, string> = {
+  monarchy: 'Kingdom',
+  chiefdom: 'Tribe',
+  council: 'Republic',
+  theocracy: 'Holy Order',
+};
+
 export function governmentById(id: string): Government {
   return GOVERNMENTS.find((g) => g.id === id) ?? GOVERNMENTS[0];
 }

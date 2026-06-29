@@ -14,12 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -62,6 +63,8 @@ export interface SaveFile {
   director: World['director'];
   figures: World['figures'];
   houses: World['houses'];
+  /** First-class organizations (plain objects). Optional for saves predating v11. */
+  organizations?: Organization[];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -147,6 +150,7 @@ export function serializeWorld(world: World): SaveFile {
     director: world.director,
     figures: world.figures,
     houses: world.houses,
+    organizations: world.organizations,
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -171,7 +175,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -243,6 +247,36 @@ export function deserializeWorld(s: SaveFile): World {
     else childrenByParent.set(pid, [id]);
   }
 
+  // v10 → v11 (organizations exist): reconstruct a Polity for every governed settlement so
+  // a loaded older world also has first-class orgs. New org ids come from above the save's
+  // entity high-water mark, so they never collide with existing entities.
+  let nextEntityId = s.nextEntityId;
+  let organizations: Organization[];
+  if (s.organizations) {
+    organizations = s.organizations;
+  } else {
+    organizations = [];
+    for (const st of s.settlements) {
+      const label = POLITY_LABELS[st.governmentId];
+      if (!label) continue; // leaderless (freefolk) settlements host no polity
+      const org: Organization = {
+        id: nextEntityId++,
+        name: `${label} of ${st.name}`,
+        category: ORG_CATEGORY_POLITICAL,
+        subtype: label.toLowerCase(),
+        foundedYear: st.foundedYear,
+        governanceId: st.governmentId,
+        leaderId: st.currentRulerId,
+        seatId: st.id,
+        seatHistory: [st.id],
+        ...(st.ruinedYear !== undefined ? { dissolvedYear: st.ruinedYear } : {}),
+      };
+      organizations.push(org);
+      (st as { polityId?: OrgId }).polityId = org.id;
+    }
+  }
+  const organizationsById = new Map<OrgId, Organization>(organizations.map((o) => [o.id, o]));
+
   return {
     seed: s.seed,
     substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
@@ -259,7 +293,7 @@ export function deserializeWorld(s: SaveFile): World {
     focusedSettlementId: s.focusedSettlementId,
     homeSettlement: new Map(s.homeSettlement),
     fidelity: new Map(s.fidelity),
-    nextEntityId: s.nextEntityId,
+    nextEntityId,
     nextEventId: s.nextEventId,
     entities,
     deadEntities,
@@ -322,6 +356,8 @@ export function deserializeWorld(s: SaveFile): World {
       return m;
     })(),
     houses: s.houses ?? [],
+    organizations,
+    organizationsById,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

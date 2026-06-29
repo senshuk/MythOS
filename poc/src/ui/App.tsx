@@ -1261,6 +1261,12 @@ function Inspector({
               {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
             </p>
           )}
+          {settV?.polity && (
+            <p className="polity">
+              governed by the <em>{settV.polity.name}</em>
+              {settV.polity.leaderName ? ` · led by ${settV.polity.leaderName}` : ''}
+            </p>
+          )}
           {settV?.patronDeity && (
             <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
           )}
