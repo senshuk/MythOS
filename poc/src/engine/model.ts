@@ -244,6 +244,73 @@ export interface OrgMember {
   untilTick?: number;
 }
 
+// ---- organizational reasoning (Phase 2C: Perception → Worldview → Intent) -----
+// The engine provides the PIPELINE; the pack provides the VOCABULARY (worldview axes,
+// candidate intents, scoring rules). Reasoning is bounded, deterministic, and — above all
+// — explainable: an OrgIntent is a complete justification record, not an opaque verdict.
+
+/**
+ * One thing an organization KNOWS — a single perceived datum with how sure it is and where
+ * it came from. `id` is a STABLE pack key ('food_security', 'neighbor_strength'), not an
+ * English label: the UI/pack resolves the display text, so localization and universe packs
+ * never depend on engine strings. Perception is bounded (only what the org could actually
+ * know) and ephemeral (rebuilt each cycle; never a standing cache of the world).
+ */
+export interface PerceptionFact {
+  id: string;
+  value: number;
+  confidence: number; // 0..1 — own facts ~1.0, neighbour estimates < 1.0
+  source: string; // 'seat' | 'neighbor:<settlementId>' | 'event:<eventId>'
+}
+
+/** A pack-defined worldview axis ('expansionist', 'militaristic', 'mercantile', …). */
+export type WorldviewAxis = string;
+/** An organization's derived disposition — recomputed every cycle from member values,
+ *  never stored long-term. */
+export type Worldview = Record<WorldviewAxis, number>;
+
+/** One weighted reason in an intent's justification. `id` is a stable key (not a label);
+ *  `group` optionally buckets factors ('military', 'economy') so the justification renders
+ *  collapsibly and can grow into a nested tree later without replacing this type. */
+export interface IntentFactor {
+  id: string;
+  value: number;
+  group?: string;
+}
+
+/**
+ * The complete, serializable reasoning record behind an organization's current decision —
+ * it answers all four questions from one object: what it KNOWS (perception), what VALUES
+ * define it (worldview), what INTENT it chose (kind), and WHY (factors + score, with the
+ * runner-up alternatives). `evaluatorVersion` stamps the scoring ruleset, so a save made
+ * before a rebalance still explains itself.
+ */
+export interface OrgIntent {
+  kind: string; // the chosen intent id
+  score: number; // == sum of factors[].value
+  worldview: Worldview;
+  perception: PerceptionFact[];
+  factors: IntentFactor[];
+  alternatives: { kind: string; score: number }[];
+  sinceTick: number;
+  evaluatorVersion: number;
+}
+
+/**
+ * A pack-defined candidate intent + how to score it. Mirrors `AspirationDef`: the pack
+ * supplies the vocabulary and the scoring behaviour; the engine runs the pipeline and
+ * records the justification. **The score function receives ONLY perception, worldview, and
+ * the org's own record — never the World** — so reasoning cannot bypass the Perception
+ * layer and reach into global state. (This bound is enforced by the signature itself.)
+ */
+export interface IntentDef {
+  id: string;
+  displayName: string;
+  category: string;
+  description: string;
+  score(perception: PerceptionFact[], worldview: Worldview, org: Organization): IntentFactor[];
+}
+
 /**
  * A structured, dated, entity-referencing record of something that happened.
  * Text is NOT stored here — it is rendered from this structure on demand (see
@@ -651,6 +718,10 @@ export interface World {
   /** per-organization roster of role-tagged, time-stamped memberships — the org's
    *  institutional memory (current + closed records). Keyed by org id. */
   orgMembers: Map<OrgId, OrgMember[]>;
+  /** the CURRENT reasoning record per organization — what it decided this evaluation
+   *  cycle and why. Recomputed yearly (orgReason.ts). Named `currentIntent` to leave room
+   *  for an intent-history layer later. */
+  currentIntent: Map<OrgId, OrgIntent>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -807,6 +878,19 @@ export interface RelationView {
   otherSettlement?: string;
 }
 
+/** An organization's current reasoning, made legible for the inspector — the answer to
+ *  "what does it know / what values define it / what intent did it choose / why". Labels
+ *  are resolved from stable ids for display. */
+export interface OrgIntentView {
+  worldview: string; // top leanings, e.g. "expansionist, militaristic"
+  intent: string; // chosen intent's display name
+  intentDescription: string;
+  score: number;
+  factors: { label: string; value: number; group?: string }[]; // the justification
+  alternatives: { label: string; score: number }[]; // runner-up intents and their scores
+  perception: { label: string; value: number; confidence: number }[]; // what it knows
+}
+
 export interface SettlementView {
   id: SettlementId;
   name: string;
@@ -827,8 +911,17 @@ export interface SettlementView {
   ruler?: string; // who rules it now (or last, if a ruin)
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
    *  government as a first-class entity, distinct from the place. `founderName` and
-   *  `leaderCount` expose the org's institutional memory (its remembered line of leaders). */
-  polity?: { name: string; subtype: string; leaderName?: string; founderName?: string; leaderCount: number; standing: number };
+   *  `leaderCount` expose the org's institutional memory (its remembered line of leaders).
+   *  `reasoning` is its current decision made legible (focused settlement only). */
+  polity?: {
+    name: string;
+    subtype: string;
+    leaderName?: string;
+    founderName?: string;
+    leaderCount: number;
+    standing: number;
+    reasoning?: OrgIntentView;
+  };
   // economy
   specialization: Specialization;
   wealth: number;

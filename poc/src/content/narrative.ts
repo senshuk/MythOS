@@ -93,6 +93,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   travel_delayed: (_n, d) => `${d.vehicle} was delayed on its journey${d.by ? ` by ${d.by} days` : ''}.`,
   polity_founded: (_n, d) => `The ${d.name} was established${d.seat ? `, seated at ${d.seat}` : ''}.`,
   polity_dissolved: (_n, d) => `The ${d.name} was dissolved.`,
+  // NB: organizational intent is a silent overlay in 2C (no events). When intent drives
+  // ACTION in 2D, those actions will emit their own chronicle-worthy events.
 };
 
 /**

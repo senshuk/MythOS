@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -67,6 +67,9 @@ export interface SaveFile {
   organizations?: Organization[];
   /** per-org membership rosters as entries. Optional for saves predating v12. */
   orgMembers?: [OrgId, OrgMember[]][];
+  /** per-org current reasoning record as entries. Optional for saves predating v13;
+   *  recomputed on the next yearly tick if absent. */
+  currentIntent?: [OrgId, OrgIntent][];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -154,6 +157,7 @@ export function serializeWorld(world: World): SaveFile {
     houses: world.houses,
     organizations: world.organizations,
     orgMembers: [...world.orgMembers],
+    currentIntent: [...world.currentIntent],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -178,7 +182,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -375,6 +379,8 @@ export function deserializeWorld(s: SaveFile): World {
     organizations,
     organizationsById,
     orgMembers,
+    // pre-v13 saves carry no reasoning record; it is recomputed on the next yearly tick.
+    currentIntent: new Map(s.currentIntent ?? []),
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

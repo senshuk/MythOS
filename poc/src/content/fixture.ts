@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -601,6 +601,140 @@ export function natureOf(p: Personality): string {
   const value = top(VALUES, p.values, VALUE_WORDS, 28, 1);
   const words = [...disposition, ...value];
   return words.length ? words.join(', ') : 'unremarkable';
+}
+
+// --------------------------------------------- organizational reasoning -------
+// PACK VOCABULARY for Phase 2C. The engine (engine/orgReason.ts) runs the pipeline
+// Perception → Worldview → Intent; everything universe-specific lives here:
+//   - WORLDVIEW axes and how they read from this pack's member VALUES,
+//   - the candidate INTENTS and their scoring rules (as inspectable weighted factors),
+//   - EVALUATOR_VERSION, stamped on each decision so old saves still explain themselves.
+// A sci-fi pack swaps these out; the engine is unchanged.
+
+/** Bumped whenever the scoring rules below change, so a decision records which ruleset
+ *  produced it (an old save still explains itself: "produced under evaluator vN"). */
+export const EVALUATOR_VERSION = 1;
+
+/** This pack's worldview axes — an organization's derived disposition. */
+export const WORLDVIEW_AXES = ['expansionist', 'isolationist', 'mercantile', 'militaristic', 'religious', 'scholarly'] as const;
+export type WorldviewAxisId = (typeof WORLDVIEW_AXES)[number];
+
+/** How each worldview axis reads from the member VALUE means — a linear blend. The engine
+ *  computes the value means across (living) members; this maps them to worldview. */
+const WORLDVIEW_WEIGHTS: Record<WorldviewAxisId, Partial<Record<ValueAxis, number>>> = {
+  expansionist: { war: 0.6, freedom: 0.4 },
+  isolationist: { tradition: 0.6, freedom: -0.4 },
+  mercantile: { craft: 1.0 },
+  militaristic: { war: 1.0 },
+  religious: { tradition: 0.5, honor: 0.5 },
+  scholarly: { craft: 0.5, nature: 0.5 },
+};
+
+/** Derive a worldview from member value means (each value axis in −100..100). */
+export function worldviewFromValues(valueMean: Record<ValueAxis, number>): Worldview {
+  const wv: Worldview = {};
+  for (const axis of WORLDVIEW_AXES) {
+    let s = 0;
+    const weights = WORLDVIEW_WEIGHTS[axis];
+    for (const v of VALUES) s += (weights[v] ?? 0) * (valueMean[v] ?? 0);
+    wv[axis] = Math.round(s);
+  }
+  return wv;
+}
+
+/** The strongest worldview leanings, as labels — the legible face for the inspector. */
+const WORLDVIEW_WORDS: Record<WorldviewAxisId, string> = {
+  expansionist: 'expansionist',
+  isolationist: 'isolationist',
+  mercantile: 'mercantile',
+  militaristic: 'militaristic',
+  religious: 'devout',
+  scholarly: 'scholarly',
+};
+export function worldviewReading(wv: Worldview): string {
+  const leanings = WORLDVIEW_AXES.map((a) => ({ a, v: wv[a] ?? 0 }))
+    .filter((r) => r.v >= 20)
+    .sort((x, y) => y.v - x.v)
+    .slice(0, 3)
+    .map((r) => WORLDVIEW_WORDS[r.a]);
+  return leanings.length ? leanings.join(', ') : 'undefined';
+}
+
+// scoring helpers: read a perception fact / worldview axis by stable id (0 if absent).
+const fv = (p: PerceptionFact[], id: string): number => p.find((f) => f.id === id)?.value ?? 0;
+const wvv = (w: Worldview, id: string): number => w[id] ?? 0;
+const r = Math.round;
+
+/**
+ * The candidate INTENTS an organization may form, each scored as inspectable weighted
+ * factors. A score function reads ONLY perception + worldview + the org's own record —
+ * never the World (the signature enforces it). The factors SUM to the intent's score; the
+ * engine picks the highest and records the whole justification. `remain_neutral` carries a
+ * gentle baseline so a quiet org always has a default posture.
+ */
+export const INTENTS: IntentDef[] = [
+  {
+    id: 'remain_neutral', displayName: 'Remain Neutral', category: 'posture',
+    description: 'Hold steady and tend to internal affairs.',
+    score: (p, w) => [
+      { id: 'isolationist_lean', group: 'disposition', value: r(wvv(w, 'isolationist') * 0.2) },
+      { id: 'internal_calm', group: 'internal', value: r(Math.max(0, fv(p, 'stability')) * 0.1) },
+      { id: 'baseline', group: 'baseline', value: 8 },
+    ],
+  },
+  {
+    id: 'expand', displayName: 'Expand', category: 'outward',
+    description: 'Seek new territory or influence beyond the current borders.',
+    score: (p, w) => [
+      { id: 'expansionist_lean', group: 'disposition', value: r(wvv(w, 'expansionist') * 0.3) },
+      { id: 'neighbour_weakness', group: 'military', value: r(fv(p, 'neighbor_weakness') * 0.3) },
+      { id: 'food_surplus', group: 'economy', value: r(Math.max(0, fv(p, 'food_security') - 50) * 0.3) },
+    ],
+  },
+  {
+    id: 'prepare_war', displayName: 'Prepare for War', category: 'military',
+    description: 'Mobilise against a perceived threat.',
+    score: (p, w) => [
+      { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.3) },
+      { id: 'border_raids', group: 'military', value: r(fv(p, 'border_raids') * 10) },
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.2) },
+    ],
+  },
+  {
+    id: 'protect_border', displayName: 'Protect the Border', category: 'military',
+    description: 'Shore up defences without seeking conflict.',
+    score: (p) => [
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.3) },
+      { id: 'border_raids', group: 'military', value: r(fv(p, 'border_raids') * 6) },
+      { id: 'instability', group: 'internal', value: r(Math.max(0, -fv(p, 'stability')) * 0.1) },
+    ],
+  },
+  {
+    id: 'trade', displayName: 'Pursue Trade', category: 'economy',
+    description: 'Grow through commerce with neighbours.',
+    score: (p, w) => [
+      { id: 'mercantile_lean', group: 'disposition', value: r(wvv(w, 'mercantile') * 0.35) },
+      { id: 'provision', group: 'economy', value: r(fv(p, 'food_security') * 0.15) },
+      { id: 'peaceful_borders', group: 'military', value: r(Math.max(0, 20 - fv(p, 'border_hostility')) * 0.1) },
+    ],
+  },
+  {
+    id: 'recruit', displayName: 'Recruit', category: 'internal',
+    description: 'Grow the ranks — drawing in members and strength.',
+    score: (p, w) => [
+      { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.2) },
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.15) },
+      { id: 'population_base', group: 'internal', value: r(Math.min(40, fv(p, 'own_strength') * 0.1)) },
+    ],
+  },
+];
+
+export function intentById(id: string): IntentDef | undefined {
+  return INTENTS.find((d) => d.id === id);
+}
+/** Display label for an intent id (falls back to the id). */
+export function intentLabel(id: string): string {
+  return intentById(id)?.displayName ?? id;
 }
 
 export function speciesById(id: string): Species {

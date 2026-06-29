@@ -20,6 +20,8 @@ import {
   type SettlementDetail,
   type PlayerView,
   type PlayerTargetView,
+  type OrgId,
+  type OrgIntentView,
   DAYS_PER_YEAR,
 } from './model';
 import { type Intent } from './intent';
@@ -38,13 +40,14 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
 import { getOrganization, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
+import { orgIntentYearly } from './orgReason';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
@@ -114,6 +117,7 @@ export function createWorld(seed: number, focus = true): World {
     organizations: [],
     organizationsById: new Map(),
     orgMembers: new Map(),
+    currentIntent: new Map(),
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -166,6 +170,7 @@ export function stepTick(world: World): void {
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
     if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
     if (hasFocus) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
+    orgIntentYearly(world); // organizations form their collective intent (Perception→Worldview→Intent)
     if (hasFocus) pruneRelationshipGraph(world); // drop expired, non-milestone acquaintances
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
@@ -322,6 +327,26 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
   return { settlementId: id, events };
 }
 
+/** Build the legible reasoning view from an org's stored decision — stable factor/fact ids
+ *  resolved to display text. Undefined until the org has reasoned (first yearly tick). */
+function orgReasoningView(world: World, orgId: OrgId): OrgIntentView | undefined {
+  const decision = world.currentIntent.get(orgId);
+  if (!decision) return undefined;
+  const humanize = (id: string) => id.replace(/_/g, ' ');
+  return {
+    worldview: worldviewReading(decision.worldview),
+    intent: intentLabel(decision.kind),
+    intentDescription: intentById(decision.kind)?.description ?? '',
+    score: Math.round(decision.score),
+    factors: decision.factors.map((f) => ({ label: humanize(f.id), value: f.value, group: f.group })),
+    alternatives: decision.alternatives
+      .filter((a) => a.kind !== decision.kind)
+      .sort((x, y) => y.score - x.score)
+      .map((a) => ({ label: intentLabel(a.kind), score: Math.round(a.score) })),
+    perception: decision.perception.map((p) => ({ label: humanize(p.id), value: p.value, confidence: p.confidence })),
+  };
+}
+
 function settlementView(world: World, fullCount: number, summariesByHome: Map<number, string[]>): SettlementView[] {
   return world.settlements.map((s) => {
     const pop = s.detailed ? fullCount : s.macro.population;
@@ -354,6 +379,8 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
           leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
+          // the focused polity's current reasoning, made legible (the 2C deliverable)
+          reasoning: s.id === world.focusedSettlementId ? orgReasoningView(world, org.id) : undefined,
         };
       })(),
       specialization: s.econ.specialization,
@@ -840,7 +867,9 @@ export function canonicalize(world: World): string {
     const roster = (world.orgMembers.get(o.id) ?? [])
       .map((m) => `${m.role}@${m.actorId}:${m.sinceTick}-${m.untilTick ?? -1}`)
       .join(',');
-    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.mem[${roster}]`);
+    const intent = world.currentIntent.get(o.id);
+    const intentDigest = intent ? `${intent.kind}@${Math.round(intent.score)}` : '-';
+    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.mem[${roster}].int${intentDigest}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);
