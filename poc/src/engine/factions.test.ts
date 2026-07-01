@@ -16,7 +16,7 @@ import { createWorld, runYears } from './sim';
 import { fullActors, allEvents } from './world';
 import { factionOf, factionYearly, EXILE_RETURN_YEARS } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
-import { DAYS_PER_YEAR } from './model';
+import { DAYS_PER_YEAR, type World, type WorldEvent, type ExileRecord, type EntityId } from './model';
 
 // A seed whose focused settlement runs the full civil-war arc, re-pinned after Phase 2D
 // (organizational actions now feed the Director, shifting seed-tuned drama timelines — see
@@ -27,6 +27,39 @@ const CIVIL_WAR_SEED = 3;
 const CONTESTED_YEAR = 90;
 const CIVIL_WAR_YEAR = 100;
 const RETURN_FROM_EXILE_YEAR = 120;
+
+/**
+ * The seed-3 history, simulated ONCE and captured at the three checkpoint years.
+ * runYears is incremental, so advancing one world 90 → 100 → 120 is identical to
+ * three fresh runs (that equivalence is what the determinism suite holds) — but it
+ * costs one 120-year simulation instead of ~830 simulated years across the tests
+ * below. Event compaction can discard old events later, and return-from-exile
+ * prunes world.exiles, so each checkpoint snapshots the state its tests inspect.
+ * Every consumer is read-only.
+ */
+interface CivilWarArc {
+  at90: { events: WorldEvent[] };
+  at100: { events: WorldEvent[]; exiles: Map<EntityId, ExileRecord>; civilWarTick: number | undefined };
+  /** the live world at RETURN_FROM_EXILE_YEAR */
+  w: World;
+}
+let arc: CivilWarArc | undefined;
+function civilWarArc(): CivilWarArc {
+  if (!arc) {
+    const w = createWorld(CIVIL_WAR_SEED);
+    runYears(w, CONTESTED_YEAR);
+    const at90 = { events: allEvents(w) };
+    runYears(w, CIVIL_WAR_YEAR - CONTESTED_YEAR);
+    const at100 = {
+      events: allEvents(w),
+      exiles: new Map(w.exiles),
+      civilWarTick: w.settlements[w.focusedSettlementId].civilWarTick,
+    };
+    runYears(w, RETURN_FROM_EXILE_YEAR - CIVIL_WAR_YEAR);
+    arc = { at90, at100, w };
+  }
+  return arc;
+}
 
 describe('faction split detection', () => {
   it('factionSplit is set after the first yearly tick', () => {
@@ -132,15 +165,13 @@ describe('faction rivalry thoughts', () => {
 
 describe('civil war and exile', () => {
   it('civil_war fires within 120 years (after contested_succession + grace period)', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CIVIL_WAR_YEAR);
-    expect(allEvents(w).some((e) => e.type === 'civil_war')).toBe(true);
+    const { at100 } = civilWarArc();
+    expect(at100.events.some((e) => e.type === 'civil_war')).toBe(true);
   });
 
   it('civil_war event names winner, loser, and settlement; winner ≠ loser', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CIVIL_WAR_YEAR);
-    const ev = allEvents(w).find((e) => e.type === 'civil_war')!;
+    const { at100 } = civilWarArc();
+    const ev = at100.events.find((e) => e.type === 'civil_war')!;
     expect(typeof ev.data.winner).toBe('string');
     expect(typeof ev.data.loser).toBe('string');
     expect(typeof ev.data.settlement).toBe('string');
@@ -148,23 +179,20 @@ describe('civil war and exile', () => {
   });
 
   it('civil_war is always preceded by contested_succession in the full event log', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CIVIL_WAR_YEAR);
-    const events = allEvents(w);
-    const warEv = events.find((e) => e.type === 'civil_war')!;
-    const priorContest = events.find((e) => e.type === 'contested_succession' && e.tick < warEv.tick);
+    const { at100 } = civilWarArc();
+    const warEv = at100.events.find((e) => e.type === 'civil_war')!;
+    const priorContest = at100.events.find((e) => e.type === 'contested_succession' && e.tick < warEv.tick);
     expect(priorContest).toBeDefined();
   });
 
   it('exile event fires, exiled actor leaves the focused settlement, and world.exiles records them', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CIVIL_WAR_YEAR);
-    const exileEv = allEvents(w).find((e) => e.type === 'exile')!;
+    const { at100, w } = civilWarArc();
+    const exileEv = at100.events.find((e) => e.type === 'exile')!;
     const id = exileEv.subjects[0];
     // exile record is in world.exiles
-    expect(w.exiles.has(id)).toBe(true);
+    expect(at100.exiles.has(id)).toBe(true);
     // exile record has expected fields
-    const rec = w.exiles.get(id)!;
+    const rec = at100.exiles.get(id)!;
     expect(typeof rec.axis).toBe('string');
     expect(typeof rec.factionName).toBe('string');
     expect(typeof rec.year).toBe('number');
@@ -175,23 +203,20 @@ describe('civil war and exile', () => {
   });
 
   it('civil war clock clears to undefined after war resolves', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CIVIL_WAR_YEAR);
-    expect(w.settlements[w.focusedSettlementId].civilWarTick).toBeUndefined();
+    const { at100 } = civilWarArc();
+    expect(at100.civilWarTick).toBeUndefined();
   });
 });
 
 describe('contested succession', () => {
   it('contested_succession fires when a ruler change crosses faction lines', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CONTESTED_YEAR);
-    expect(allEvents(w).some((e) => e.type === 'contested_succession')).toBe(true);
+    const { at90 } = civilWarArc();
+    expect(at90.events.some((e) => e.type === 'contested_succession')).toBe(true);
   });
 
   it('contested_succession event names both factions and the settlement', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CONTESTED_YEAR);
-    const ev = allEvents(w).find((e) => e.type === 'contested_succession')!;
+    const { at90 } = civilWarArc();
+    const ev = at90.events.find((e) => e.type === 'contested_succession')!;
     expect(typeof ev.data.newFaction).toBe('string');
     expect(typeof ev.data.oldFaction).toBe('string');
     expect(typeof ev.data.settlement).toBe('string');
@@ -201,8 +226,7 @@ describe('contested succession', () => {
 
 describe('return from exile', () => {
   it('return_from_exile fires after EXILE_RETURN_YEARS, always preceded by an exile event', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, RETURN_FROM_EXILE_YEAR);
+    const { w } = civilWarArc();
     const events = allEvents(w);
     const returnEv = events.find((e) => e.type === 'return_from_exile')!;
     const id = returnEv.subjects[0];
@@ -215,18 +239,15 @@ describe('return from exile', () => {
   });
 
   it('returned exile is removed from world.exiles', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, RETURN_FROM_EXILE_YEAR);
+    const { w } = civilWarArc();
     const returnEv = allEvents(w).find((e) => e.type === 'return_from_exile')!;
     const id = returnEv.subjects[0];
     expect(w.exiles.has(id)).toBe(false);
   });
 
   it('returned actor is back in the focused settlement', () => {
-    const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, RETURN_FROM_EXILE_YEAR);
-    const events = allEvents(w);
-    const returnEv = events.find((e) => e.type === 'return_from_exile')!;
+    const { w } = civilWarArc();
+    const returnEv = allEvents(w).find((e) => e.type === 'return_from_exile')!;
     const id = returnEv.subjects[0];
     // if the actor is still alive, they should be in the focused settlement or dead
     const lc = w.lifecycle.get(id);

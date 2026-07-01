@@ -32,6 +32,32 @@ const roundTrip = (w: World): World => deserializeWorld(JSON.parse(JSON.stringif
 const ORG_FIXTURE_SEED = 8;
 const ORG_FIXTURE_YEARS = 60;
 
+/**
+ * The seed-8 world after 60 years, built ONCE and shared by every test that only
+ * reads it (successions, dissolutions, snapshots, save/load round-trips — roundTrip
+ * and hashWorld are pure). Fields that must be sampled BEFORE the run (the founding
+ * polity's identity) are captured at build time. Rebuilding this world per test was
+ * most of this file's runtime.
+ */
+interface OrgFixture {
+  w: World;
+  orgId: number;
+  id0: number;
+  seat0: number | undefined;
+  leader0: number | undefined;
+}
+let fixture: OrgFixture | undefined;
+function orgFixture(): OrgFixture {
+  if (!fixture) {
+    const w = createWorld(ORG_FIXTURE_SEED);
+    const orgId = w.settlements[w.focusedSettlementId].polityId!;
+    const org = getOrganization(w, orgId)!;
+    fixture = { w, orgId, id0: org.id, seat0: org.seatId, leader0: org.leaderId };
+    runYears(w, ORG_FIXTURE_YEARS);
+  }
+  return fixture;
+}
+
 describe('Organizations exist as first-class entities', () => {
   it('every governed settlement hosts a Polity; leaderless settlements do not', () => {
     const w = createWorld(1);
@@ -69,14 +95,7 @@ describe('Organizations exist as first-class entities', () => {
   });
 
   it('succession operates on the organization: its leader changes while its identity endures', () => {
-    const w = createWorld(ORG_FIXTURE_SEED);
-    const s = w.settlements[w.focusedSettlementId];
-    const orgId = s.polityId!;
-    const org = getOrganization(w, orgId)!;
-    const id0 = org.id;
-    const seat0 = org.seatId;
-    const leader0 = org.leaderId;
-    runYears(w, ORG_FIXTURE_YEARS);
+    const { w, orgId, id0, seat0, leader0 } = orgFixture();
     const orgAfter = getOrganization(w, orgId)!;
     // the org is the SAME entity (id + seat stable), even as leadership turns over
     expect(orgAfter.id).toBe(id0);
@@ -128,8 +147,7 @@ describe('Organizations: visibility & persistence', () => {
   });
 
   it('round-trips organizations through save/load identically', () => {
-    const w = createWorld(8);
-    runYears(w, 40);
+    const { w } = orgFixture();
     const loaded = roundTrip(w);
     expect(hashWorld(loaded)).toBe(hashWorld(w)); // orgs are in the determinism hash
     expect(loaded.organizations.length).toBe(w.organizations.length);
@@ -146,13 +164,8 @@ describe('Organizations: visibility & persistence', () => {
     }
   });
 
-  it('two fresh worlds with the same seed have identical organizations', () => {
-    const a = createWorld(9);
-    const b = createWorld(9);
-    runYears(a, 60);
-    runYears(b, 60);
-    expect(hashWorld(a)).toBe(hashWorld(b));
-  });
+  // 'two fresh worlds with the same seed have identical organizations' lives in
+  // sim.determinism.orgs.test.ts — the fast suite excludes double 60-year runs.
 
   it('a hand-built generic organization can exist (the framework is universe-agnostic)', () => {
     const w = createWorld(10);
@@ -185,9 +198,7 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('succession turns the leadership over: old record closes, the org remembers the line', () => {
-    const w = createWorld(ORG_FIXTURE_SEED);
-    const orgId = w.settlements[w.focusedSettlementId].polityId!;
-    runYears(w, ORG_FIXTURE_YEARS);
+    const { w, orgId } = orgFixture();
     const history = roleHistory(w, orgId, ROLE_LEADER);
     expect(history.length).toBeGreaterThanOrEqual(2);
     // exactly one leader is currently open; all earlier ones are closed
@@ -231,8 +242,7 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('dissolving an org closes its whole roster but keeps the records', () => {
-    const w = createWorld(ORG_FIXTURE_SEED);
-    runYears(w, ORG_FIXTURE_YEARS);
+    const { w } = orgFixture();
     const dissolved = w.organizations.find((o) => o.dissolvedYear !== undefined)!;
     const open = currentMembers(w, dissolved.id);
     expect(open.length).toBe(0); // nothing currently held
@@ -240,16 +250,14 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('surfaces founder and leader-count in the snapshot polity view', () => {
-    const w = createWorld(ORG_FIXTURE_SEED);
-    runYears(w, ORG_FIXTURE_YEARS);
+    const { w } = orgFixture();
     const sv = buildSnapshot(w).settlements[w.focusedSettlementId];
     expect(sv.polity).toBeDefined();
     expect(sv.polity!.leaderCount).toBeGreaterThanOrEqual(1);
   });
 
   it('round-trips the membership roster through save/load identically', () => {
-    const w = createWorld(8);
-    runYears(w, 80);
+    const { w } = orgFixture(); // 60y is enough: the succession test proves ≥2 leaders by then
     const loaded = roundTrip(w);
     expect(hashWorld(loaded)).toBe(hashWorld(w)); // roster is in the determinism hash
     for (const org of w.organizations) {

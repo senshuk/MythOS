@@ -102,17 +102,8 @@ describe('Every intent is a complete, valid justification (intent validator)', (
 });
 
 describe('Reasoning is deterministic and persisted', () => {
-  it('two fresh worlds with the same seed reason identically', () => {
-    const a = createWorld(7);
-    const b = createWorld(7);
-    runYears(a, 60);
-    runYears(b, 60);
-    expect(hashWorld(a)).toBe(hashWorld(b));
-    // and the stored decisions match object-for-object
-    for (const org of a.organizations) {
-      expect(b.currentIntent.get(org.id)).toEqual(a.currentIntent.get(org.id));
-    }
-  });
+  // 'two fresh worlds with the same seed reason identically' lives in
+  // sim.determinism.orgs.test.ts — the fast suite excludes double 60-year runs.
 
   it('round-trips currentIntent through save/load identically', () => {
     const w = createWorld(8);

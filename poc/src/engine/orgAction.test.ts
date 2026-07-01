@@ -112,17 +112,8 @@ describe('Execution: cooldown, determinism, persistence', () => {
     expect(w.lastAction.get(orgId)!.sinceTick).toBe(firstTick); // it did not act again
   });
 
-  it('two fresh worlds with the same seed execute identically', () => {
-    const a = createWorld(7);
-    const b = createWorld(7);
-    runYears(a, 60);
-    runYears(b, 60);
-    expect(hashWorld(a)).toBe(hashWorld(b));
-    for (const org of a.organizations) {
-      expect(b.operationalState.get(org.id)).toEqual(a.operationalState.get(org.id));
-      expect(b.lastAction.get(org.id)).toEqual(a.lastAction.get(org.id));
-    }
-  });
+  // 'two fresh worlds with the same seed execute identically' lives in
+  // sim.determinism.orgs.test.ts — the fast suite excludes double 60-year runs.
 
   it('round-trips operational state + last action through save/load', () => {
     const w = createWorld(8);
