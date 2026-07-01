@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -70,6 +70,10 @@ export interface SaveFile {
   /** per-org current reasoning record as entries. Optional for saves predating v13;
    *  recomputed on the next yearly tick if absent. */
   currentIntent?: [OrgId, OrgIntent][];
+  /** per-org operational state + last action as entries. Optional for saves predating v14
+   *  (operational state then defaults to baseline; lastAction empty). */
+  operationalState?: [OrgId, OperationalState][];
+  lastAction?: [OrgId, OrgAction][];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -158,6 +162,8 @@ export function serializeWorld(world: World): SaveFile {
     organizations: world.organizations,
     orgMembers: [...world.orgMembers],
     currentIntent: [...world.currentIntent],
+    operationalState: [...world.operationalState],
+    lastAction: [...world.lastAction],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -182,7 +188,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12 && s.version !== 13) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -297,6 +303,16 @@ export function deserializeWorld(s: SaveFile): World {
     }
   }
 
+  // v13 → v14 (execution): operational state defaults to the pack baseline per org; the
+  // last-action log is empty (no actions had been executed under an older engine).
+  const operationalState = new Map<OrgId, OperationalState>();
+  if (s.operationalState) {
+    for (const [id, st] of s.operationalState) operationalState.set(id, st);
+  } else {
+    for (const org of organizations) operationalState.set(org.id, baselineOperational());
+  }
+  const lastAction = new Map<OrgId, OrgAction>(s.lastAction ?? []);
+
   return {
     seed: s.seed,
     substrate: createSubstrate(s.seed), // not serialized — regenerated identically from seed
@@ -381,6 +397,8 @@ export function deserializeWorld(s: SaveFile): World {
     orgMembers,
     // pre-v13 saves carry no reasoning record; it is recomputed on the next yearly tick.
     currentIntent: new Map(s.currentIntent ?? []),
+    operationalState,
+    lastAction,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

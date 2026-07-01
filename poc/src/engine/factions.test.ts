@@ -18,10 +18,15 @@ import { factionOf, factionYearly, EXILE_RETURN_YEARS } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR } from './model';
 
-const CIVIL_WAR_SEED = 8;
-const CONTESTED_YEAR = 42;
-const CIVIL_WAR_YEAR = 52;
-const RETURN_FROM_EXILE_YEAR = 72;
+// A seed whose focused settlement runs the full civil-war arc, re-pinned after Phase 2D
+// (organizational actions now feed the Director, shifting seed-tuned drama timelines — see
+// design/15 invariants 8–9). For seed 3 the live-sim years are: contested ~82, civil war /
+// exile ~92, return ~112. CIVIL_WAR_YEAR sits between exile and return so the exile record
+// is still present when that test inspects it (return prunes it at exile + EXILE_RETURN_YEARS).
+const CIVIL_WAR_SEED = 3;
+const CONTESTED_YEAR = 90;
+const CIVIL_WAR_YEAR = 100;
+const RETURN_FROM_EXILE_YEAR = 120;
 
 describe('faction split detection', () => {
   it('factionSplit is set after the first yearly tick', () => {

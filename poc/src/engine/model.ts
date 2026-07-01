@@ -311,6 +311,69 @@ export interface IntentDef {
   score(perception: PerceptionFact[], worldview: Worldview, org: Organization): IntentFactor[];
 }
 
+// ---- organizational execution (Phase 2D: Intent → Action → Outcome → History) -
+// Reasoning is inert; EXECUTION turns the stored intent into a bounded action that can
+// change the organization (never geography), with a feasibility gate, a pure outcome, and
+// — only on a real outcome — a history Event. `resolve` decides; `applyEffects` mutates.
+
+/** An organization's mutable OPERATIONAL condition — pack-keyed measures (strength,
+ *  readiness, morale), the org analogue of actor Needs. Deliberately SEPARATE from the
+ *  Organization record (which is identity-only): this is the state the behaviour layer
+ *  moves. Named OperationalState, not "OrgState", because "state" is overloaded. */
+export type OperationalState = Record<string, number>;
+
+/**
+ * A structured, inspectable description of a SINGLE mutation an action will cause — data
+ * you can read before it is applied (like the reasoning justification tree). The executor's
+ * `applyEffects` is the only code that interprets these; an action's `resolve` only
+ * DESCRIBES them. Effects touch the org's operational stats, its seat's existing economy/
+ * demographics, adjacent edges, or its reputation — never geography.
+ */
+export type OrgEffect =
+  | { target: 'stat'; key: string; delta: number } // an operational stat
+  | { target: 'wealth'; delta: number } // the seat's econ.wealth
+  | { target: 'stability'; delta: number } // the seat's macro.stability
+  | { target: 'relation'; neighbourId: SettlementId; delta: number } // an edge's relation
+  | { target: 'reputation'; kind: string }; // an org reputation mark
+
+/** The PURE result of resolving an action: whether it succeeded, what it would change, and
+ *  how it reads — with NO mutation performed. The executor applies the effects and emits
+ *  the event separately. (A feasible attempt that reality defeats has success=false and no
+ *  effects — still history: "attempted, failed".) */
+export interface OrgOutcome {
+  success: boolean;
+  effects: OrgEffect[];
+  summary: string;
+  eventType: string;
+  eventData: Record<string, number | string>;
+}
+
+/** The org's last executed action, for the inspector — carries the applied effects so the
+ *  UI can show exactly what changed. */
+export interface OrgAction {
+  id: string;
+  intentKind: string;
+  outcome: 'success' | 'failure';
+  effects: OrgEffect[];
+  summary: string;
+  sinceTick: number;
+}
+
+/**
+ * A pack-defined candidate ACTION + how to attempt it. Mirrors `IntentDef`: the pack
+ * supplies the vocabulary and behaviour; the engine runs the pipeline. `feasible` is the
+ * "can I do it?" gate (an infeasible attempt is NOT history). `resolve` is PURE — it
+ * decides the outcome and describes the effects but mutates nothing; the engine applies and
+ * emits. An action reads only the org, its operational state, its seat, and adjacent edges.
+ */
+export interface ActionDef {
+  id: string;
+  displayName: string;
+  description: string;
+  feasible(world: World, org: Organization, state: OperationalState): { ok: boolean; reason?: string };
+  resolve(world: World, org: Organization, state: OperationalState): OrgOutcome;
+}
+
 /**
  * A structured, dated, entity-referencing record of something that happened.
  * Text is NOT stored here — it is rendered from this structure on demand (see
@@ -722,6 +785,12 @@ export interface World {
    *  cycle and why. Recomputed yearly (orgReason.ts). Named `currentIntent` to leave room
    *  for an intent-history layer later. */
   currentIntent: Map<OrgId, OrgIntent>;
+  /** per-organization mutable operational condition (strength/readiness/morale), moved by
+   *  the execution layer (orgAction.ts). Seeded at founding. */
+  operationalState: Map<OrgId, OperationalState>;
+  /** the last action each organization executed — its outcome + applied effects, for the
+   *  inspector. Set by orgAction.ts. */
+  lastAction: Map<OrgId, OrgAction>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -921,6 +990,11 @@ export interface SettlementView {
     leaderCount: number;
     standing: number;
     reasoning?: OrgIntentView;
+    /** the org's operational condition (strength/readiness/morale) — the state the
+     *  execution layer moves. */
+    operational?: Record<string, number>;
+    /** the last action the org executed, made legible. */
+    lastAction?: { summary: string; outcome: string; year: number };
   };
   // economy
   specialization: Specialization;

@@ -1303,6 +1303,12 @@ function Inspector({
               </details>
             </div>
           )}
+          {settV?.polity?.operational && (
+            <p className="polity-operational muted">
+              {Object.entries(settV.polity.operational).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}
+              {settV.polity.lastAction ? ` — last: ${settV.polity.lastAction.summary} (y${settV.polity.lastAction.year})` : ''}
+            </p>
+          )}
           {settV?.patronDeity && (
             <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
           )}

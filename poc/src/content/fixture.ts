@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, World, Settlement } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -736,6 +736,146 @@ export function intentById(id: string): IntentDef | undefined {
 export function intentLabel(id: string): string {
   return intentById(id)?.displayName ?? id;
 }
+
+// ----------------------------------------------- organizational execution -----
+// PACK VOCABULARY for Phase 2D. The engine (engine/orgAction.ts) runs the pipeline
+// intent → action → feasibility → outcome → effects → history. Everything universe-
+// specific lives here: the operational measures an org tracks, the candidate ACTIONS
+// (each a pure resolver returning effect DESCRIPTORS), and which intent maps to which
+// action. Actions change the ORGANISATION, never geography (a 2D charter rule).
+
+/** The operational measures an organization tracks — the org analogue of actor needs. */
+export const OPERATIONAL_KEYS = ['strength', 'readiness', 'morale'] as const;
+/** Baseline operational condition seeded at an org's founding (clamped [0,100]). */
+export function baselineOperational(): Record<string, number> {
+  return { strength: 20, readiness: 20, morale: 50 };
+}
+
+// read-only helpers over world state (the pack only READS + describes; the engine mutates)
+const actSeat = (world: World, seatId: number | undefined): Settlement | undefined =>
+  (seatId === undefined ? undefined : world.settlements[seatId]);
+const foodYears = (s: Settlement): number => (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / Math.max(s.macro.population, 1);
+
+/** Neighbours of a seat in the region graph, as [otherSettlement, edge]. */
+function seatNeighbours(world: World, seatId: number): { other: Settlement; relation: number }[] {
+  const out: { other: Settlement; relation: number }[] = [];
+  for (const e of world.edges) {
+    const other = e.a === seatId ? e.b : e.b === seatId ? e.a : undefined;
+    if (other === undefined) continue;
+    const os = world.settlements[other];
+    if (os && os.ruinedYear === undefined) out.push({ other: os, relation: e.relation });
+  }
+  return out;
+}
+
+/**
+ * The candidate ACTIONS an organization can execute — bounded, reversible, org-only. Each
+ * `resolve` is PURE: it returns a success/failure outcome plus effect DESCRIPTORS; the
+ * engine's applyEffects performs the mutation and emits the event. Effects touch the org's
+ * operational stats, its seat's existing economy/demographics, adjacent edges, or its
+ * reputation — never geography.
+ */
+export const ACTIONS: ActionDef[] = [
+  {
+    id: 'recruit', displayName: 'Recruit', description: 'Raise levies to swell the org’s strength.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      return foodYears(s) >= 2 ? { ok: true } : { ok: false, reason: 'too little food to raise levies' };
+    },
+    resolve: (world, org) => {
+      const s = actSeat(world, org.seatId)!;
+      const levies = Math.max(1, Math.round(Math.max(s.macro.population, 1) * 0.02));
+      return {
+        success: true,
+        effects: [ { target: 'stat', key: 'strength', delta: 8 }, { target: 'wealth', delta: -20 } ],
+        summary: `raised ${levies} levies`,
+        eventType: 'org_recruited', eventData: { org: org.name, levies },
+      };
+    },
+  },
+  {
+    id: 'fortify', displayName: 'Fortify', description: 'Strengthen defences against a perceived threat.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      return s.econ.wealth >= 30 ? { ok: true } : { ok: false, reason: 'too poor to build defences' };
+    },
+    resolve: (_world, org) => ({
+      success: true,
+      effects: [ { target: 'stat', key: 'readiness', delta: 10 }, { target: 'wealth', delta: -25 } ],
+      summary: 'strengthened its defences',
+      eventType: 'org_fortified', eventData: { org: org.name },
+    }),
+  },
+  {
+    id: 'patrol', displayName: 'Patrol', description: 'Set patrols on the marches to steady the border.',
+    feasible: (world, org) => (org.seatId !== undefined && seatNeighbours(world, org.seatId).length > 0
+      ? { ok: true } : { ok: false, reason: 'no borders to patrol' }),
+    resolve: (world, org) => {
+      const ns = seatNeighbours(world, org.seatId!);
+      const worst = ns.reduce((a, b) => (b.relation < a.relation ? b : a));
+      return {
+        success: true,
+        effects: [ { target: 'stat', key: 'readiness', delta: 6 }, { target: 'relation', neighbourId: worst.other.id, delta: 2 } ],
+        summary: 'set patrols on the marches',
+        eventType: 'org_patrol', eventData: { org: org.name },
+      };
+    },
+  },
+  {
+    id: 'trade', displayName: 'Trade', description: 'Open commerce with a friendly neighbour.',
+    feasible: (world, org) => {
+      if (org.seatId === undefined) return { ok: false, reason: 'no seat' };
+      return seatNeighbours(world, org.seatId).some((n) => n.relation >= 0)
+        ? { ok: true } : { ok: false, reason: 'no neighbour to trade with' };
+    },
+    resolve: (world, org) => {
+      const best = seatNeighbours(world, org.seatId!).filter((n) => n.relation >= 0).reduce((a, b) => (b.relation > a.relation ? b : a));
+      return {
+        success: true,
+        effects: [ { target: 'wealth', delta: 30 }, { target: 'relation', neighbourId: best.other.id, delta: 5 } ],
+        summary: `opened a trade pact with ${best.other.name}`,
+        eventType: 'org_trade_pact', eventData: { org: org.name, with: best.other.name },
+      };
+    },
+  },
+  {
+    id: 'hold_festival', displayName: 'Hold a Festival', description: 'Spend on a public festival to lift morale and renown.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      return s.econ.wealth >= 25 && foodYears(s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
+    },
+    resolve: (_world, org) => ({
+      success: true,
+      effects: [
+        { target: 'stat', key: 'morale', delta: 12 },
+        { target: 'stability', delta: 4 },
+        { target: 'wealth', delta: -20 },
+        { target: 'reputation', kind: 'generosity' }, // a festival is public munificence
+      ],
+      summary: 'held a great festival',
+      eventType: 'org_festival', eventData: { org: org.name },
+    }),
+  },
+];
+
+export function actionById(id: string): ActionDef | undefined {
+  return ACTIONS.find((a) => a.id === id);
+}
+
+/** Which action each current intent triggers — the (trivial, for now) intent → action map.
+ *  A richer "plan" layer may later decompose one intent into several actions. Note expand
+ *  maps to a bounded recruit (real expansion is geography — deferred to a later milestone). */
+export const INTENT_TO_ACTION: Record<string, string> = {
+  recruit: 'recruit',
+  expand: 'recruit',
+  prepare_war: 'fortify',
+  protect_border: 'patrol',
+  trade: 'trade',
+  remain_neutral: 'hold_festival',
+};
 
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;

@@ -30,7 +30,7 @@ import {
 } from './model';
 import { emit } from './world';
 import { getLocation } from './location';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
 // ---- registry --------------------------------------------------------------
 
@@ -99,6 +99,8 @@ export function foundPolity(world: World, s: Settlement, year: number): OrgId {
     seatId: s.id,
   });
   s.polityId = id;
+  // seed the org's baseline operational condition (strength/readiness/morale).
+  world.operationalState.set(id, baselineOperational());
   // institutional memory: the founder is recorded as both founder and first leader.
   if (s.currentRulerId !== undefined) {
     enroll(world, id, s.currentRulerId, ROLE_FOUNDER);
