@@ -48,6 +48,7 @@ import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
+import { orgInteractionYearly } from './orgInteraction';
 import { orgActionYearly } from './orgAction';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -122,6 +123,8 @@ export function createWorld(seed: number, focus = true): World {
     operationalState: new Map(),
     lastAction: new Map(),
     orgTreasury: new Map(),
+    orgAgreements: [],
+    lastInteraction: new Map(),
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -176,7 +179,8 @@ export function stepTick(world: World): void {
     if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
     if (hasFocus) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
     orgIntentYearly(world); // organizations form their collective intent (Perception→Worldview→Intent)
-    orgActionYearly(world); // ...and execute it as a bounded action (Intent→Action→Outcome→History)
+    orgInteractionYearly(world); // ...address proposals to their neighbours (Proposal→Evaluation→Outcome)
+    orgActionYearly(world); // ...and execute a bounded domestic action (Intent→Action→Outcome→History)
     if (hasFocus) pruneRelationshipGraph(world); // drop expired, non-milestone acquaintances
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
@@ -395,6 +399,17 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           lastAction: (() => {
             const la = world.lastAction.get(org.id);
             return la ? { summary: la.summary, outcome: la.outcome, year: Math.floor(la.sinceTick / DAYS_PER_YEAR) } : undefined;
+          })(),
+          agreements: world.orgAgreements
+            .filter((g) => g.expiresTick > world.tick && (g.a === org.id || g.b === org.id))
+            .map((g) => ({
+              kind: g.kind,
+              with: getOrganization(world, g.a === org.id ? g.b : g.a)?.name ?? 'a fallen power',
+              untilYear: Math.floor(g.expiresTick / DAYS_PER_YEAR),
+            })),
+          lastInteraction: (() => {
+            const li = world.lastInteraction.get(org.id);
+            return li ? { summary: li.summary, year: Math.floor(li.sinceTick / DAYS_PER_YEAR) } : undefined;
           })(),
         };
       })(),
@@ -892,10 +907,16 @@ export function canonicalize(world: World): string {
     let orgRelSum = 0;
     const orgEdges = world.rels.get(o.id);
     if (orgEdges) for (const [, e] of orgEdges) orgRelSum += computeOpinion(e, world.tick);
+    const li = world.lastInteraction.get(o.id);
+    const interDigest = li ? `${li.kind}.${li.role}.${li.accepted ? 1 : 0}.w${li.withOrg}.t${li.sinceTick}` : '-';
     parts.push(
       `O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.` +
-        `ty${Math.round(treasuryOf(world, o.id))}.orels${orgEdges?.size ?? 0}.orsum${Math.round(orgRelSum)}.mem[${roster}].int${intentDigest}.ops[${opsDigest}].act${actDigest}`,
+        `ty${Math.round(treasuryOf(world, o.id))}.orels${orgEdges?.size ?? 0}.orsum${Math.round(orgRelSum)}.mem[${roster}].int${intentDigest}.ops[${opsDigest}].act${actDigest}.dip${interDigest}`,
     );
+  }
+  // standing agreements (2E) — normalized a<b, in seal order
+  for (const g of world.orgAgreements) {
+    parts.push(`G${g.kind}:${g.a}-${g.b}.s${g.sinceTick}.e${g.expiresTick}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

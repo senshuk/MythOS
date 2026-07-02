@@ -1310,6 +1310,16 @@ function Inspector({
               {settV.polity.lastAction ? ` — last: ${settV.polity.lastAction.summary} (y${settV.polity.lastAction.year})` : ''}
             </p>
           )}
+          {settV?.polity && (settV.polity.agreements.length > 0 || settV.polity.lastInteraction) && (
+            <p className="polity-diplomacy muted">
+              {settV.polity.agreements.length > 0
+                ? `sworn: ${settV.polity.agreements.map((g) => `${g.kind === 'non_aggression' ? 'peace' : 'trade'} with ${g.with} (to y${g.untilYear})`).join(' · ')}`
+                : ''}
+              {settV.polity.lastInteraction
+                ? `${settV.polity.agreements.length > 0 ? ' — ' : ''}${settV.polity.lastInteraction.summary} (y${settV.polity.lastInteraction.year})`
+                : ''}
+            </p>
+          )}
           {settV?.patronDeity && (
             <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
           )}

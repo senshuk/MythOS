@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, World, Settlement, Organization } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -881,6 +881,175 @@ export const INTENT_TO_ACTION: Record<string, string> = {
   remain_neutral: 'hold_festival',
 };
 
+// ----------------------------------------------- organizational interaction ---
+// PACK VOCABULARY for Phase 2E. The engine (engine/orgInteraction.ts) runs one pipeline —
+// proposal → evaluation → outcome — and understands nothing else: it does not know what an
+// "alliance" or a "tribute" IS. These defs supply that meaning. `propose`/`outcome` follow
+// the ActionDef precedent (read to describe, never mutate); `evaluate` is signature-bounded
+// (recipient's own perception/worldview/stance only — design/16 principle 3).
+
+/** Engine-level tuning for the interaction pipeline (cooldowns, standing-thought kinds). */
+export const ORG_INTERACTION = {
+  cooldownYears: 5, // years between an org's interactions (diplomacy is deliberate)
+  agreementYears: 20, // how long a sealed pact stands before it lapses
+  acceptThought: 'accord', // org-scale thought sown on the pair when a proposal is accepted
+  refuseThought: 'spurned', // ...and when it is refused (a wound between the courts)
+};
+
+// helpers over world state (read-only, like the ACTIONS helpers above)
+const relationBetween = (world: World, aSeat: number | undefined, bSeat: number | undefined): number => {
+  if (aSeat === undefined || bSeat === undefined) return 0;
+  for (const e of world.edges) {
+    if ((e.a === aSeat && e.b === bSeat) || (e.a === bSeat && e.b === aSeat)) return e.relation;
+  }
+  return 0;
+};
+const seatPop = (world: World, org: Organization): number =>
+  org.seatId === undefined ? 0 : world.settlements[org.seatId]?.macro.population ?? 0;
+const hasPact = (world: World, kind: string, a: Organization, b: Organization): boolean => {
+  const [x, y] = a.id < b.id ? [a.id, b.id] : [b.id, a.id];
+  return world.orgAgreements.some((g) => g.kind === kind && g.a === x && g.b === y && g.expiresTick > world.tick);
+};
+
+export const INTERACTIONS: InteractionDef[] = [
+  {
+    id: 'trade_agreement', displayName: 'Trade Agreement',
+    description: 'Propose favoured commerce with a friendly neighbour.',
+    propose: (world, from, candidates) => {
+      // the friendliest neighbour not already under pact — commerce follows warmth
+      let best: Organization | undefined;
+      let bestRel = -1;
+      for (const c of candidates) {
+        if (hasPact(world, 'trade_agreement', from, c)) continue;
+        const rel = relationBetween(world, from.seatId, c.seatId);
+        if (rel >= 0 && rel > bestRel) { bestRel = rel; best = c; }
+      }
+      return best ? { to: best.id, terms: { years: ORG_INTERACTION.agreementYears } } : undefined;
+    },
+    evaluate: (p, w, stance, _terms, _from) => [
+      { id: 'mercantile_lean', group: 'disposition', value: Math.round((w.mercantile ?? 0) * 0.3) },
+      { id: 'institutional_stance', group: 'relations', value: Math.round(stance * 0.15) },
+      { id: 'provision', group: 'economy', value: Math.round((p.find((f) => f.id === 'food_security')?.value ?? 0) * 0.1) },
+      { id: 'openness', group: 'baseline', value: 5 },
+    ],
+    outcome: (_world, from, to, terms, accepted) => accepted
+      ? {
+          accepted,
+          effects: to.seatId !== undefined ? [{ party: 'from' as const, effect: { target: 'relation' as const, neighbourId: to.seatId, delta: 6 } }] : [],
+          agreement: { kind: 'trade_agreement', years: Number(terms.years) },
+          summaryFrom: `sealed a trade agreement with the ${to.name}`,
+          summaryTo: `sealed a trade agreement with the ${from.name}`,
+          eventType: 'pact_sealed', eventData: { kind: 'trade', a: from.name, b: to.name },
+        }
+      : {
+          accepted,
+          effects: [],
+          summaryFrom: `saw its trade overture spurned by the ${to.name}`,
+          summaryTo: `declined a trade overture from the ${from.name}`,
+          eventType: 'pact_refused', eventData: { kind: 'trade', a: from.name, b: to.name },
+        },
+  },
+  {
+    id: 'non_aggression', displayName: 'Non-Aggression Pact',
+    description: 'Offer peace along a hostile border.',
+    propose: (world, from, candidates) => {
+      // the MOST hostile neighbour not already under pact — peace is offered where war looms
+      let worst: Organization | undefined;
+      let worstRel = 0;
+      for (const c of candidates) {
+        if (hasPact(world, 'non_aggression', from, c)) continue;
+        const rel = relationBetween(world, from.seatId, c.seatId);
+        if (rel < worstRel) { worstRel = rel; worst = c; }
+      }
+      return worst ? { to: worst.id, terms: { years: ORG_INTERACTION.agreementYears } } : undefined;
+    },
+    evaluate: (p, w, stance, _terms, _from) => [
+      { id: 'isolationist_lean', group: 'disposition', value: Math.round((w.isolationist ?? 0) * 0.2) },
+      { id: 'militaristic_pride', group: 'disposition', value: Math.round(-(w.militaristic ?? 0) * 0.25) },
+      { id: 'battered_borders', group: 'military', value: (p.find((f) => f.id === 'border_raids')?.value ?? 0) * 8 },
+      { id: 'institutional_stance', group: 'relations', value: Math.round(stance * 0.1) },
+      { id: 'war_weariness', group: 'baseline', value: 6 },
+    ],
+    outcome: (_world, from, to, terms, accepted) => accepted
+      ? {
+          accepted,
+          effects: to.seatId !== undefined ? [{ party: 'from' as const, effect: { target: 'relation' as const, neighbourId: to.seatId, delta: 8 } }] : [],
+          agreement: { kind: 'non_aggression', years: Number(terms.years) },
+          summaryFrom: `swore peace with the ${to.name}`,
+          summaryTo: `swore peace with the ${from.name}`,
+          eventType: 'pact_sealed', eventData: { kind: 'peace', a: from.name, b: to.name },
+        }
+      : {
+          accepted,
+          effects: [],
+          summaryFrom: `had its offer of peace thrown back by the ${to.name}`,
+          summaryTo: `refused to swear peace with the ${from.name}`,
+          eventType: 'pact_refused', eventData: { kind: 'peace', a: from.name, b: to.name },
+        },
+  },
+  {
+    id: 'demand_tribute', displayName: 'Demand Tribute',
+    description: 'Extract payment from a weaker neighbour under threat.',
+    propose: (world, from, candidates) => {
+      // the weakest markedly-smaller neighbour — extraction follows expansion pressure
+      const own = seatPop(world, from);
+      let prey: Organization | undefined;
+      let preyPop = Infinity;
+      for (const c of candidates) {
+        const pop = seatPop(world, c);
+        if (pop > 0 && pop < own * 0.7 && pop < preyPop && !hasPact(world, 'non_aggression', from, c)) {
+          preyPop = pop;
+          prey = c;
+        }
+      }
+      if (!prey) return undefined;
+      const hoard = world.orgTreasury.get(prey.id) ?? 0;
+      const amount = Math.max(15, Math.round(hoard * 0.3));
+      return { to: prey.id, terms: { amount, menace: own } };
+    },
+    evaluate: (p, w, stance, terms, _from) => {
+      const own = p.find((f) => f.id === 'own_strength')?.value ?? 0;
+      const menace = Number(terms.menace);
+      return [
+        // fear: the shadow the demander casts, RELATIVE to one's own strength
+        { id: 'fear', group: 'military', value: Math.round(((menace - own) / Math.max(menace + own, 1)) * 60) },
+        { id: 'militaristic_pride', group: 'disposition', value: Math.round(-(w.militaristic ?? 0) * 0.3) },
+        { id: 'institutional_stance', group: 'relations', value: Math.round(stance * 0.05) },
+        { id: 'indignity', group: 'baseline', value: -12 }, // nobody pays gladly
+      ];
+    },
+    outcome: (_world, from, to, terms, accepted) => {
+      const amount = Number(terms.amount);
+      return accepted
+        ? {
+            accepted,
+            effects: [
+              { party: 'to' as const, effect: { target: 'treasury' as const, delta: -amount } },
+              { party: 'from' as const, effect: { target: 'treasury' as const, delta: amount } },
+            ],
+            summaryFrom: `exacted tribute of ${amount} from the ${to.name}`,
+            summaryTo: `paid tribute of ${amount} to the ${from.name}`,
+            eventType: 'tribute_paid', eventData: { a: from.name, b: to.name, amount },
+          }
+        : {
+            accepted,
+            effects: to.seatId !== undefined ? [{ party: 'from' as const, effect: { target: 'relation' as const, neighbourId: to.seatId, delta: -6 } }] : [],
+            summaryFrom: `saw its demand for tribute defied by the ${to.name}`,
+            summaryTo: `defied the ${from.name}'s demand for tribute`,
+            eventType: 'tribute_refused', eventData: { a: from.name, b: to.name, amount },
+          };
+    },
+  },
+];
+
+/** Which interaction each current intent inclines an org toward. Absent intents interact
+ *  with nobody (a neutral or recruiting org keeps to itself); war stays deferred. */
+export const INTENT_TO_INTERACTION: Record<string, string> = {
+  trade: 'trade_agreement',
+  protect_border: 'non_aggression',
+  expand: 'demand_tribute',
+};
+
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;
 }
@@ -1066,6 +1235,9 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   raided: { base: -120, durationTicks: 25 * DAYS_PER_YEAR, stackLimit: 5, mult: 0.9, label: 'blood between our peoples (a raid)' },
   wartorn: { base: -90, durationTicks: 20 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'met in open battle' },
   goodTrade: { base: 25, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 8, mult: 0.9, label: 'a flourishing trade' },
+  // negotiation residue (2E): a sealed accord warms the pair; a spurned proposal wounds it.
+  accord: { base: 60, durationTicks: 15 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'an accord between our courts' },
+  spurned: { base: -45, durationTicks: 10 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'a proposal thrown back' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.

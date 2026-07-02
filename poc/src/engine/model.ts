@@ -375,6 +375,105 @@ export interface ActionDef {
   resolve(world: World, org: Organization, state: OperationalState): OrgOutcome;
 }
 
+// ---- organizational interaction (Phase 2E: Proposal → Evaluation → Outcome) ---
+// Organizations never modify each other directly (design/16). All org↔org change flows
+// through a negotiated pipeline: A DESCRIBES a proposal as data; B evaluates it through
+// ITS OWN bounded perception/worldview/stance (never a global truth); a pure resolver
+// describes the outcome's effects per party; the engine applies them and emits ONE event
+// that both parties' histories cite. The engine understands only proposal→evaluation→
+// outcome; what an "alliance" or a "tribute" IS lives in the pack (INTERACTIONS).
+
+/** A structured, inspectable OFFER from one organization to another — data, never a
+ *  mutation. `kind` is a pack interaction id; `terms` its pack-defined particulars
+ *  (a tribute amount, a pact duration). Ephemeral — resolved the year it is made. */
+export interface InteractionProposal {
+  kind: string;
+  from: OrgId;
+  to: OrgId;
+  terms: Record<string, number | string>;
+  sinceTick: number;
+}
+
+/** One effect of an interaction outcome, tagged with WHICH party it lands on — the
+ *  two-party analogue of OrgEffect (and applied by the same applyEffects mutator). */
+export interface PartyEffect {
+  party: 'from' | 'to';
+  effect: OrgEffect;
+}
+
+/** The PURE result of resolving a proposal: whether it was accepted, what it changes on
+ *  each side, and how EACH party remembers it (two histories from one event). */
+export interface InteractionOutcome {
+  accepted: boolean;
+  effects: PartyEffect[];
+  /** a standing agreement this outcome seals (engine stores it; pack only DESCRIBES). */
+  agreement?: { kind: string; years: number };
+  summaryFrom: string; // how the proposer's history reads it ("secured tribute from X")
+  summaryTo: string; // how the recipient's history reads it ("submitted to X's demand")
+  eventType: EventType;
+  eventData: Record<string, number | string>;
+}
+
+/** A standing AGREEMENT two organizations sealed — the persistent residue of an accepted
+ *  proposal. Engine-neutral: the engine only stores/expires these; which kinds exist and
+ *  what they change (a raid suppressed, a trade route favoured) is pack + system hooks. */
+export interface OrgAgreement {
+  kind: string;
+  a: OrgId; // lower org id (normalized, like RegionEdge)
+  b: OrgId;
+  sinceTick: number;
+  expiresTick: number;
+}
+
+/** How an organization remembers its most recent interaction — ITS OWN side of the story
+ *  (the proposer and the recipient hold different records citing the same event). */
+export interface OrgInteractionRecord {
+  kind: string;
+  withOrg: OrgId;
+  role: 'proposer' | 'recipient';
+  accepted: boolean;
+  summary: string;
+  sinceTick: number;
+  eventId: EventId;
+}
+
+/**
+ * A pack-defined interaction type + how to negotiate it. Mirrors IntentDef/ActionDef: the
+ * pack supplies the vocabulary and behaviour, the engine runs the pipeline. `propose` and
+ * `outcome` follow the ActionDef precedent (they may read the world to describe, never to
+ * mutate); **`evaluate` is signature-bounded like IntentDef.score** — it receives only the
+ * recipient's OWN perception, worldview, and institutional stance toward the proposer, so
+ * a recipient can never assess a deal against global truth (design/16 principle 3).
+ */
+export interface InteractionDef {
+  id: string;
+  displayName: string;
+  description: string;
+  /** Should `from` propose this now, and to whom? The engine supplies the candidate
+   *  neighbour polities (region-graph order); the pack picks a target + terms or declines. */
+  propose(
+    world: World,
+    from: Organization,
+    candidates: Organization[],
+  ): { to: OrgId; terms: Record<string, number | string> } | undefined;
+  /** The recipient's PURE evaluation. A positive factor sum accepts the proposal. */
+  evaluate(
+    perception: PerceptionFact[],
+    worldview: Worldview,
+    stance: number,
+    terms: Record<string, number | string>,
+    from: Organization,
+  ): IntentFactor[];
+  /** PURE outcome description for both the accepted and refused paths — engine applies. */
+  outcome(
+    world: World,
+    from: Organization,
+    to: Organization,
+    terms: Record<string, number | string>,
+    accepted: boolean,
+  ): InteractionOutcome;
+}
+
 /**
  * A structured, dated, entity-referencing record of something that happened.
  * Text is NOT stored here — it is rendered from this structure on demand (see
@@ -797,6 +896,12 @@ export interface World {
    *  tithe on the seat's economy (a real transfer, never minted); spent by the action
    *  layer (an action's 'treasury' effects). */
   orgTreasury: Map<OrgId, number>;
+  /** standing AGREEMENTS between organizations (2E) — the persistent residue of accepted
+   *  proposals, normalized a<b like region edges. Expired entries are pruned yearly. */
+  orgAgreements: OrgAgreement[];
+  /** each org's memory of its most recent interaction — its OWN side of the story (the
+   *  two-histories principle: proposer and recipient keep different records, one event). */
+  lastInteraction: Map<OrgId, OrgInteractionRecord>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -1003,6 +1108,10 @@ export interface SettlementView {
     operational?: Record<string, number>;
     /** the last action the org executed, made legible. */
     lastAction?: { summary: string; outcome: string; year: number };
+    /** standing agreements this polity holds (2E), made legible. */
+    agreements: { kind: string; with: string; untilYear: number }[];
+    /** this org's OWN memory of its last negotiation (two histories, one event). */
+    lastInteraction?: { summary: string; year: number };
   };
   // economy
   specialization: Specialization;
