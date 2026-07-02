@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -603,6 +603,284 @@ export function natureOf(p: Personality): string {
   return words.length ? words.join(', ') : 'unremarkable';
 }
 
+// --------------------------------------------- organizational reasoning -------
+// PACK VOCABULARY for Phase 2C. The engine (engine/orgReason.ts) runs the pipeline
+// Perception → Worldview → Intent; everything universe-specific lives here:
+//   - WORLDVIEW axes and how they read from this pack's member VALUES,
+//   - the candidate INTENTS and their scoring rules (as inspectable weighted factors),
+//   - EVALUATOR_VERSION, stamped on each decision so old saves still explain themselves.
+// A sci-fi pack swaps these out; the engine is unchanged.
+
+/** Bumped whenever the scoring rules below change, so a decision records which ruleset
+ *  produced it (an old save still explains itself: "produced under evaluator vN"). */
+export const EVALUATOR_VERSION = 1;
+
+/** This pack's worldview axes — an organization's derived disposition. */
+export const WORLDVIEW_AXES = ['expansionist', 'isolationist', 'mercantile', 'militaristic', 'religious', 'scholarly'] as const;
+export type WorldviewAxisId = (typeof WORLDVIEW_AXES)[number];
+
+/** How each worldview axis reads from the member VALUE means — a linear blend. The engine
+ *  computes the value means across (living) members; this maps them to worldview. */
+const WORLDVIEW_WEIGHTS: Record<WorldviewAxisId, Partial<Record<ValueAxis, number>>> = {
+  expansionist: { war: 0.6, freedom: 0.4 },
+  isolationist: { tradition: 0.6, freedom: -0.4 },
+  mercantile: { craft: 1.0 },
+  militaristic: { war: 1.0 },
+  religious: { tradition: 0.5, honor: 0.5 },
+  scholarly: { craft: 0.5, nature: 0.5 },
+};
+
+/** Derive a worldview from member value means (each value axis in −100..100). */
+export function worldviewFromValues(valueMean: Record<ValueAxis, number>): Worldview {
+  const wv: Worldview = {};
+  for (const axis of WORLDVIEW_AXES) {
+    let s = 0;
+    const weights = WORLDVIEW_WEIGHTS[axis];
+    for (const v of VALUES) s += (weights[v] ?? 0) * (valueMean[v] ?? 0);
+    wv[axis] = Math.round(s);
+  }
+  return wv;
+}
+
+/** The strongest worldview leanings, as labels — the legible face for the inspector. */
+const WORLDVIEW_WORDS: Record<WorldviewAxisId, string> = {
+  expansionist: 'expansionist',
+  isolationist: 'isolationist',
+  mercantile: 'mercantile',
+  militaristic: 'militaristic',
+  religious: 'devout',
+  scholarly: 'scholarly',
+};
+export function worldviewReading(wv: Worldview): string {
+  const leanings = WORLDVIEW_AXES.map((a) => ({ a, v: wv[a] ?? 0 }))
+    .filter((r) => r.v >= 20)
+    .sort((x, y) => y.v - x.v)
+    .slice(0, 3)
+    .map((r) => WORLDVIEW_WORDS[r.a]);
+  return leanings.length ? leanings.join(', ') : 'undefined';
+}
+
+// scoring helpers: read a perception fact / worldview axis by stable id (0 if absent).
+const fv = (p: PerceptionFact[], id: string): number => p.find((f) => f.id === id)?.value ?? 0;
+const wvv = (w: Worldview, id: string): number => w[id] ?? 0;
+const r = Math.round;
+
+/**
+ * The candidate INTENTS an organization may form, each scored as inspectable weighted
+ * factors. A score function reads ONLY perception + worldview + the org's own record —
+ * never the World (the signature enforces it). The factors SUM to the intent's score; the
+ * engine picks the highest and records the whole justification. `remain_neutral` carries a
+ * gentle baseline so a quiet org always has a default posture.
+ */
+export const INTENTS: IntentDef[] = [
+  {
+    id: 'remain_neutral', displayName: 'Remain Neutral', category: 'posture',
+    description: 'Hold steady and tend to internal affairs.',
+    score: (p, w) => [
+      { id: 'isolationist_lean', group: 'disposition', value: r(wvv(w, 'isolationist') * 0.2) },
+      { id: 'internal_calm', group: 'internal', value: r(Math.max(0, fv(p, 'stability')) * 0.1) },
+      { id: 'baseline', group: 'baseline', value: 8 },
+    ],
+  },
+  {
+    id: 'expand', displayName: 'Expand', category: 'outward',
+    description: 'Seek new territory or influence beyond the current borders.',
+    score: (p, w) => [
+      { id: 'expansionist_lean', group: 'disposition', value: r(wvv(w, 'expansionist') * 0.3) },
+      { id: 'neighbour_weakness', group: 'military', value: r(fv(p, 'neighbor_weakness') * 0.3) },
+      { id: 'food_surplus', group: 'economy', value: r(Math.max(0, fv(p, 'food_security') - 50) * 0.3) },
+    ],
+  },
+  {
+    id: 'prepare_war', displayName: 'Prepare for War', category: 'military',
+    description: 'Mobilise against a perceived threat.',
+    score: (p, w) => [
+      { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.3) },
+      { id: 'border_raids', group: 'military', value: r(fv(p, 'border_raids') * 10) },
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.2) },
+    ],
+  },
+  {
+    id: 'protect_border', displayName: 'Protect the Border', category: 'military',
+    description: 'Shore up defences without seeking conflict.',
+    score: (p) => [
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.3) },
+      { id: 'border_raids', group: 'military', value: r(fv(p, 'border_raids') * 6) },
+      { id: 'instability', group: 'internal', value: r(Math.max(0, -fv(p, 'stability')) * 0.1) },
+    ],
+  },
+  {
+    id: 'trade', displayName: 'Pursue Trade', category: 'economy',
+    description: 'Grow through commerce with neighbours.',
+    score: (p, w) => [
+      { id: 'mercantile_lean', group: 'disposition', value: r(wvv(w, 'mercantile') * 0.35) },
+      { id: 'provision', group: 'economy', value: r(fv(p, 'food_security') * 0.15) },
+      { id: 'peaceful_borders', group: 'military', value: r(Math.max(0, 20 - fv(p, 'border_hostility')) * 0.1) },
+    ],
+  },
+  {
+    id: 'recruit', displayName: 'Recruit', category: 'internal',
+    description: 'Grow the ranks — drawing in members and strength.',
+    score: (p, w) => [
+      { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.2) },
+      { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.15) },
+      { id: 'population_base', group: 'internal', value: r(Math.min(40, fv(p, 'own_strength') * 0.1)) },
+    ],
+  },
+];
+
+export function intentById(id: string): IntentDef | undefined {
+  return INTENTS.find((d) => d.id === id);
+}
+/** Display label for an intent id (falls back to the id). */
+export function intentLabel(id: string): string {
+  return intentById(id)?.displayName ?? id;
+}
+
+// ----------------------------------------------- organizational execution -----
+// PACK VOCABULARY for Phase 2D. The engine (engine/orgAction.ts) runs the pipeline
+// intent → action → feasibility → outcome → effects → history. Everything universe-
+// specific lives here: the operational measures an org tracks, the candidate ACTIONS
+// (each a pure resolver returning effect DESCRIPTORS), and which intent maps to which
+// action. Actions change the ORGANISATION, never geography (a 2D charter rule).
+
+/** The operational measures an organization tracks — the org analogue of actor needs. */
+export const OPERATIONAL_KEYS = ['strength', 'readiness', 'morale'] as const;
+/** Baseline operational condition seeded at an org's founding (clamped [0,100]). */
+export function baselineOperational(): Record<string, number> {
+  return { strength: 20, readiness: 20, morale: 50 };
+}
+
+// read-only helpers over world state (the pack only READS + describes; the engine mutates)
+const actSeat = (world: World, seatId: number | undefined): Settlement | undefined =>
+  (seatId === undefined ? undefined : world.settlements[seatId]);
+const foodYears = (s: Settlement): number => (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / Math.max(s.macro.population, 1);
+// the org's own funds (2C: OrgResources) — actions are bounded by what the tithe has
+// actually collected (read directly off the map; the engine's applyEffects mutates it).
+const orgFunds = (world: World, org: Organization): number => world.orgTreasury.get(org.id) ?? 0;
+
+/** Neighbours of a seat in the region graph, as [otherSettlement, edge]. */
+function seatNeighbours(world: World, seatId: number): { other: Settlement; relation: number }[] {
+  const out: { other: Settlement; relation: number }[] = [];
+  for (const e of world.edges) {
+    const other = e.a === seatId ? e.b : e.b === seatId ? e.a : undefined;
+    if (other === undefined) continue;
+    const os = world.settlements[other];
+    if (os && os.ruinedYear === undefined) out.push({ other: os, relation: e.relation });
+  }
+  return out;
+}
+
+/**
+ * The candidate ACTIONS an organization can execute — bounded, reversible, org-only. Each
+ * `resolve` is PURE: it returns a success/failure outcome plus effect DESCRIPTORS; the
+ * engine's applyEffects performs the mutation and emits the event. Effects touch the org's
+ * operational stats, its seat's existing economy/demographics, adjacent edges, or its
+ * reputation — never geography.
+ */
+export const ACTIONS: ActionDef[] = [
+  {
+    id: 'recruit', displayName: 'Recruit', description: 'Raise levies to swell the org’s strength.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      if (foodYears(s) < 2) return { ok: false, reason: 'too little food to raise levies' };
+      return orgFunds(world, org) >= 20 ? { ok: true } : { ok: false, reason: 'the treasury cannot pay the levies' };
+    },
+    resolve: (world, org) => {
+      const s = actSeat(world, org.seatId)!;
+      const levies = Math.max(1, Math.round(Math.max(s.macro.population, 1) * 0.02));
+      return {
+        success: true,
+        effects: [ { target: 'stat', key: 'strength', delta: 8 }, { target: 'treasury', delta: -20 } ],
+        summary: `raised ${levies} levies`,
+        eventType: 'org_recruited', eventData: { org: org.name, levies },
+      };
+    },
+  },
+  {
+    id: 'fortify', displayName: 'Fortify', description: 'Strengthen defences against a perceived threat.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      return orgFunds(world, org) >= 25 ? { ok: true } : { ok: false, reason: 'the treasury cannot fund defences' };
+    },
+    resolve: (_world, org) => ({
+      success: true,
+      effects: [ { target: 'stat', key: 'readiness', delta: 10 }, { target: 'treasury', delta: -25 } ],
+      summary: 'strengthened its defences',
+      eventType: 'org_fortified', eventData: { org: org.name },
+    }),
+  },
+  {
+    id: 'patrol', displayName: 'Patrol', description: 'Set patrols on the marches to steady the border.',
+    feasible: (world, org) => (org.seatId !== undefined && seatNeighbours(world, org.seatId).length > 0
+      ? { ok: true } : { ok: false, reason: 'no borders to patrol' }),
+    resolve: (world, org) => {
+      const ns = seatNeighbours(world, org.seatId!);
+      const worst = ns.reduce((a, b) => (b.relation < a.relation ? b : a));
+      return {
+        success: true,
+        effects: [ { target: 'stat', key: 'readiness', delta: 6 }, { target: 'relation', neighbourId: worst.other.id, delta: 2 } ],
+        summary: 'set patrols on the marches',
+        eventType: 'org_patrol', eventData: { org: org.name },
+      };
+    },
+  },
+  {
+    id: 'trade', displayName: 'Trade', description: 'Open commerce with a friendly neighbour.',
+    feasible: (world, org) => {
+      if (org.seatId === undefined) return { ok: false, reason: 'no seat' };
+      return seatNeighbours(world, org.seatId).some((n) => n.relation >= 0)
+        ? { ok: true } : { ok: false, reason: 'no neighbour to trade with' };
+    },
+    resolve: (world, org) => {
+      const best = seatNeighbours(world, org.seatId!).filter((n) => n.relation >= 0).reduce((a, b) => (b.relation > a.relation ? b : a));
+      return {
+        success: true,
+        effects: [ { target: 'wealth', delta: 30 }, { target: 'relation', neighbourId: best.other.id, delta: 5 } ],
+        summary: `opened a trade pact with ${best.other.name}`,
+        eventType: 'org_trade_pact', eventData: { org: org.name, with: best.other.name },
+      };
+    },
+  },
+  {
+    id: 'hold_festival', displayName: 'Hold a Festival', description: 'Spend on a public festival to lift morale and renown.',
+    feasible: (world, org) => {
+      const s = actSeat(world, org.seatId);
+      if (!s) return { ok: false, reason: 'no seat' };
+      return orgFunds(world, org) >= 20 && foodYears(s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
+    },
+    resolve: (_world, org) => ({
+      success: true,
+      effects: [
+        { target: 'stat', key: 'morale', delta: 12 },
+        { target: 'stability', delta: 4 },
+        { target: 'treasury', delta: -20 },
+        { target: 'reputation', kind: 'generosity' }, // a festival is public munificence
+      ],
+      summary: 'held a great festival',
+      eventType: 'org_festival', eventData: { org: org.name },
+    }),
+  },
+];
+
+export function actionById(id: string): ActionDef | undefined {
+  return ACTIONS.find((a) => a.id === id);
+}
+
+/** Which action each current intent triggers — the (trivial, for now) intent → action map.
+ *  A richer "plan" layer may later decompose one intent into several actions. Note expand
+ *  maps to a bounded recruit (real expansion is geography — deferred to a later milestone). */
+export const INTENT_TO_ACTION: Record<string, string> = {
+  recruit: 'recruit',
+  expand: 'recruit',
+  prepare_war: 'fortify',
+  protect_border: 'patrol',
+  trade: 'trade',
+  remain_neutral: 'hold_festival',
+};
+
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;
 }
@@ -843,8 +1121,6 @@ export const REPUTE_SPECS: Record<string, ReputeSpec> = {
   // is remembered far longer than what one soul does.
   org_aggression: { base: -70, durationTicks: 20 * DAYS_PER_YEAR, label: 'raided a neighbour' },
   org_conquest: { base: -150, durationTicks: 40 * DAYS_PER_YEAR, label: 'razed a rival city' },
-  benevolence: { base: 80, durationTicks: 12 * DAYS_PER_YEAR, label: 'succoured its people' },
-  patronage: { base: 60, durationTicks: 12 * DAYS_PER_YEAR, label: 'raised public works' },
 };
 
 // Neutral fallback so an unknown / pack-added kind never crashes the engine.
@@ -873,28 +1149,14 @@ export const REPUTATION_EFFECTS = {
   courtship: 0.35, // opinion-equivalent appeal shift per standing point when sizing up a match
 };
 
-// ---- organizations: treasury & goals (Phase 2C) ----
-// PACK DATA. How a polity funds itself and what it does with the money. The tithe is a
-// real TRANSFER from the seat's economy (never minted); goal-driven spending returns it
-// as stability (relief) or investment (patronage). A heavier-handed pack raises the
-// tithe; a laissez-faire one zeroes it and polities stay poor and passive.
+// ---- organizations: the treasury (Phase 2C: OrgResources) ----
+// PACK DATA. How a polity funds itself: the yearly TITHE is a real TRANSFER from the
+// seat's economy (never minted) into the org treasury (engine/organization.ts
+// orgTitheYearly). The treasury is what the ACTION layer spends — an ActionDef's
+// 'treasury' effects debit it — so a heavier-handed pack raises the tithe and gets a
+// more active state; a laissez-faire one zeroes it and polities stay poor and passive.
 export const ORG_ECONOMY = {
   titheRate: 0.05, // fraction of the seat's wealth the polity draws each year
-  reliefCost: 100, // treasury spent on one relief action (goal: survive)
-  reliefStability: 7, // stability the relief restores at the seat
-  patronageCost: 220, // treasury spent on public works (goal: prosper/expand)
-  patronageWealth: 160, // wealth the works return to the seat's economy
-  patronageStability: 2, // and the quiet pride they bring
-};
-
-// What an organization WANTS (Phase 2C, OrgGoals) — thresholds for the derived goal
-// (organization.ts orgGoalOf). Goals are a pure function of world state (like actor
-// aspirations), so they never desync; these numbers only tune where the lines sit.
-export const ORG_GOALS = {
-  surviveStability: -15, // seat stability below this → 'survive'
-  survivePop: 25, // seat population below this → 'survive'
-  defendRelation: -40, // any border relation below this → 'defend' (hoard a war chest)
-  prosperWealth: 260, // seat wealth below this → 'prosper' (invest at home)
 };
 
 // ---- who inherits a settlement's seat (the renown→opportunity loop) ----

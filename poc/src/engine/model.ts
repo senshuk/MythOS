@@ -225,10 +225,6 @@ export interface Organization {
   /** the line of seats this organization has held, oldest first — so a moved capital or a
    *  fallen seat leaves a coherent trail. The current seatId is appended here on a move. */
   seatHistory: LocationId[];
-  /** the organization's TREASURY (Phase 2C, `OrgResources`) — wealth it holds as an
-   *  institution, distinct from its seat's economy. Filled by a yearly tithe on the seat,
-   *  spent on goal-driven action (relief, patronage); a real transfer, never minted. */
-  treasury: number;
 }
 
 /**
@@ -246,6 +242,137 @@ export interface OrgMember {
   sinceTick: number;
   /** the tick the role ended (left, died, replaced); undefined while currently held. */
   untilTick?: number;
+}
+
+// ---- organizational reasoning (Phase 2C: Perception → Worldview → Intent) -----
+// The engine provides the PIPELINE; the pack provides the VOCABULARY (worldview axes,
+// candidate intents, scoring rules). Reasoning is bounded, deterministic, and — above all
+// — explainable: an OrgIntent is a complete justification record, not an opaque verdict.
+
+/**
+ * One thing an organization KNOWS — a single perceived datum with how sure it is and where
+ * it came from. `id` is a STABLE pack key ('food_security', 'neighbor_strength'), not an
+ * English label: the UI/pack resolves the display text, so localization and universe packs
+ * never depend on engine strings. Perception is bounded (only what the org could actually
+ * know) and ephemeral (rebuilt each cycle; never a standing cache of the world).
+ */
+export interface PerceptionFact {
+  id: string;
+  value: number;
+  confidence: number; // 0..1 — own facts ~1.0, neighbour estimates < 1.0
+  source: string; // 'seat' | 'neighbor:<settlementId>' | 'event:<eventId>'
+}
+
+/** A pack-defined worldview axis ('expansionist', 'militaristic', 'mercantile', …). */
+export type WorldviewAxis = string;
+/** An organization's derived disposition — recomputed every cycle from member values,
+ *  never stored long-term. */
+export type Worldview = Record<WorldviewAxis, number>;
+
+/** One weighted reason in an intent's justification. `id` is a stable key (not a label);
+ *  `group` optionally buckets factors ('military', 'economy') so the justification renders
+ *  collapsibly and can grow into a nested tree later without replacing this type. */
+export interface IntentFactor {
+  id: string;
+  value: number;
+  group?: string;
+}
+
+/**
+ * The complete, serializable reasoning record behind an organization's current decision —
+ * it answers all four questions from one object: what it KNOWS (perception), what VALUES
+ * define it (worldview), what INTENT it chose (kind), and WHY (factors + score, with the
+ * runner-up alternatives). `evaluatorVersion` stamps the scoring ruleset, so a save made
+ * before a rebalance still explains itself.
+ */
+export interface OrgIntent {
+  kind: string; // the chosen intent id
+  score: number; // == sum of factors[].value
+  worldview: Worldview;
+  perception: PerceptionFact[];
+  factors: IntentFactor[];
+  alternatives: { kind: string; score: number }[];
+  sinceTick: number;
+  evaluatorVersion: number;
+}
+
+/**
+ * A pack-defined candidate intent + how to score it. Mirrors `AspirationDef`: the pack
+ * supplies the vocabulary and the scoring behaviour; the engine runs the pipeline and
+ * records the justification. **The score function receives ONLY perception, worldview, and
+ * the org's own record — never the World** — so reasoning cannot bypass the Perception
+ * layer and reach into global state. (This bound is enforced by the signature itself.)
+ */
+export interface IntentDef {
+  id: string;
+  displayName: string;
+  category: string;
+  description: string;
+  score(perception: PerceptionFact[], worldview: Worldview, org: Organization): IntentFactor[];
+}
+
+// ---- organizational execution (Phase 2D: Intent → Action → Outcome → History) -
+// Reasoning is inert; EXECUTION turns the stored intent into a bounded action that can
+// change the organization (never geography), with a feasibility gate, a pure outcome, and
+// — only on a real outcome — a history Event. `resolve` decides; `applyEffects` mutates.
+
+/** An organization's mutable OPERATIONAL condition — pack-keyed measures (strength,
+ *  readiness, morale), the org analogue of actor Needs. Deliberately SEPARATE from the
+ *  Organization record (which is identity-only): this is the state the behaviour layer
+ *  moves. Named OperationalState, not "OrgState", because "state" is overloaded. */
+export type OperationalState = Record<string, number>;
+
+/**
+ * A structured, inspectable description of a SINGLE mutation an action will cause — data
+ * you can read before it is applied (like the reasoning justification tree). The executor's
+ * `applyEffects` is the only code that interprets these; an action's `resolve` only
+ * DESCRIBES them. Effects touch the org's operational stats, its seat's existing economy/
+ * demographics, adjacent edges, or its reputation — never geography.
+ */
+export type OrgEffect =
+  | { target: 'stat'; key: string; delta: number } // an operational stat
+  | { target: 'wealth'; delta: number } // the seat's econ.wealth
+  | { target: 'treasury'; delta: number } // the org's own funds (2C: OrgResources)
+  | { target: 'stability'; delta: number } // the seat's macro.stability
+  | { target: 'relation'; neighbourId: SettlementId; delta: number } // an edge's relation
+  | { target: 'reputation'; kind: string }; // an org reputation mark
+
+/** The PURE result of resolving an action: whether it succeeded, what it would change, and
+ *  how it reads — with NO mutation performed. The executor applies the effects and emits
+ *  the event separately. (A feasible attempt that reality defeats has success=false and no
+ *  effects — still history: "attempted, failed".) */
+export interface OrgOutcome {
+  success: boolean;
+  effects: OrgEffect[];
+  summary: string;
+  eventType: string;
+  eventData: Record<string, number | string>;
+}
+
+/** The org's last executed action, for the inspector — carries the applied effects so the
+ *  UI can show exactly what changed. */
+export interface OrgAction {
+  id: string;
+  intentKind: string;
+  outcome: 'success' | 'failure';
+  effects: OrgEffect[];
+  summary: string;
+  sinceTick: number;
+}
+
+/**
+ * A pack-defined candidate ACTION + how to attempt it. Mirrors `IntentDef`: the pack
+ * supplies the vocabulary and behaviour; the engine runs the pipeline. `feasible` is the
+ * "can I do it?" gate (an infeasible attempt is NOT history). `resolve` is PURE — it
+ * decides the outcome and describes the effects but mutates nothing; the engine applies and
+ * emits. An action reads only the org, its operational state, its seat, and adjacent edges.
+ */
+export interface ActionDef {
+  id: string;
+  displayName: string;
+  description: string;
+  feasible(world: World, org: Organization, state: OperationalState): { ok: boolean; reason?: string };
+  resolve(world: World, org: Organization, state: OperationalState): OrgOutcome;
 }
 
 /**
@@ -655,6 +782,21 @@ export interface World {
   /** per-organization roster of role-tagged, time-stamped memberships — the org's
    *  institutional memory (current + closed records). Keyed by org id. */
   orgMembers: Map<OrgId, OrgMember[]>;
+  /** the CURRENT reasoning record per organization — what it decided this evaluation
+   *  cycle and why. Recomputed yearly (orgReason.ts). Named `currentIntent` to leave room
+   *  for an intent-history layer later. */
+  currentIntent: Map<OrgId, OrgIntent>;
+  /** per-organization mutable operational condition (strength/readiness/morale), moved by
+   *  the execution layer (orgAction.ts). Seeded at founding. */
+  operationalState: Map<OrgId, OperationalState>;
+  /** the last action each organization executed — its outcome + applied effects, for the
+   *  inspector. Set by orgAction.ts. */
+  lastAction: Map<OrgId, OrgAction>;
+  /** per-organization TREASURY (2C: OrgResources) — institutional funds, kept OFF the
+   *  identity-locked Organization record like operationalState. Filled by the yearly
+   *  tithe on the seat's economy (a real transfer, never minted); spent by the action
+   *  layer (an action's 'treasury' effects). */
+  orgTreasury: Map<OrgId, number>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -811,6 +953,19 @@ export interface RelationView {
   otherSettlement?: string;
 }
 
+/** An organization's current reasoning, made legible for the inspector — the answer to
+ *  "what does it know / what values define it / what intent did it choose / why". Labels
+ *  are resolved from stable ids for display. */
+export interface OrgIntentView {
+  worldview: string; // top leanings, e.g. "expansionist, militaristic"
+  intent: string; // chosen intent's display name
+  intentDescription: string;
+  score: number;
+  factors: { label: string; value: number; group?: string }[]; // the justification
+  alternatives: { label: string; score: number }[]; // runner-up intents and their scores
+  perception: { label: string; value: number; confidence: number }[]; // what it knows
+}
+
 export interface SettlementView {
   id: SettlementId;
   name: string;
@@ -831,8 +986,24 @@ export interface SettlementView {
   ruler?: string; // who rules it now (or last, if a ruin)
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
    *  government as a first-class entity, distinct from the place. `founderName` and
-   *  `leaderCount` expose the org's institutional memory (its remembered line of leaders). */
-  polity?: { name: string; subtype: string; leaderName?: string; founderName?: string; leaderCount: number; standing: number; treasury: number; goal: string };
+   *  `leaderCount` expose the org's institutional memory (its remembered line of leaders).
+   *  `reasoning` is its current decision made legible (focused settlement only). */
+  polity?: {
+    name: string;
+    subtype: string;
+    leaderName?: string;
+    founderName?: string;
+    leaderCount: number;
+    standing: number;
+    /** the org's TREASURY (2C: OrgResources) — the tithe-fed funds its actions spend. */
+    treasury: number;
+    reasoning?: OrgIntentView;
+    /** the org's operational condition (strength/readiness/morale) — the state the
+     *  execution layer moves. */
+    operational?: Record<string, number>;
+    /** the last action the org executed, made legible. */
+    lastAction?: { summary: string; outcome: string; year: number };
+  };
   // economy
   specialization: Specialization;
   wealth: number;

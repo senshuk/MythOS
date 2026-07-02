@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 15;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -67,6 +67,15 @@ export interface SaveFile {
   organizations?: Organization[];
   /** per-org membership rosters as entries. Optional for saves predating v12. */
   orgMembers?: [OrgId, OrgMember[]][];
+  /** per-org current reasoning record as entries. Optional for saves predating v13;
+   *  recomputed on the next yearly tick if absent. */
+  currentIntent?: [OrgId, OrgIntent][];
+  /** per-org treasuries (2C: OrgResources). Optional for saves predating v15 (default 0). */
+  orgTreasury?: [OrgId, number][];
+  /** per-org operational state + last action as entries. Optional for saves predating v14
+   *  (operational state then defaults to baseline; lastAction empty). */
+  operationalState?: [OrgId, OperationalState][];
+  lastAction?: [OrgId, OrgAction][];
   playerInputs: { tick: number; intent: Intent }[];
 
   // component maps, as entries
@@ -154,6 +163,10 @@ export function serializeWorld(world: World): SaveFile {
     houses: world.houses,
     organizations: world.organizations,
     orgMembers: [...world.orgMembers],
+    currentIntent: [...world.currentIntent],
+    operationalState: [...world.operationalState],
+    lastAction: [...world.lastAction],
+    orgTreasury: [...world.orgTreasury],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -178,7 +191,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12) {
+  if (s.version < 5 || s.version > SAVE_VERSION) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -272,18 +285,18 @@ export function deserializeWorld(s: SaveFile): World {
         leaderId: st.currentRulerId,
         seatId: st.id,
         seatHistory: [st.id],
-        treasury: 0,
         ...(st.ruinedYear !== undefined ? { dissolvedYear: st.ruinedYear } : {}),
       };
       organizations.push(org);
       (st as { polityId?: OrgId }).polityId = org.id;
     }
   }
-  // v12 → v13 (organizations OWN & RELATE): backfill the treasury on stored orgs, and give
-  // every org an adjacency map in the relationship graph (its stored edges, if any, were
-  // already rebuilt above via relAdj — this only fills in the orgs that had none).
+  // v14 → v15 (organizations OWN & RELATE): treasuries default to 0 for orgs an older save
+  // never funded, and every org gets an adjacency map in the relationship graph (its stored
+  // edges, if any, were already rebuilt above via relAdj — this only fills in the missing).
+  const orgTreasury = new Map<OrgId, number>(s.orgTreasury ?? []);
   for (const org of organizations) {
-    if ((org as { treasury?: number }).treasury === undefined) org.treasury = 0;
+    if (!orgTreasury.has(org.id)) orgTreasury.set(org.id, 0);
     if (!rels.has(org.id)) rels.set(org.id, new Map());
   }
   const organizationsById = new Map<OrgId, Organization>(organizations.map((o) => [o.id, o]));
@@ -300,6 +313,16 @@ export function deserializeWorld(s: SaveFile): World {
       orgMembers.set(org.id, [{ actorId: org.leaderId, role: 'leader', sinceTick: org.foundedYear * DAYS_PER_YEAR }]);
     }
   }
+
+  // v13 → v14 (execution): operational state defaults to the pack baseline per org; the
+  // last-action log is empty (no actions had been executed under an older engine).
+  const operationalState = new Map<OrgId, OperationalState>();
+  if (s.operationalState) {
+    for (const [id, st] of s.operationalState) operationalState.set(id, st);
+  } else {
+    for (const org of organizations) operationalState.set(org.id, baselineOperational());
+  }
+  const lastAction = new Map<OrgId, OrgAction>(s.lastAction ?? []);
 
   return {
     seed: s.seed,
@@ -383,6 +406,11 @@ export function deserializeWorld(s: SaveFile): World {
     organizations,
     organizationsById,
     orgMembers,
+    // pre-v13 saves carry no reasoning record; it is recomputed on the next yearly tick.
+    currentIntent: new Map(s.currentIntent ?? []),
+    operationalState,
+    lastAction,
+    orgTreasury,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

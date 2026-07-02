@@ -18,6 +18,7 @@ import {
 } from './model';
 import { NEEDS, monogamousOf, valueProfile, temperamentProfile, patronDeityOf, faithProbability } from '../content/fixture';
 import { Rng, mixSeed } from './rng';
+import { pruneThoughts } from './opinion';
 
 export interface ActorProps {
   given: string;
@@ -162,6 +163,24 @@ export function getRel(world: World, a: EntityId, b: EntityId): RelEdge {
 
 export function relCount(world: World, id: EntityId): number {
   return world.rels.get(id)!.size;
+}
+
+function hasRelationshipFlag(edge: RelEdge): boolean {
+  return !!(edge.flags.friend || edge.flags.rival || edge.flags.feud || edge.flags.spouse);
+}
+
+/** Drop expired transient thoughts and remove stale acquaintance edges.
+ *  Lasting relationship milestones are kept even if their thoughts have expired. */
+export function pruneRelationshipGraph(world: World): void {
+  for (const [a, rels] of world.rels) {
+    for (const [b, edge] of rels) {
+      if (a > b) continue;
+      pruneThoughts(edge, world.tick);
+      if (edge.thoughts.length > 0 || hasRelationshipFlag(edge)) continue;
+      rels.delete(b);
+      world.rels.get(b)?.delete(a);
+    }
+  }
 }
 
 export function isKin(world: World, a: EntityId, b: EntityId): boolean {

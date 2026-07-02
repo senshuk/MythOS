@@ -11,13 +11,13 @@
  * id space, so no new reputation code), and a history (events — any id can be an event
  * subject).
  *
- * Phase 2C — Organizations WANT, OWN, and RELATE:
- *  - GOALS (`orgGoalOf`) are DERIVED, never stored — a pure function of world state, the
- *    same philosophy as actor aspirations (aspiration.ts), so they can never desync.
- *  - The TREASURY (`Organization.treasury`) is filled by a yearly tithe on the seat's
- *    economy (a real transfer) and spent on goal-driven action (`organizationsYearly`):
- *    relief when surviving, patronage when prospering, hoarded as a war chest when
- *    defending. Spending earns the org REPUTATION marks (benevolence/patronage).
+ * Phase 2C — Organizations OWN and RELATE (reasoning lives in orgReason.ts; execution in
+ * orgAction.ts):
+ *  - The TREASURY (`world.orgTreasury`, kept OFF the identity-locked record like
+ *    operationalState) is filled by a yearly tithe on the seat's economy — a real
+ *    transfer, never minted (`orgTitheYearly`) — and spent by the ACTION layer: an
+ *    action's 'treasury' effects debit it, so what a polity does is bounded by what it
+ *    has actually collected.
  *  - RELATIONSHIPS reuse the actor thought machinery: each org gets a `world.rels` map,
  *    and raids/battles/trade sow org-scale thoughts (lod.ts) whose summed opinion is an
  *    institutional grudge or trust that OUTLIVES the people who caused it.
@@ -40,11 +40,10 @@ import {
   type RelEdge,
   DAYS_PER_YEAR,
 } from './model';
-import { emit, getRel, clamp, fullActors } from './world';
+import { emit, getRel } from './world';
 import { getLocation } from './location';
 import { addThought, computeOpinion, pruneThoughts } from './opinion';
-import { recordDeed } from './reputation';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, ORG_GOALS } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, baselineOperational } from '../content/fixture';
 
 // ---- registry --------------------------------------------------------------
 
@@ -87,13 +86,14 @@ export function createOrganization(world: World, p: OrgProps): OrgId {
     leaderId: p.leaderId,
     seatId: p.seatId,
     seatHistory: p.seatId !== undefined ? [p.seatId] : [],
-    treasury: 0,
   };
   world.organizations.push(org);
   registerOrganization(world, org);
   // orgs RELATE (2C): give the org its adjacency in the shared relationship graph, so
   // getRel works between orgs exactly as between actors (same thought machinery).
   world.rels.set(id, new Map());
+  // orgs OWN (2C): an empty treasury, off the identity-locked record (like ops state).
+  world.orgTreasury.set(id, 0);
   return id;
 }
 
@@ -117,6 +117,8 @@ export function foundPolity(world: World, s: Settlement, year: number): OrgId {
     seatId: s.id,
   });
   s.polityId = id;
+  // seed the org's baseline operational condition (strength/readiness/morale).
+  world.operationalState.set(id, baselineOperational());
   // institutional memory: the founder is recorded as both founder and first leader.
   if (s.currentRulerId !== undefined) {
     enroll(world, id, s.currentRulerId, ROLE_FOUNDER);
@@ -297,13 +299,12 @@ export function organizationsServedBy(world: World, actorId: EntityId): { orgId:
   return out;
 }
 
-// ---- goals (Phase 2C: organizations WANT) -----------------------------------
+// ---- the treasury (Phase 2C: organizations OWN) ------------------------------
 //
-// A goal is DERIVED, never stored — a pure function of world state, the same philosophy
-// as actor aspirations (aspiration.ts): it can never desync, costs nothing to persist,
-// and is trivially deterministic. The thresholds are pack data (fixture ORG_GOALS).
-
-export type OrgGoal = 'survive' | 'defend' | 'prosper' | 'expand';
+// Institutional funds, kept in `world.orgTreasury` (OFF the identity-locked record, the
+// same pattern as operationalState). What an org WANTS is orgReason.ts's business; what
+// it can AFFORD is this module's: the tithe fills the treasury, and the action layer's
+// 'treasury' effects (orgAction.ts applyEffects) spend it.
 
 /** The settlement an org is seated at, if its seat is a live settlement. */
 export function seatSettlement(world: World, org: Organization): Settlement | undefined {
@@ -312,23 +313,31 @@ export function seatSettlement(world: World, org: Organization): Settlement | un
   return s && s.id === org.seatId && s.ruinedYear === undefined ? s : undefined;
 }
 
+/** The org's current funds (0 if it has never collected — e.g. loaded from an old save). */
+export function treasuryOf(world: World, orgId: OrgId): number {
+  return world.orgTreasury.get(orgId) ?? 0;
+}
+
+/** Credit (or debit, negative delta) an org's treasury, floored at zero. */
+export function adjustTreasury(world: World, orgId: OrgId, delta: number): void {
+  world.orgTreasury.set(orgId, Math.max(0, treasuryOf(world, orgId) + delta));
+}
+
 /**
- * What this organization currently WANTS, most urgent first:
- *  - survive: its seat is destabilized or depopulated — hold the place together;
- *  - defend:  a hostile border (any edge past the pack threshold) — hoard a war chest;
- *  - prosper: the seat is poor — invest at home;
- *  - expand:  secure and rich — spend outward (public works, and later 2E: outward action).
+ * Yearly: each living, seated polity draws its TITHE — a pack-set fraction of its seat's
+ * wealth moves into the org treasury. A real TRANSFER (the seat's economy is debited),
+ * never minted; RNG-free, so this pass never perturbs any stream. Runs before the
+ * reasoning/action passes, so what an org can afford this year reflects this year's take.
  */
-export function orgGoalOf(world: World, org: Organization): OrgGoal {
-  const seat = seatSettlement(world, org);
-  if (!seat) return 'survive'; // seatless/ruined: existence itself is the question
-  const pop = seat.detailed ? fullActors(world).length : seat.macro.population;
-  if (seat.macro.stability < ORG_GOALS.surviveStability || pop < ORG_GOALS.survivePop) return 'survive';
-  for (const e of world.edges) {
-    if ((e.a === seat.id || e.b === seat.id) && e.relation < ORG_GOALS.defendRelation) return 'defend';
+export function orgTitheYearly(world: World): void {
+  for (const org of world.organizations) {
+    if (org.dissolvedYear !== undefined) continue;
+    const seat = seatSettlement(world, org);
+    if (!seat || seat.macro.population <= 0) continue;
+    const tithe = seat.econ.wealth * ORG_ECONOMY.titheRate;
+    seat.econ.wealth -= tithe;
+    adjustTreasury(world, org.id, tithe);
   }
-  if (seat.econ.wealth < ORG_GOALS.prosperWealth) return 'prosper';
-  return 'expand';
 }
 
 // ---- relationships (Phase 2C: organizations RELATE) -------------------------
@@ -361,45 +370,3 @@ export function noteOrgThought(world: World, a: OrgId, b: OrgId, kind: string, c
   addThought(edge, kind, world.tick, { cause });
 }
 
-// ---- the yearly pass (Phase 2C: organizations OWN and ACT) ------------------
-
-/**
- * Yearly: each living, seated polity funds itself and acts on its goal. RNG-FREE —
- * thresholds and transfers only, so this pass never perturbs any stream.
- *
- *  1. TITHE: the polity draws a pack-set fraction of its seat's wealth into its
- *     treasury — a real transfer (the seat's economy is debited), never minted.
- *  2. GOAL-DRIVEN SPENDING:
- *     - survive → RELIEF: treasury buys stability at the seat (grain doles, guards on
- *       the walls); the town remembers — the org earns a 'benevolence' mark.
- *     - prosper/expand → PATRONAGE: treasury funds public works — wealth returns to
- *       the seat's economy with a little pride; the org earns a 'patronage' mark.
- *     - defend → HOARD: a hostile border means the treasury is a war chest; hold it
- *       (2E will spend it on outward action).
- */
-export function organizationsYearly(world: World): void {
-  for (const org of world.organizations) {
-    if (org.dissolvedYear !== undefined) continue;
-    const seat = seatSettlement(world, org);
-    if (!seat || seat.macro.population <= 0) continue;
-
-    const tithe = seat.econ.wealth * ORG_ECONOMY.titheRate;
-    seat.econ.wealth -= tithe;
-    org.treasury += tithe;
-
-    const goal = orgGoalOf(world, org);
-    if (goal === 'survive' && org.treasury >= ORG_ECONOMY.reliefCost) {
-      org.treasury -= ORG_ECONOMY.reliefCost;
-      seat.macro.stability = clamp(seat.macro.stability + ORG_ECONOMY.reliefStability, -100, 100);
-      const ev = emit(world, 'org_relief', [org.id], { name: org.name, seat: seat.name }, [], [seat.id]);
-      recordDeed(world, org.id, 'benevolence', { cause: ev });
-    } else if ((goal === 'prosper' || goal === 'expand') && org.treasury >= ORG_ECONOMY.patronageCost) {
-      org.treasury -= ORG_ECONOMY.patronageCost;
-      seat.econ.wealth += ORG_ECONOMY.patronageWealth;
-      seat.macro.stability = clamp(seat.macro.stability + ORG_ECONOMY.patronageStability, -100, 100);
-      const ev = emit(world, 'org_patronage', [org.id], { name: org.name, seat: seat.name }, [], [seat.id]);
-      recordDeed(world, org.id, 'patronage', { cause: ev });
-    }
-    // goal === 'defend': hold the war chest.
-  }
-}

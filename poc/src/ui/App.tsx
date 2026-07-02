@@ -1267,7 +1267,47 @@ function Inspector({
               {settV.polity.leaderName ? ` · led by ${settV.polity.leaderName}` : ''}
               {settV.polity.founderName ? ` · founded by ${settV.polity.founderName}` : ''}
               {settV.polity.leaderCount > 1 ? ` · ${settV.polity.leaderCount} leaders in its line` : ''}
-              {` · treasury ${settV.polity.treasury} · seeks to ${settV.polity.goal}`}
+              {` · treasury ${settV.polity.treasury}`}
+            </p>
+          )}
+          {settV?.polity?.reasoning && (
+            <div className="polity-reasoning">
+              <p className="reasoning-line">
+                <span className="muted">worldview:</span> {settV.polity.reasoning.worldview}
+                {' · '}
+                <span className="muted">intent:</span> <strong>{settV.polity.reasoning.intent}</strong>{' '}
+                <span className="muted">({settV.polity.reasoning.score})</span>
+              </p>
+              <p className="reasoning-why muted">{settV.polity.reasoning.intentDescription}</p>
+              <ul className="reasoning-factors">
+                {settV.polity.reasoning.factors.map((f, i) => (
+                  <li key={i}>
+                    {f.group ? <span className="muted">{f.group}: </span> : null}
+                    {f.label} <span className={f.value >= 0 ? 'pos' : 'neg'}>{f.value >= 0 ? `+${f.value}` : f.value}</span>
+                  </li>
+                ))}
+              </ul>
+              {settV.polity.reasoning.alternatives.length > 0 && (
+                <p className="reasoning-alts muted">
+                  also weighed: {settV.polity.reasoning.alternatives.map((a) => `${a.label} (${a.score})`).join(' · ')}
+                </p>
+              )}
+              <details className="reasoning-perception">
+                <summary className="muted">what it knows</summary>
+                <ul>
+                  {settV.polity.reasoning.perception.map((p, i) => (
+                    <li key={i}>
+                      {p.label}: {p.value} <span className="muted">({Math.round(p.confidence * 100)}% sure)</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          )}
+          {settV?.polity?.operational && (
+            <p className="polity-operational muted">
+              {Object.entries(settV.polity.operational).map(([k, v]) => `${k} ${Math.round(v)}`).join(' · ')}
+              {settV.polity.lastAction ? ` — last: ${settV.polity.lastAction.summary} (y${settV.polity.lastAction.year})` : ''}
             </p>
           )}
           {settV?.patronDeity && (
