@@ -42,6 +42,7 @@ import {
 import { addThought } from './opinion';
 import { registerLocation } from './location';
 import { foundPolity, noteOrgThought, orgOpinionOf } from './organization';
+import { activeAgreement } from './orgInteraction';
 import { recordDeed } from './reputation';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
@@ -725,7 +726,15 @@ export function geographyYearly(world: World): void {
     // a rare border grievance sharply sours relations — the spark that lights the war
     if (rng.chance(0.012)) e.relation = clamp(e.relation - rng.range(18, 44), -100, 100);
 
+    // a sworn peace (2E) stays both courts' hands while it holds: no war, no raid. The
+    // pact does not stop relations souring — a cold peace is still a peace, until it lapses.
+    const atPeace =
+      A.polityId !== undefined &&
+      B.polityId !== undefined &&
+      activeAgreement(world, 'non_aggression', A.polityId, B.polityId) !== undefined;
+
     if (
+      !atPeace &&
       e.relation < -40 &&
       !A.detailed &&
       !B.detailed &&
@@ -769,7 +778,7 @@ export function geographyYearly(world: World): void {
         // both courts remember meeting in battle (2C: an org-scale thought on the pair).
         if (A.polityId !== undefined && B.polityId !== undefined) noteOrgThought(world, A.polityId, B.polityId, 'wartorn', battleId);
       }
-    } else if (e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
+    } else if (!atPeace && e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
       // a raid along a hostile border. The weaker, non-focused side is the victim;
       // the focused settlement is treated as strongest and never takes macro damage.
       const popA = A.detailed ? Infinity : A.macro.population;
@@ -850,7 +859,13 @@ export function economyYearly(world: World): void {
       continue;
     }
     const proximity = 1 / (1 + edge.distance / 30);
-    const relFactor = clamp((edge.relation + 30) / 100, 0.15, 1);
+    // a sealed trade agreement (2E) keeps the route favoured even through cool relations —
+    // merchants move under the pact's protection, not the border's mood.
+    const pact =
+      A.polityId !== undefined &&
+      B.polityId !== undefined &&
+      activeAgreement(world, 'trade_agreement', A.polityId, B.polityId) !== undefined;
+    const relFactor = Math.max(clamp((edge.relation + 30) / 100, 0.15, 1), pact ? 0.7 : 0);
 
     let value = 0;
     for (const r of RESOURCES) {

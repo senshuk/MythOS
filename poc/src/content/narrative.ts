@@ -99,6 +99,11 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   org_patrol: (_n, d) => `The ${d.org} set patrols on its marches.`,
   org_trade_pact: (_n, d) => `The ${d.org} opened a trade pact with ${d.with}.`,
   org_festival: (_n, d) => `The ${d.org} held a great festival.`,
+  // negotiated interactions (2E) — one event, two histories: each court keeps its own account.
+  pact_sealed: (_n, d) => `The ${d.a} and the ${d.b} sealed a ${d.kind === 'peace' ? 'pact of peace' : 'trade agreement'}.`,
+  pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : 'trade'}.`,
+  tribute_paid: (_n, d) => `The ${d.b} paid tribute of ${d.amount} to the ${d.a}.`,
+  tribute_refused: (_n, d) => `The ${d.b} defied the ${d.a}'s demand for tribute.`,
 };
 
 /**
@@ -188,6 +193,15 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 12;
     case 'org_patrol':
       return 10;
+    // negotiated interactions (2E) — pacts and tributes are the stuff of chronicles
+    case 'tribute_paid':
+      return 34; // a power bending the knee (in coin) — memorable
+    case 'pact_sealed':
+      return 30;
+    case 'tribute_refused':
+      return 28; // defiance of a stronger neighbour — the seed of wars
+    case 'pact_refused':
+      return 14;
     default:
       return 0; // born, friendship, dispute, kindness, brawl, trade, migration, focus…
   }

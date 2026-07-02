@@ -18,28 +18,29 @@ import { factionOf, factionYearly, EXILE_RETURN_YEARS } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR, type World, type WorldEvent, type ExileRecord, type EntityId } from './model';
 
-// A seed whose focused settlement runs the full civil-war arc, re-pinned after Phase 2D
-// (organizational actions now feed the Director, shifting seed-tuned drama timelines — see
-// design/15 invariants 8–9). For seed 3 the live-sim years are: contested ~82, civil war /
-// exile ~92, return ~112. CIVIL_WAR_YEAR sits between exile and return so the exile record
+// A seed whose focused settlement runs the full civil-war arc, re-pinned after Phase 2E
+// (negotiated interactions and 2C tithes/grudges shift the seed-tuned drama timelines —
+// the same expected maintenance as the 2D re-pin; see design/15 invariants 8–9). For seed
+// 21 the live-sim years are: contested ~49, civil war / exile ~59, return ~79.
+// CIVIL_WAR_YEAR sits between exile and return so the exile record
 // is still present when that test inspects it (return prunes it at exile + EXILE_RETURN_YEARS).
-const CIVIL_WAR_SEED = 3;
-const CONTESTED_YEAR = 90;
-const CIVIL_WAR_YEAR = 100;
-const RETURN_FROM_EXILE_YEAR = 120;
+const CIVIL_WAR_SEED = 21;
+const CONTESTED_YEAR = 55;
+const CIVIL_WAR_YEAR = 65;
+const RETURN_FROM_EXILE_YEAR = 85;
 
 /**
- * The seed-3 history, simulated ONCE and captured at the three checkpoint years.
- * runYears is incremental, so advancing one world 90 → 100 → 120 is identical to
+ * The pinned-seed history, simulated ONCE and captured at the three checkpoint years.
+ * runYears is incremental, so advancing one world through the three checkpoints is identical to
  * three fresh runs (that equivalence is what the determinism suite holds) — but it
- * costs one 120-year simulation instead of ~830 simulated years across the tests
+ * costs one 85-year simulation instead of several hundred simulated years across the tests
  * below. Event compaction can discard old events later, and return-from-exile
  * prunes world.exiles, so each checkpoint snapshots the state its tests inspect.
  * Every consumer is read-only.
  */
 interface CivilWarArc {
-  at90: { events: WorldEvent[] };
-  at100: { events: WorldEvent[]; exiles: Map<EntityId, ExileRecord>; civilWarTick: number | undefined };
+  atContested: { events: WorldEvent[] };
+  atCivilWar: { events: WorldEvent[]; exiles: Map<EntityId, ExileRecord>; civilWarTick: number | undefined };
   /** the live world at RETURN_FROM_EXILE_YEAR */
   w: World;
 }
@@ -48,15 +49,15 @@ function civilWarArc(): CivilWarArc {
   if (!arc) {
     const w = createWorld(CIVIL_WAR_SEED);
     runYears(w, CONTESTED_YEAR);
-    const at90 = { events: allEvents(w) };
+    const atContested = { events: allEvents(w) };
     runYears(w, CIVIL_WAR_YEAR - CONTESTED_YEAR);
-    const at100 = {
+    const atCivilWar = {
       events: allEvents(w),
       exiles: new Map(w.exiles),
       civilWarTick: w.settlements[w.focusedSettlementId].civilWarTick,
     };
     runYears(w, RETURN_FROM_EXILE_YEAR - CIVIL_WAR_YEAR);
-    arc = { at90, at100, w };
+    arc = { atContested, atCivilWar, w };
   }
   return arc;
 }
@@ -165,13 +166,13 @@ describe('faction rivalry thoughts', () => {
 
 describe('civil war and exile', () => {
   it('civil_war fires within 120 years (after contested_succession + grace period)', () => {
-    const { at100 } = civilWarArc();
-    expect(at100.events.some((e) => e.type === 'civil_war')).toBe(true);
+    const { atCivilWar } = civilWarArc();
+    expect(atCivilWar.events.some((e) => e.type === 'civil_war')).toBe(true);
   });
 
   it('civil_war event names winner, loser, and settlement; winner ≠ loser', () => {
-    const { at100 } = civilWarArc();
-    const ev = at100.events.find((e) => e.type === 'civil_war')!;
+    const { atCivilWar } = civilWarArc();
+    const ev = atCivilWar.events.find((e) => e.type === 'civil_war')!;
     expect(typeof ev.data.winner).toBe('string');
     expect(typeof ev.data.loser).toBe('string');
     expect(typeof ev.data.settlement).toBe('string');
@@ -179,20 +180,20 @@ describe('civil war and exile', () => {
   });
 
   it('civil_war is always preceded by contested_succession in the full event log', () => {
-    const { at100 } = civilWarArc();
-    const warEv = at100.events.find((e) => e.type === 'civil_war')!;
-    const priorContest = at100.events.find((e) => e.type === 'contested_succession' && e.tick < warEv.tick);
+    const { atCivilWar } = civilWarArc();
+    const warEv = atCivilWar.events.find((e) => e.type === 'civil_war')!;
+    const priorContest = atCivilWar.events.find((e) => e.type === 'contested_succession' && e.tick < warEv.tick);
     expect(priorContest).toBeDefined();
   });
 
   it('exile event fires, exiled actor leaves the focused settlement, and world.exiles records them', () => {
-    const { at100, w } = civilWarArc();
-    const exileEv = at100.events.find((e) => e.type === 'exile')!;
+    const { atCivilWar, w } = civilWarArc();
+    const exileEv = atCivilWar.events.find((e) => e.type === 'exile')!;
     const id = exileEv.subjects[0];
     // exile record is in world.exiles
-    expect(at100.exiles.has(id)).toBe(true);
+    expect(atCivilWar.exiles.has(id)).toBe(true);
     // exile record has expected fields
-    const rec = at100.exiles.get(id)!;
+    const rec = atCivilWar.exiles.get(id)!;
     expect(typeof rec.axis).toBe('string');
     expect(typeof rec.factionName).toBe('string');
     expect(typeof rec.year).toBe('number');
@@ -203,20 +204,20 @@ describe('civil war and exile', () => {
   });
 
   it('civil war clock clears to undefined after war resolves', () => {
-    const { at100 } = civilWarArc();
-    expect(at100.civilWarTick).toBeUndefined();
+    const { atCivilWar } = civilWarArc();
+    expect(atCivilWar.civilWarTick).toBeUndefined();
   });
 });
 
 describe('contested succession', () => {
   it('contested_succession fires when a ruler change crosses faction lines', () => {
-    const { at90 } = civilWarArc();
-    expect(at90.events.some((e) => e.type === 'contested_succession')).toBe(true);
+    const { atContested } = civilWarArc();
+    expect(atContested.events.some((e) => e.type === 'contested_succession')).toBe(true);
   });
 
   it('contested_succession event names both factions and the settlement', () => {
-    const { at90 } = civilWarArc();
-    const ev = at90.events.find((e) => e.type === 'contested_succession')!;
+    const { atContested } = civilWarArc();
+    const ev = atContested.events.find((e) => e.type === 'contested_succession')!;
     expect(typeof ev.data.newFaction).toBe('string');
     expect(typeof ev.data.oldFaction).toBe('string');
     expect(typeof ev.data.settlement).toBe('string');

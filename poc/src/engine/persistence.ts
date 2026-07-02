@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 15;
+export const SAVE_VERSION = 16;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -72,6 +72,10 @@ export interface SaveFile {
   currentIntent?: [OrgId, OrgIntent][];
   /** per-org treasuries (2C: OrgResources). Optional for saves predating v15 (default 0). */
   orgTreasury?: [OrgId, number][];
+  /** standing agreements between orgs (2E). Optional for saves predating v16 (default none). */
+  orgAgreements?: OrgAgreement[];
+  /** each org's memory of its last negotiation (2E). Optional for pre-v16 saves. */
+  lastInteraction?: [OrgId, OrgInteractionRecord][];
   /** per-org operational state + last action as entries. Optional for saves predating v14
    *  (operational state then defaults to baseline; lastAction empty). */
   operationalState?: [OrgId, OperationalState][];
@@ -167,6 +171,8 @@ export function serializeWorld(world: World): SaveFile {
     operationalState: [...world.operationalState],
     lastAction: [...world.lastAction],
     orgTreasury: [...world.orgTreasury],
+    orgAgreements: world.orgAgreements,
+    lastInteraction: [...world.lastInteraction],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -411,6 +417,9 @@ export function deserializeWorld(s: SaveFile): World {
     operationalState,
     lastAction,
     orgTreasury,
+    // v15 → v16 (interaction): no agreements or negotiation memory under an older engine.
+    orgAgreements: s.orgAgreements ?? [],
+    lastInteraction: new Map(s.lastInteraction ?? []),
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,
