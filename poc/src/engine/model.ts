@@ -225,6 +225,10 @@ export interface Organization {
   /** the line of seats this organization has held, oldest first — so a moved capital or a
    *  fallen seat leaves a coherent trail. The current seatId is appended here on a move. */
   seatHistory: LocationId[];
+  /** the organization's TREASURY (Phase 2C, `OrgResources`) — wealth it holds as an
+   *  institution, distinct from its seat's economy. Filled by a yearly tithe on the seat,
+   *  spent on goal-driven action (relief, patronage); a real transfer, never minted. */
+  treasury: number;
 }
 
 /**
@@ -828,7 +832,7 @@ export interface SettlementView {
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
    *  government as a first-class entity, distinct from the place. `founderName` and
    *  `leaderCount` expose the org's institutional memory (its remembered line of leaders). */
-  polity?: { name: string; subtype: string; leaderName?: string; founderName?: string; leaderCount: number; standing: number };
+  polity?: { name: string; subtype: string; leaderName?: string; founderName?: string; leaderCount: number; standing: number; treasury: number; goal: string };
   // economy
   specialization: Specialization;
   wealth: number;

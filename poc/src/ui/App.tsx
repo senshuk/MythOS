@@ -1267,6 +1267,7 @@ function Inspector({
               {settV.polity.leaderName ? ` · led by ${settV.polity.leaderName}` : ''}
               {settV.polity.founderName ? ` · founded by ${settV.polity.founderName}` : ''}
               {settV.polity.leaderCount > 1 ? ` · ${settV.polity.leaderCount} leaders in its line` : ''}
+              {` · treasury ${settV.polity.treasury} · seeks to ${settV.polity.goal}`}
             </p>
           )}
           {settV?.patronDeity && (

@@ -780,6 +780,14 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   faithFriction: { base: -30, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.6, label: 'follows a different creed' },
   // factionalism: opposing-faction members grate on each other politically.
   factionRivalry: { base: -45, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.65, label: 'stands against your faction' },
+  // ---- ORGANIZATION-scale thoughts (Phase 2C, OrgRelationships) ----
+  // Polities reuse the same thought machinery on their (symmetric) relationship edges:
+  // an institution's grudges and trust decay and stack exactly like a person's, just on
+  // generational timescales. `raided`/`wartorn` mark blood spilled BETWEEN two polities
+  // (the edge is shared, so the wound poisons the pair); `goodTrade` builds trust.
+  raided: { base: -120, durationTicks: 25 * DAYS_PER_YEAR, stackLimit: 5, mult: 0.9, label: 'blood between our peoples (a raid)' },
+  wartorn: { base: -90, durationTicks: 20 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'met in open battle' },
+  goodTrade: { base: 25, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 8, mult: 0.9, label: 'a flourishing trade' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
@@ -829,6 +837,14 @@ export const REPUTE_SPECS: Record<string, ReputeSpec> = {
     witnessThought: { kind: 'admired', value: 55 },
     label: 'made peace',
   },
+  // ---- ORGANIZATION-scale deeds (Phase 2C, OrgReputation) ----
+  // Orgs share the reputation map (same id space), so an institution's standing is the
+  // same witnessed-mark machinery — just with generational durations: what a polity does
+  // is remembered far longer than what one soul does.
+  org_aggression: { base: -70, durationTicks: 20 * DAYS_PER_YEAR, label: 'raided a neighbour' },
+  org_conquest: { base: -150, durationTicks: 40 * DAYS_PER_YEAR, label: 'razed a rival city' },
+  benevolence: { base: 80, durationTicks: 12 * DAYS_PER_YEAR, label: 'succoured its people' },
+  patronage: { base: 60, durationTicks: 12 * DAYS_PER_YEAR, label: 'raised public works' },
 };
 
 // Neutral fallback so an unknown / pack-added kind never crashes the engine.
@@ -855,6 +871,30 @@ export const REPUTATION_EFFECTS = {
   reception: 0.0004, // pPos shift per standing point in a social encounter (warm welcome / cold shoulder)
   esteem: 0.35, // how much standing folds into the esteem-need target (renown feels good; notoriety gnaws)
   courtship: 0.35, // opinion-equivalent appeal shift per standing point when sizing up a match
+};
+
+// ---- organizations: treasury & goals (Phase 2C) ----
+// PACK DATA. How a polity funds itself and what it does with the money. The tithe is a
+// real TRANSFER from the seat's economy (never minted); goal-driven spending returns it
+// as stability (relief) or investment (patronage). A heavier-handed pack raises the
+// tithe; a laissez-faire one zeroes it and polities stay poor and passive.
+export const ORG_ECONOMY = {
+  titheRate: 0.05, // fraction of the seat's wealth the polity draws each year
+  reliefCost: 100, // treasury spent on one relief action (goal: survive)
+  reliefStability: 7, // stability the relief restores at the seat
+  patronageCost: 220, // treasury spent on public works (goal: prosper/expand)
+  patronageWealth: 160, // wealth the works return to the seat's economy
+  patronageStability: 2, // and the quiet pride they bring
+};
+
+// What an organization WANTS (Phase 2C, OrgGoals) — thresholds for the derived goal
+// (organization.ts orgGoalOf). Goals are a pure function of world state (like actor
+// aspirations), so they never desync; these numbers only tune where the lines sit.
+export const ORG_GOALS = {
+  surviveStability: -15, // seat stability below this → 'survive'
+  survivePop: 25, // seat population below this → 'survive'
+  defendRelation: -40, // any border relation below this → 'defend' (hoard a war chest)
+  prosperWealth: 260, // seat wealth below this → 'prosper' (invest at home)
 };
 
 // ---- who inherits a settlement's seat (the renown→opportunity loop) ----

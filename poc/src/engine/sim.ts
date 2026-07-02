@@ -44,7 +44,7 @@ import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
-import { getOrganization, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
+import { getOrganization, organizationsYearly, orgGoalOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
@@ -160,6 +160,7 @@ export function stepTick(world: World): void {
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes
+    organizationsYearly(world); // polities tithe their seats and act on their goals (2C)
     summaryYearly(world); // named people living elsewhere, coarse fidelity
     migrationYearly(world); // people move between settlements (geography-weighted)
     directorYearly(world); // the storyteller paces drama (fires incidents)
@@ -353,6 +354,8 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
           leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
+          treasury: Math.round(org.treasury),
+          goal: orgGoalOf(world, org),
         };
       })(),
       specialization: s.econ.specialization,
@@ -839,7 +842,14 @@ export function canonicalize(world: World): string {
     const roster = (world.orgMembers.get(o.id) ?? [])
       .map((m) => `${m.role}@${m.actorId}:${m.sinceTick}-${m.untilTick ?? -1}`)
       .join(',');
-    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.mem[${roster}]`);
+    // 2C state: the treasury, and the org's relationship digest (opinion sum over its edges)
+    let orgRelSum = 0;
+    const orgEdges = world.rels.get(o.id);
+    if (orgEdges) for (const [, e] of orgEdges) orgRelSum += computeOpinion(e, world.tick);
+    parts.push(
+      `O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.` +
+        `ty${Math.round(o.treasury)}.orels${orgEdges?.size ?? 0}.orsum${Math.round(orgRelSum)}.mem[${roster}]`,
+    );
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

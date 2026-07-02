@@ -4,12 +4,23 @@
  * church, company, fleet — that acts through a governance structure and outlives its
  * members and the places it occupies.
  *
- * Phase 2A scope — Organizations EXIST. This module is their single home: creation, the
- * registry, and the small read API. An org here has identity, a category, governance (a
- * leader), a seat (a Location, with a history of past seats), reputation (reused from
- * reputation.ts — orgs share the entity id space, so no new reputation code), and a
- * history (events — any id can be an event subject). It does NOT yet hold goals, a
- * treasury, or relationships; those are later stages (2C+).
+ * Phase 2A/2B — Organizations EXIST and REMEMBER. This module is their single home:
+ * creation, the registry, the read API, and the membership roster (institutional memory).
+ * An org has identity, a category, governance (a leader), a seat (a Location, with a
+ * history of past seats), reputation (reused from reputation.ts — orgs share the entity
+ * id space, so no new reputation code), and a history (events — any id can be an event
+ * subject).
+ *
+ * Phase 2C — Organizations WANT, OWN, and RELATE:
+ *  - GOALS (`orgGoalOf`) are DERIVED, never stored — a pure function of world state, the
+ *    same philosophy as actor aspirations (aspiration.ts), so they can never desync.
+ *  - The TREASURY (`Organization.treasury`) is filled by a yearly tithe on the seat's
+ *    economy (a real transfer) and spent on goal-driven action (`organizationsYearly`):
+ *    relief when surviving, patronage when prospering, hoarded as a war chest when
+ *    defending. Spending earns the org REPUTATION marks (benevolence/patronage).
+ *  - RELATIONSHIPS reuse the actor thought machinery: each org gets a `world.rels` map,
+ *    and raids/battles/trade sow org-scale thoughts (lod.ts) whose summed opinion is an
+ *    institutional grudge or trust that OUTLIVES the people who caused it.
  *
  * The first concrete instance is the POLITY: the government a settlement HOSTS. The
  * settlement is the place; the polity is the government seated there. Succession operates
@@ -26,11 +37,14 @@ import {
   type LocationId,
   type FigureId,
   type EntityId,
+  type RelEdge,
   DAYS_PER_YEAR,
 } from './model';
-import { emit } from './world';
+import { emit, getRel, clamp, fullActors } from './world';
 import { getLocation } from './location';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
+import { addThought, computeOpinion, pruneThoughts } from './opinion';
+import { recordDeed } from './reputation';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, ORG_GOALS } from '../content/fixture';
 
 // ---- registry --------------------------------------------------------------
 
@@ -73,9 +87,13 @@ export function createOrganization(world: World, p: OrgProps): OrgId {
     leaderId: p.leaderId,
     seatId: p.seatId,
     seatHistory: p.seatId !== undefined ? [p.seatId] : [],
+    treasury: 0,
   };
   world.organizations.push(org);
   registerOrganization(world, org);
+  // orgs RELATE (2C): give the org its adjacency in the shared relationship graph, so
+  // getRel works between orgs exactly as between actors (same thought machinery).
+  world.rels.set(id, new Map());
   return id;
 }
 
@@ -277,4 +295,111 @@ export function organizationsServedBy(world: World, actorId: EntityId): { orgId:
     }
   }
   return out;
+}
+
+// ---- goals (Phase 2C: organizations WANT) -----------------------------------
+//
+// A goal is DERIVED, never stored — a pure function of world state, the same philosophy
+// as actor aspirations (aspiration.ts): it can never desync, costs nothing to persist,
+// and is trivially deterministic. The thresholds are pack data (fixture ORG_GOALS).
+
+export type OrgGoal = 'survive' | 'defend' | 'prosper' | 'expand';
+
+/** The settlement an org is seated at, if its seat is a live settlement. */
+export function seatSettlement(world: World, org: Organization): Settlement | undefined {
+  if (org.seatId === undefined) return undefined;
+  const s = world.settlements[org.seatId];
+  return s && s.id === org.seatId && s.ruinedYear === undefined ? s : undefined;
+}
+
+/**
+ * What this organization currently WANTS, most urgent first:
+ *  - survive: its seat is destabilized or depopulated — hold the place together;
+ *  - defend:  a hostile border (any edge past the pack threshold) — hoard a war chest;
+ *  - prosper: the seat is poor — invest at home;
+ *  - expand:  secure and rich — spend outward (public works, and later 2E: outward action).
+ */
+export function orgGoalOf(world: World, org: Organization): OrgGoal {
+  const seat = seatSettlement(world, org);
+  if (!seat) return 'survive'; // seatless/ruined: existence itself is the question
+  const pop = seat.detailed ? fullActors(world).length : seat.macro.population;
+  if (seat.macro.stability < ORG_GOALS.surviveStability || pop < ORG_GOALS.survivePop) return 'survive';
+  for (const e of world.edges) {
+    if ((e.a === seat.id || e.b === seat.id) && e.relation < ORG_GOALS.defendRelation) return 'defend';
+  }
+  if (seat.econ.wealth < ORG_GOALS.prosperWealth) return 'prosper';
+  return 'expand';
+}
+
+// ---- relationships (Phase 2C: organizations RELATE) -------------------------
+//
+// Orgs reuse the actor thought machinery on the SAME shared relationship graph: an edge
+// between two org ids carries decaying, sourced thoughts whose sum is the institutional
+// stance. The edge is symmetric (one object, both directions) — a raid poisons the PAIR,
+// which reads true: blood spilled between two peoples estranges both courts.
+
+/** The relationship edge between two organizations (lazily created, like actors'). */
+export function orgRel(world: World, a: OrgId, b: OrgId): RelEdge {
+  // defensive: an org loaded from an older save may predate org adjacency maps.
+  if (!world.rels.has(a)) world.rels.set(a, new Map());
+  if (!world.rels.has(b)) world.rels.set(b, new Map());
+  return getRel(world, a, b);
+}
+
+/** The summed institutional stance of org a toward org b (symmetric). */
+export function orgOpinionOf(world: World, a: OrgId, b: OrgId): number {
+  const inner = world.rels.get(a);
+  const edge = inner?.get(b);
+  return edge ? computeOpinion(edge, world.tick) : 0;
+}
+
+/** Sow an org-scale thought between two polities (a raid, a battle, a flourishing trade).
+ *  Prunes expired thoughts on the way in, so org edges stay bounded like actors'. */
+export function noteOrgThought(world: World, a: OrgId, b: OrgId, kind: string, cause?: number): void {
+  const edge = orgRel(world, a, b);
+  pruneThoughts(edge, world.tick);
+  addThought(edge, kind, world.tick, { cause });
+}
+
+// ---- the yearly pass (Phase 2C: organizations OWN and ACT) ------------------
+
+/**
+ * Yearly: each living, seated polity funds itself and acts on its goal. RNG-FREE —
+ * thresholds and transfers only, so this pass never perturbs any stream.
+ *
+ *  1. TITHE: the polity draws a pack-set fraction of its seat's wealth into its
+ *     treasury — a real transfer (the seat's economy is debited), never minted.
+ *  2. GOAL-DRIVEN SPENDING:
+ *     - survive → RELIEF: treasury buys stability at the seat (grain doles, guards on
+ *       the walls); the town remembers — the org earns a 'benevolence' mark.
+ *     - prosper/expand → PATRONAGE: treasury funds public works — wealth returns to
+ *       the seat's economy with a little pride; the org earns a 'patronage' mark.
+ *     - defend → HOARD: a hostile border means the treasury is a war chest; hold it
+ *       (2E will spend it on outward action).
+ */
+export function organizationsYearly(world: World): void {
+  for (const org of world.organizations) {
+    if (org.dissolvedYear !== undefined) continue;
+    const seat = seatSettlement(world, org);
+    if (!seat || seat.macro.population <= 0) continue;
+
+    const tithe = seat.econ.wealth * ORG_ECONOMY.titheRate;
+    seat.econ.wealth -= tithe;
+    org.treasury += tithe;
+
+    const goal = orgGoalOf(world, org);
+    if (goal === 'survive' && org.treasury >= ORG_ECONOMY.reliefCost) {
+      org.treasury -= ORG_ECONOMY.reliefCost;
+      seat.macro.stability = clamp(seat.macro.stability + ORG_ECONOMY.reliefStability, -100, 100);
+      const ev = emit(world, 'org_relief', [org.id], { name: org.name, seat: seat.name }, [], [seat.id]);
+      recordDeed(world, org.id, 'benevolence', { cause: ev });
+    } else if ((goal === 'prosper' || goal === 'expand') && org.treasury >= ORG_ECONOMY.patronageCost) {
+      org.treasury -= ORG_ECONOMY.patronageCost;
+      seat.econ.wealth += ORG_ECONOMY.patronageWealth;
+      seat.macro.stability = clamp(seat.macro.stability + ORG_ECONOMY.patronageStability, -100, 100);
+      const ev = emit(world, 'org_patronage', [org.id], { name: org.name, seat: seat.name }, [], [seat.id]);
+      recordDeed(world, org.id, 'patronage', { cause: ev });
+    }
+    // goal === 'defend': hold the war chest.
+  }
 }

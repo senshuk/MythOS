@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL } from '../content/fixture';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -178,7 +178,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11) {
+  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -272,11 +272,19 @@ export function deserializeWorld(s: SaveFile): World {
         leaderId: st.currentRulerId,
         seatId: st.id,
         seatHistory: [st.id],
+        treasury: 0,
         ...(st.ruinedYear !== undefined ? { dissolvedYear: st.ruinedYear } : {}),
       };
       organizations.push(org);
       (st as { polityId?: OrgId }).polityId = org.id;
     }
+  }
+  // v12 → v13 (organizations OWN & RELATE): backfill the treasury on stored orgs, and give
+  // every org an adjacency map in the relationship graph (its stored edges, if any, were
+  // already rebuilt above via relAdj — this only fills in the orgs that had none).
+  for (const org of organizations) {
+    if ((org as { treasury?: number }).treasury === undefined) org.treasury = 0;
+    if (!rels.has(org.id)) rels.set(org.id, new Map());
   }
   const organizationsById = new Map<OrgId, Organization>(organizations.map((o) => [o.id, o]));
 
