@@ -153,7 +153,10 @@ describe('worldgen orchestration (forgeWorld)', () => {
     const w = createWorld(1492, false);
     runYears(w, 150);
     const types = new Set(allEvents(w).map((e) => e.type));
-    const flavour = ['wonder', 'beast', 'omen', 'battle', 'raid'];
+    // memorable colour beyond disasters: wonders, beasts, omens — and, since 2E,
+    // DIPLOMACY (sworn peaces legitimately suppress some of the old battle/raid
+    // colour, replacing it with pacts and tributes — that IS the variety now).
+    const flavour = ['wonder', 'beast', 'omen', 'battle', 'raid', 'pact_sealed', 'pact_refused', 'tribute_paid', 'tribute_refused'];
     expect(flavour.filter((t) => types.has(t as never)).length).toBeGreaterThanOrEqual(4);
   });
 });
