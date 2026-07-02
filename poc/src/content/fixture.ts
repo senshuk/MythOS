@@ -8,7 +8,7 @@
 import { Rng } from '../engine/rng';
 import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, World, Settlement } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
 
 /**
@@ -755,6 +755,9 @@ export function baselineOperational(): Record<string, number> {
 const actSeat = (world: World, seatId: number | undefined): Settlement | undefined =>
   (seatId === undefined ? undefined : world.settlements[seatId]);
 const foodYears = (s: Settlement): number => (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / Math.max(s.macro.population, 1);
+// the org's own funds (2C: OrgResources) — actions are bounded by what the tithe has
+// actually collected (read directly off the map; the engine's applyEffects mutates it).
+const orgFunds = (world: World, org: Organization): number => world.orgTreasury.get(org.id) ?? 0;
 
 /** Neighbours of a seat in the region graph, as [otherSettlement, edge]. */
 function seatNeighbours(world: World, seatId: number): { other: Settlement; relation: number }[] {
@@ -781,14 +784,15 @@ export const ACTIONS: ActionDef[] = [
     feasible: (world, org) => {
       const s = actSeat(world, org.seatId);
       if (!s) return { ok: false, reason: 'no seat' };
-      return foodYears(s) >= 2 ? { ok: true } : { ok: false, reason: 'too little food to raise levies' };
+      if (foodYears(s) < 2) return { ok: false, reason: 'too little food to raise levies' };
+      return orgFunds(world, org) >= 20 ? { ok: true } : { ok: false, reason: 'the treasury cannot pay the levies' };
     },
     resolve: (world, org) => {
       const s = actSeat(world, org.seatId)!;
       const levies = Math.max(1, Math.round(Math.max(s.macro.population, 1) * 0.02));
       return {
         success: true,
-        effects: [ { target: 'stat', key: 'strength', delta: 8 }, { target: 'wealth', delta: -20 } ],
+        effects: [ { target: 'stat', key: 'strength', delta: 8 }, { target: 'treasury', delta: -20 } ],
         summary: `raised ${levies} levies`,
         eventType: 'org_recruited', eventData: { org: org.name, levies },
       };
@@ -799,11 +803,11 @@ export const ACTIONS: ActionDef[] = [
     feasible: (world, org) => {
       const s = actSeat(world, org.seatId);
       if (!s) return { ok: false, reason: 'no seat' };
-      return s.econ.wealth >= 30 ? { ok: true } : { ok: false, reason: 'too poor to build defences' };
+      return orgFunds(world, org) >= 25 ? { ok: true } : { ok: false, reason: 'the treasury cannot fund defences' };
     },
     resolve: (_world, org) => ({
       success: true,
-      effects: [ { target: 'stat', key: 'readiness', delta: 10 }, { target: 'wealth', delta: -25 } ],
+      effects: [ { target: 'stat', key: 'readiness', delta: 10 }, { target: 'treasury', delta: -25 } ],
       summary: 'strengthened its defences',
       eventType: 'org_fortified', eventData: { org: org.name },
     }),
@@ -845,14 +849,14 @@ export const ACTIONS: ActionDef[] = [
     feasible: (world, org) => {
       const s = actSeat(world, org.seatId);
       if (!s) return { ok: false, reason: 'no seat' };
-      return s.econ.wealth >= 25 && foodYears(s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
+      return orgFunds(world, org) >= 20 && foodYears(s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
     },
     resolve: (_world, org) => ({
       success: true,
       effects: [
         { target: 'stat', key: 'morale', delta: 12 },
         { target: 'stability', delta: 4 },
-        { target: 'wealth', delta: -20 },
+        { target: 'treasury', delta: -20 },
         { target: 'reputation', kind: 'generosity' }, // a festival is public munificence
       ],
       summary: 'held a great festival',
@@ -1054,6 +1058,14 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   faithFriction: { base: -30, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.6, label: 'follows a different creed' },
   // factionalism: opposing-faction members grate on each other politically.
   factionRivalry: { base: -45, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.65, label: 'stands against your faction' },
+  // ---- ORGANIZATION-scale thoughts (Phase 2C, OrgRelationships) ----
+  // Polities reuse the same thought machinery on their (symmetric) relationship edges:
+  // an institution's grudges and trust decay and stack exactly like a person's, just on
+  // generational timescales. `raided`/`wartorn` mark blood spilled BETWEEN two polities
+  // (the edge is shared, so the wound poisons the pair); `goodTrade` builds trust.
+  raided: { base: -120, durationTicks: 25 * DAYS_PER_YEAR, stackLimit: 5, mult: 0.9, label: 'blood between our peoples (a raid)' },
+  wartorn: { base: -90, durationTicks: 20 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'met in open battle' },
+  goodTrade: { base: 25, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 8, mult: 0.9, label: 'a flourishing trade' },
 };
 
 // Neutral fallback so an unknown / pack-added kind without a spec never crashes the engine.
@@ -1103,6 +1115,12 @@ export const REPUTE_SPECS: Record<string, ReputeSpec> = {
     witnessThought: { kind: 'admired', value: 55 },
     label: 'made peace',
   },
+  // ---- ORGANIZATION-scale deeds (Phase 2C, OrgReputation) ----
+  // Orgs share the reputation map (same id space), so an institution's standing is the
+  // same witnessed-mark machinery — just with generational durations: what a polity does
+  // is remembered far longer than what one soul does.
+  org_aggression: { base: -70, durationTicks: 20 * DAYS_PER_YEAR, label: 'raided a neighbour' },
+  org_conquest: { base: -150, durationTicks: 40 * DAYS_PER_YEAR, label: 'razed a rival city' },
 };
 
 // Neutral fallback so an unknown / pack-added kind never crashes the engine.
@@ -1129,6 +1147,16 @@ export const REPUTATION_EFFECTS = {
   reception: 0.0004, // pPos shift per standing point in a social encounter (warm welcome / cold shoulder)
   esteem: 0.35, // how much standing folds into the esteem-need target (renown feels good; notoriety gnaws)
   courtship: 0.35, // opinion-equivalent appeal shift per standing point when sizing up a match
+};
+
+// ---- organizations: the treasury (Phase 2C: OrgResources) ----
+// PACK DATA. How a polity funds itself: the yearly TITHE is a real TRANSFER from the
+// seat's economy (never minted) into the org treasury (engine/organization.ts
+// orgTitheYearly). The treasury is what the ACTION layer spends — an ActionDef's
+// 'treasury' effects debit it — so a heavier-handed pack raises the tithe and gets a
+// more active state; a laissez-faire one zeroes it and polities stay poor and passive.
+export const ORG_ECONOMY = {
+  titheRate: 0.05, // fraction of the seat's wealth the polity draws each year
 };
 
 // ---- who inherits a settlement's seat (the renown→opportunity loop) ----

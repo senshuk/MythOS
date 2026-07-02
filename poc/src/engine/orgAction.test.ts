@@ -56,15 +56,19 @@ describe('Execution: decide vs apply', () => {
 });
 
 describe('Execution: feasibility gates history', () => {
-  it('an infeasible action is rejected (no food → cannot recruit)', () => {
+  it('an infeasible action is rejected (no food → cannot recruit; no funds → cannot pay)', () => {
     const w = createWorld(3);
     const org = aPolity(w);
     const seat = w.settlements[org.seatId!];
     const recruit = actionForIntent('recruit')!;
+    w.orgTreasury.set(org.id, 25); // funded — food is the gate under test first
     seat.econ.stock[SUBSISTENCE_RESOURCE] = 0;
     expect(recruit.feasible(w, org, operationalOf(w, org.id)).ok).toBe(false);
     seat.econ.stock[SUBSISTENCE_RESOURCE] = seat.macro.population * 5; // ~5 years' buffer
     expect(recruit.feasible(w, org, operationalOf(w, org.id)).ok).toBe(true);
+    // 2C: the levies must also be PAID — a penniless treasury blocks the same action
+    w.orgTreasury.set(org.id, 0);
+    expect(recruit.feasible(w, org, operationalOf(w, org.id)).ok).toBe(false);
   });
 });
 

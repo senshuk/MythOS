@@ -46,7 +46,7 @@ import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
-import { getOrganization, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
+import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
 import { orgActionYearly } from './orgAction';
 import { needsDaily } from '../systems/needs';
@@ -121,6 +121,7 @@ export function createWorld(seed: number, focus = true): World {
     currentIntent: new Map(),
     operationalState: new Map(),
     lastAction: new Map(),
+    orgTreasury: new Map(),
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -167,6 +168,7 @@ export function stepTick(world: World): void {
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes
+    orgTitheYearly(world); // polities draw their tithe (2C: OrgResources — funds the action layer)
     summaryYearly(world); // named people living elsewhere, coarse fidelity
     migrationYearly(world); // people move between settlements (geography-weighted)
     directorYearly(world); // the storyteller paces drama (fires incidents)
@@ -383,6 +385,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
           leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
+          treasury: Math.round(treasuryOf(world, org.id)),
           // the focused polity's current reasoning, made legible (the 2C deliverable)
           reasoning: s.id === world.focusedSettlementId ? orgReasoningView(world, org.id) : undefined,
           operational: (() => {
@@ -885,7 +888,14 @@ export function canonicalize(world: World): string {
     const opsDigest = ops ? Object.keys(ops).sort().map((k) => `${k}${Math.round(ops[k])}`).join(',') : '-';
     const last = world.lastAction.get(o.id);
     const actDigest = last ? `${last.id}.${last.outcome}.t${last.sinceTick}` : '-';
-    parts.push(`O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.mem[${roster}].int${intentDigest}.ops[${opsDigest}].act${actDigest}`);
+    // 2C state: the treasury, and the org's relationship digest (opinion sum over its edges)
+    let orgRelSum = 0;
+    const orgEdges = world.rels.get(o.id);
+    if (orgEdges) for (const [, e] of orgEdges) orgRelSum += computeOpinion(e, world.tick);
+    parts.push(
+      `O${o.id}:${o.subtype}.gov${o.governanceId}.ld${o.leaderId ?? -1}.seat${o.seatId ?? -1}.dis${o.dissolvedYear ?? -1}.sh${o.seatHistory.join('-')}.rep${standing}.` +
+        `ty${Math.round(treasuryOf(world, o.id))}.orels${orgEdges?.size ?? 0}.orsum${Math.round(orgRelSum)}.mem[${roster}].int${intentDigest}.ops[${opsDigest}].act${actDigest}`,
+    );
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

@@ -4,12 +4,23 @@
  * church, company, fleet — that acts through a governance structure and outlives its
  * members and the places it occupies.
  *
- * Phase 2A scope — Organizations EXIST. This module is their single home: creation, the
- * registry, and the small read API. An org here has identity, a category, governance (a
- * leader), a seat (a Location, with a history of past seats), reputation (reused from
- * reputation.ts — orgs share the entity id space, so no new reputation code), and a
- * history (events — any id can be an event subject). It does NOT yet hold goals, a
- * treasury, or relationships; those are later stages (2C+).
+ * Phase 2A/2B — Organizations EXIST and REMEMBER. This module is their single home:
+ * creation, the registry, the read API, and the membership roster (institutional memory).
+ * An org has identity, a category, governance (a leader), a seat (a Location, with a
+ * history of past seats), reputation (reused from reputation.ts — orgs share the entity
+ * id space, so no new reputation code), and a history (events — any id can be an event
+ * subject).
+ *
+ * Phase 2C — Organizations OWN and RELATE (reasoning lives in orgReason.ts; execution in
+ * orgAction.ts):
+ *  - The TREASURY (`world.orgTreasury`, kept OFF the identity-locked record like
+ *    operationalState) is filled by a yearly tithe on the seat's economy — a real
+ *    transfer, never minted (`orgTitheYearly`) — and spent by the ACTION layer: an
+ *    action's 'treasury' effects debit it, so what a polity does is bounded by what it
+ *    has actually collected.
+ *  - RELATIONSHIPS reuse the actor thought machinery: each org gets a `world.rels` map,
+ *    and raids/battles/trade sow org-scale thoughts (lod.ts) whose summed opinion is an
+ *    institutional grudge or trust that OUTLIVES the people who caused it.
  *
  * The first concrete instance is the POLITY: the government a settlement HOSTS. The
  * settlement is the place; the polity is the government seated there. Succession operates
@@ -26,11 +37,13 @@ import {
   type LocationId,
   type FigureId,
   type EntityId,
+  type RelEdge,
   DAYS_PER_YEAR,
 } from './model';
-import { emit } from './world';
+import { emit, getRel } from './world';
 import { getLocation } from './location';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
+import { addThought, computeOpinion, pruneThoughts } from './opinion';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, baselineOperational } from '../content/fixture';
 
 // ---- registry --------------------------------------------------------------
 
@@ -76,6 +89,11 @@ export function createOrganization(world: World, p: OrgProps): OrgId {
   };
   world.organizations.push(org);
   registerOrganization(world, org);
+  // orgs RELATE (2C): give the org its adjacency in the shared relationship graph, so
+  // getRel works between orgs exactly as between actors (same thought machinery).
+  world.rels.set(id, new Map());
+  // orgs OWN (2C): an empty treasury, off the identity-locked record (like ops state).
+  world.orgTreasury.set(id, 0);
   return id;
 }
 
@@ -280,3 +298,75 @@ export function organizationsServedBy(world: World, actorId: EntityId): { orgId:
   }
   return out;
 }
+
+// ---- the treasury (Phase 2C: organizations OWN) ------------------------------
+//
+// Institutional funds, kept in `world.orgTreasury` (OFF the identity-locked record, the
+// same pattern as operationalState). What an org WANTS is orgReason.ts's business; what
+// it can AFFORD is this module's: the tithe fills the treasury, and the action layer's
+// 'treasury' effects (orgAction.ts applyEffects) spend it.
+
+/** The settlement an org is seated at, if its seat is a live settlement. */
+export function seatSettlement(world: World, org: Organization): Settlement | undefined {
+  if (org.seatId === undefined) return undefined;
+  const s = world.settlements[org.seatId];
+  return s && s.id === org.seatId && s.ruinedYear === undefined ? s : undefined;
+}
+
+/** The org's current funds (0 if it has never collected — e.g. loaded from an old save). */
+export function treasuryOf(world: World, orgId: OrgId): number {
+  return world.orgTreasury.get(orgId) ?? 0;
+}
+
+/** Credit (or debit, negative delta) an org's treasury, floored at zero. */
+export function adjustTreasury(world: World, orgId: OrgId, delta: number): void {
+  world.orgTreasury.set(orgId, Math.max(0, treasuryOf(world, orgId) + delta));
+}
+
+/**
+ * Yearly: each living, seated polity draws its TITHE — a pack-set fraction of its seat's
+ * wealth moves into the org treasury. A real TRANSFER (the seat's economy is debited),
+ * never minted; RNG-free, so this pass never perturbs any stream. Runs before the
+ * reasoning/action passes, so what an org can afford this year reflects this year's take.
+ */
+export function orgTitheYearly(world: World): void {
+  for (const org of world.organizations) {
+    if (org.dissolvedYear !== undefined) continue;
+    const seat = seatSettlement(world, org);
+    if (!seat || seat.macro.population <= 0) continue;
+    const tithe = seat.econ.wealth * ORG_ECONOMY.titheRate;
+    seat.econ.wealth -= tithe;
+    adjustTreasury(world, org.id, tithe);
+  }
+}
+
+// ---- relationships (Phase 2C: organizations RELATE) -------------------------
+//
+// Orgs reuse the actor thought machinery on the SAME shared relationship graph: an edge
+// between two org ids carries decaying, sourced thoughts whose sum is the institutional
+// stance. The edge is symmetric (one object, both directions) — a raid poisons the PAIR,
+// which reads true: blood spilled between two peoples estranges both courts.
+
+/** The relationship edge between two organizations (lazily created, like actors'). */
+export function orgRel(world: World, a: OrgId, b: OrgId): RelEdge {
+  // defensive: an org loaded from an older save may predate org adjacency maps.
+  if (!world.rels.has(a)) world.rels.set(a, new Map());
+  if (!world.rels.has(b)) world.rels.set(b, new Map());
+  return getRel(world, a, b);
+}
+
+/** The summed institutional stance of org a toward org b (symmetric). */
+export function orgOpinionOf(world: World, a: OrgId, b: OrgId): number {
+  const inner = world.rels.get(a);
+  const edge = inner?.get(b);
+  return edge ? computeOpinion(edge, world.tick) : 0;
+}
+
+/** Sow an org-scale thought between two polities (a raid, a battle, a flourishing trade).
+ *  Prunes expired thoughts on the way in, so org edges stay bounded like actors'. */
+export function noteOrgThought(world: World, a: OrgId, b: OrgId, kind: string, cause?: number): void {
+  const edge = orgRel(world, a, b);
+  pruneThoughts(edge, world.tick);
+  addThought(edge, kind, world.tick, { cause });
+}
+

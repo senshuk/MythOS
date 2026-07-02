@@ -41,7 +41,8 @@ import {
 } from './world';
 import { addThought } from './opinion';
 import { registerLocation } from './location';
-import { foundPolity } from './organization';
+import { foundPolity, noteOrgThought, orgOpinionOf } from './organization';
+import { recordDeed } from './reputation';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
   SPECIES,
@@ -710,9 +711,16 @@ export function geographyYearly(world: World): void {
 
     // relations settle toward how culturally COMPATIBLE the two peoples are: aligned
     // values pull toward friendship, opposed values toward hostility — so wars have a
-    // REASON, not dice. (Trade nudges it further up in economyYearly.)
+    // REASON, not dice. (Trade nudges it further up in economyYearly.) The polities'
+    // INSTITUTIONAL memory (2C) pulls the same target: a court that remembers being
+    // raided keeps the border cold long after the raiders themselves are dead — and
+    // grudges DECAY (org thoughts fade over ~a generation), so old wars can heal.
     const dist = culturalDistance(A.cultureId, B.cultureId);
-    const cultureTarget = clamp(Math.round((20 - dist) * 1.1), -42, 26);
+    const grudge =
+      A.polityId !== undefined && B.polityId !== undefined
+        ? clamp(Math.round(orgOpinionOf(world, A.polityId, B.polityId) / 25), -18, 10)
+        : 0;
+    const cultureTarget = clamp(Math.round((20 - dist) * 1.1), -42, 26) + grudge;
     e.relation = clamp(Math.round(e.relation * 0.92 + cultureTarget * 0.08) + rng.range(-4, 4), -100, 100);
     // a rare border grievance sharply sours relations — the spark that lights the war
     if (rng.chance(0.012)) e.relation = clamp(e.relation - rng.range(18, 44), -100, 100);
@@ -741,9 +749,11 @@ export function geographyYearly(world: World): void {
         weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
-        emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
+        const conqId = emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
         houseConquers(world, strong); // the victor's House gains prestige (the loser's line
         //                               falls when recordRuins registers the emptied town)
+        // razing a city brands the victor's POLITY with lasting infamy (2C: OrgReputation).
+        if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
       } else {
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);
@@ -755,7 +765,9 @@ export function geographyYearly(world: World): void {
         A.macro.stability = clamp(A.macro.stability - rng.range(3, 8), -100, 100);
         B.macro.stability = clamp(B.macro.stability - rng.range(3, 8), -100, 100);
         const subjects = [A.currentRulerId, B.currentRulerId].filter((x): x is number => x !== undefined);
-        emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
+        const battleId = emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
+        // both courts remember meeting in battle (2C: an org-scale thought on the pair).
+        if (A.polityId !== undefined && B.polityId !== undefined) noteOrgThought(world, A.polityId, B.polityId, 'wartorn', battleId);
       }
     } else if (e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
       // a raid along a hostile border. The weaker, non-focused side is the victim;
@@ -773,7 +785,11 @@ export function geographyYearly(world: World): void {
         victim.macro.stability = clamp(victim.macro.stability - rng.range(4, 12), -100, 100);
       }
       e.tradeVolume *= 0.4; // war chokes the route
-      emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [raider.id, victim.id]);
+      const raidId = emit(world, 'raid', [], { raider: raider.name, victim: victim.name, toll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [raider.id, victim.id]);
+      // the raid scars the polities (2C): a lasting grudge between the courts, and
+      // infamy on the raider's institution.
+      if (raider.polityId !== undefined && victim.polityId !== undefined) noteOrgThought(world, raider.polityId, victim.polityId, 'raided', raidId);
+      if (raider.polityId !== undefined) recordDeed(world, raider.polityId, 'org_aggression', { cause: raidId });
     }
   }
   world.geoRngState = rng.state;
@@ -866,7 +882,12 @@ export function economyYearly(world: World): void {
   }
   // one event per year for the busiest route — keeps the feed informative, not noisy
   if (busiest.value > 12) {
-    emit(world, 'trade', [], { from: busiest.from, to: busiest.to, goods: Math.round(busiest.value) }, [], [busiest.fromId, busiest.toId]);
+    const tradeId = emit(world, 'trade', [], { from: busiest.from, to: busiest.to, goods: Math.round(busiest.value) }, [], [busiest.fromId, busiest.toId]);
+    // a flourishing route builds INSTITUTIONAL trust between the two courts (2C) —
+    // bounded to the year's busiest route, mirroring the event, so org edges stay quiet.
+    const pa = world.settlements[busiest.fromId]?.polityId;
+    const pb = world.settlements[busiest.toId]?.polityId;
+    if (pa !== undefined && pb !== undefined) noteOrgThought(world, pa, pb, 'goodTrade', tradeId);
   }
 
   // 3) food security: famine where the granaries ran dry; plenty lifts stability

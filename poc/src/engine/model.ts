@@ -332,6 +332,7 @@ export type OperationalState = Record<string, number>;
 export type OrgEffect =
   | { target: 'stat'; key: string; delta: number } // an operational stat
   | { target: 'wealth'; delta: number } // the seat's econ.wealth
+  | { target: 'treasury'; delta: number } // the org's own funds (2C: OrgResources)
   | { target: 'stability'; delta: number } // the seat's macro.stability
   | { target: 'relation'; neighbourId: SettlementId; delta: number } // an edge's relation
   | { target: 'reputation'; kind: string }; // an org reputation mark
@@ -791,6 +792,11 @@ export interface World {
   /** the last action each organization executed — its outcome + applied effects, for the
    *  inspector. Set by orgAction.ts. */
   lastAction: Map<OrgId, OrgAction>;
+  /** per-organization TREASURY (2C: OrgResources) — institutional funds, kept OFF the
+   *  identity-locked Organization record like operationalState. Filled by the yearly
+   *  tithe on the seat's economy (a real transfer, never minted); spent by the action
+   *  layer (an action's 'treasury' effects). */
+  orgTreasury: Map<OrgId, number>;
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -989,6 +995,8 @@ export interface SettlementView {
     founderName?: string;
     leaderCount: number;
     standing: number;
+    /** the org's TREASURY (2C: OrgResources) — the tithe-fed funds its actions spend. */
+    treasury: number;
     reasoning?: OrgIntentView;
     /** the org's operational condition (strength/readiness/morale) — the state the
      *  execution layer moves. */

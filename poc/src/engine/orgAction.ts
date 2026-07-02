@@ -25,6 +25,7 @@ import {
 import { INTENT_TO_ACTION, actionById, baselineOperational } from '../content/fixture';
 import { emit, clamp } from './world';
 import { recordDeed } from './reputation';
+import { adjustTreasury } from './organization';
 
 /** Years an org waits between actions, so polities don't act (and chronicle) every year. */
 const ACTION_COOLDOWN_YEARS = 4;
@@ -61,6 +62,11 @@ export function applyEffects(world: World, org: Organization, effects: OrgEffect
         break;
       case 'wealth':
         if (seat) seat.econ.wealth = Math.max(0, seat.econ.wealth + e.delta);
+        break;
+      case 'treasury':
+        // the org's OWN funds (2C: OrgResources) — action costs debit the tithe-fed
+        // treasury, so what a polity does is bounded by what it has actually collected.
+        adjustTreasury(world, org.id, e.delta);
         break;
       case 'stability':
         if (seat) seat.macro.stability = clamp(seat.macro.stability + e.delta, -100, 100);

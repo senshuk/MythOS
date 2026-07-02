@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 15;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -70,6 +70,8 @@ export interface SaveFile {
   /** per-org current reasoning record as entries. Optional for saves predating v13;
    *  recomputed on the next yearly tick if absent. */
   currentIntent?: [OrgId, OrgIntent][];
+  /** per-org treasuries (2C: OrgResources). Optional for saves predating v15 (default 0). */
+  orgTreasury?: [OrgId, number][];
   /** per-org operational state + last action as entries. Optional for saves predating v14
    *  (operational state then defaults to baseline; lastAction empty). */
   operationalState?: [OrgId, OperationalState][];
@@ -164,6 +166,7 @@ export function serializeWorld(world: World): SaveFile {
     currentIntent: [...world.currentIntent],
     operationalState: [...world.operationalState],
     lastAction: [...world.lastAction],
+    orgTreasury: [...world.orgTreasury],
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -188,7 +191,7 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
 export function deserializeWorld(s: SaveFile): World {
-  if (s.version !== SAVE_VERSION && s.version !== 5 && s.version !== 6 && s.version !== 7 && s.version !== 8 && s.version !== 9 && s.version !== 10 && s.version !== 11 && s.version !== 12 && s.version !== 13) {
+  if (s.version < 5 || s.version > SAVE_VERSION) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
 
@@ -287,6 +290,14 @@ export function deserializeWorld(s: SaveFile): World {
       organizations.push(org);
       (st as { polityId?: OrgId }).polityId = org.id;
     }
+  }
+  // v14 → v15 (organizations OWN & RELATE): treasuries default to 0 for orgs an older save
+  // never funded, and every org gets an adjacency map in the relationship graph (its stored
+  // edges, if any, were already rebuilt above via relAdj — this only fills in the missing).
+  const orgTreasury = new Map<OrgId, number>(s.orgTreasury ?? []);
+  for (const org of organizations) {
+    if (!orgTreasury.has(org.id)) orgTreasury.set(org.id, 0);
+    if (!rels.has(org.id)) rels.set(org.id, new Map());
   }
   const organizationsById = new Map<OrgId, Organization>(organizations.map((o) => [o.id, o]));
 
@@ -399,6 +410,7 @@ export function deserializeWorld(s: SaveFile): World {
     currentIntent: new Map(s.currentIntent ?? []),
     operationalState,
     lastAction,
+    orgTreasury,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,
