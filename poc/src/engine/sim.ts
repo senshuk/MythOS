@@ -55,6 +55,7 @@ import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
 import { religionYearly } from './religion';
 import { factionYearly, factionOf, civilWarYearly, exileYearly } from './factions';
+import { reactToBeliefs } from './reactions';
 
 export { focusSettlement } from './lod';
 export { possess, release, schedulePlayerIntent } from './player';
@@ -104,6 +105,7 @@ export function createWorld(seed: number, focus = true): World {
     memory: new Map(),
     reputation: new Map(),
     beliefs: new Map(),
+    reactions: new Set(),
     faith: new Map(),
     exiles: new Map(),
     rels: new Map(),
@@ -163,7 +165,10 @@ export function stepTick(world: World): void {
   const actors = hasFocus ? fullActors(world) : [];
   if (hasFocus) {
     needsDaily(world, actors);
-    if (world.tick % 7 === 0) actWeekly(world, actors);
+    if (world.tick % 7 === 0) {
+      actWeekly(world, actors);
+      reactToBeliefs(world, actors); // actors act on what they've come to believe (Subjectivity 1B)
+    }
   }
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity

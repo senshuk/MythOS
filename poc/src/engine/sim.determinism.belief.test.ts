@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears } from './sim';
-import { fullActors } from './world';
+import { fullActors, allEvents } from './world';
 import { computeBelief } from './belief';
 import { type World } from './model';
 
@@ -55,5 +55,16 @@ describe('Subjectivity 1A — the live world generates subjective reality', () =
         .join('|');
     };
     expect(beliefSignature(20)).toBe(beliefSignature(20));
+  });
+
+  it('belief becomes DECISION: kin mourn deaths they come to believe, deterministically', () => {
+    const mournCount = (seed: number): number => {
+      const w = createWorld(seed);
+      runYears(w, 60); // long enough for kin to witness kin deaths and act on the belief
+      return allEvents(w).filter((e) => e.type === 'mourned').length;
+    };
+    const n = mournCount(20);
+    expect(n).toBeGreaterThan(0); // the running world now produces belief-driven acts
+    expect(mournCount(20)).toBe(n); // and does so deterministically
   });
 });

@@ -866,6 +866,11 @@ export interface World {
    *  contradict, the objective Event log. Keyed by holder; one Belief per (subject, assertion).
    *  Written by acquireEvidence (inert — never emits, per invariant 8). Serialized. */
   beliefs: Map<EntityId, Belief[]>;
+  /** The reaction system's memory (reactions.ts): which `actor|kind|subject|assertion`
+   *  belief-triggered reactions have already fired, so each runs ONCE when a stance first
+   *  crosses to believed. Kept OUT of Belief on purpose — belief is knowledge, reacting is
+   *  behaviour (Belief ≠ Reaction, as Intent ≠ Action). Serialized. */
+  reactions: Set<string>;
   /** per-actor religious faith: the id of the deity they follow, or '' if faithless.
    *  Assigned at birth from the settlement's patron deity + trait-modified probability;
    *  stored (not re-derived) so faith is stable for life and survives a save/load. */

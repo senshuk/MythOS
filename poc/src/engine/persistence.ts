@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -97,6 +97,8 @@ export interface SaveFile {
   reputation: [number, Reputation][];
   /** per-actor beliefs (Subjectivity 1A). Optional for saves predating v17 (default none). */
   beliefs?: [number, Belief[]][];
+  /** fired belief-triggered reactions (Subjectivity 1B). Optional for saves predating v18. */
+  reactions?: string[];
   faith?: [number, string][]; // actor → deity id ('' = faithless); optional for v7 compat
   exiles?: [number, ExileRecord][]; // optional for saves pre-dating Stage 2
 
@@ -190,6 +192,7 @@ export function serializeWorld(world: World): SaveFile {
     memory: [...world.memory],
     reputation: [...world.reputation],
     beliefs: [...world.beliefs],
+    reactions: [...world.reactions],
     faith: [...world.faith],
     exiles: [...world.exiles],
 
@@ -365,6 +368,7 @@ export function deserializeWorld(s: SaveFile): World {
     memory: new Map(s.memory),
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
     beliefs: new Map(s.beliefs ?? []),       // subjective beliefs — empty on pre-1A saves
+    reactions: new Set(s.reactions ?? []),   // fired belief-reactions — empty on pre-1B saves
     faith: new Map(s.faith ?? []),           // religious affiliation, stable from birth
     exiles: new Map(s.exiles ?? []),         // exile records — empty on pre-Stage-2 saves
     rels,
