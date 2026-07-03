@@ -11,7 +11,7 @@ import { createWorld, focusSettlement } from './sim';
 import { fullActors, emit } from './world';
 import { getOrganization } from './organization';
 import { perceiveCoronation } from './perception';
-import { coronationSlot } from './statusBelief';
+import { coronationSlot } from './belief';
 import { orgStatusBeliefOf } from './orgReason';
 
 function firstGoverned(w: ReturnType<typeof createWorld>) {

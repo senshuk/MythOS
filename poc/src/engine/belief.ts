@@ -93,6 +93,12 @@ export function slotAssertion(slot: string): string {
   return `reigns:${slot}`;
 }
 
+/** The status slot for "who rules settlement S" — one ruler office per settlement. Producers
+ *  (perceiveCoronation) and consumers (the legitimacy perception fact) agree on the slot via this. */
+export function coronationSlot(settlementId: number): string {
+  return `ruler:${settlementId}`;
+}
+
 /**
  * PRODUCER — Witness. An actor who directly saw `eventId` forms firsthand evidence FOR
  * `assertion` about `subject`: observationConfidence 1.0 (own eyes), sourceTrust 1.0 (self).

@@ -207,7 +207,7 @@ Evidence  (Mark)
    ▼   REDUCERS  ──  computeBelief ✓ · computeStatusBelief ✓ · orgBeliefOf ✓ · orgStatusBeliefOf ✓
 Belief
    │
-   ▼   CONSUMERS ──  mourning ✓ · allegiance ⏳ · (celebration · vengeance · diplomacy …)
+   ▼   CONSUMERS ──  mourning ✓ · allegiance ✓ · (celebration · vengeance · diplomacy …)
 Decision
    │
    ▼
@@ -226,7 +226,7 @@ Read as a sequence, each stage introduces one new **law** and one new edge in th
 - **Belief spreads locally** — 1C-local · *producer*: conversation (`shareBelief`). ✓
 - **Belief revises** — 1D · *reducer + producer*: `computeStatusBelief` / `learnCoronation` (event = monotonic, status = competitive; a new fold, never a branchy `computeBelief` — ADR §9.7). ✓
 - **Groups derive belief** — Organizations · *collective reducers*: `orgBeliefOf`, `orgStatusBeliefOf` — members' beliefs reduced to an institutional stance, never stored. ✓
-- **Politics consumes belief** — coronation → allegiance · *consumer*. Rung 1 ✓ (`orgStatusBeliefOf`: a polity recognizes the ruler its members believe reigns). Rung 2 ✓ (`perceiveCoronation`, wired into `figures.ts` `installRuler`): a live succession makes the focused settlement's residents believe the new ruler reigns, so the polity recognizes them in a *running world*, and revises across reigns. Next (rung 3): allegiance → intent — the recognition changes what the polity *does*.
+- **Politics consumes belief** — coronation → allegiance · *consumer*. Rung 1 ✓ (`orgStatusBeliefOf`: a polity recognizes the ruler its members believe reigns). Rung 2 ✓ (`perceiveCoronation`, wired into `figures.ts` `installRuler`): a live succession makes residents believe the new ruler, so the polity recognizes them and revises across reigns. **Rung 3 ✓** — recognition now changes what the polity *does*: a `succession_settled` perception fact (tri-state — recognized → *settled*, ≥2 competing claimants → *contested*, nothing heard → *unknown*) penalises the outward intents (`expand`, `prepare_war`) **only under contestation**. Ignorance never makes a polity cautious; only instability does. Byte-identical live today (contested recognition needs conflicting news — 1C-distal); its drama amplifies the moment distal lands, with the consumer unchanged.
 - **Belief spreads geographically** — 1C-distal · *producer*: Evidence on carriers over the travel system + the latency inspector. Makes the "capital recognizes the queen, the frontier still obeys the dead king" divergence span the *map* (today it diverges only within one focused settlement).
 
 **The last two are a consumer/producer pair.** Implementation runs politics first — *make information matter before it travels* — but conceptually they continue the same rhythm: expand what *reads* belief, then expand what *creates* it. That alternation, not a feature list, is what keeps the staircase coherent.

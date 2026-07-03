@@ -22,8 +22,8 @@ import { Rng, mixSeed } from './rng';
 import { fullActors, getRel, remember, emit, getEvent } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
-import { witnessBelief } from './belief';
-import { learnCoronation, coronationSlot } from './statusBelief';
+import { witnessBelief, coronationSlot } from './belief';
+import { learnCoronation } from './statusBelief';
 import { escalateAnimosity, personalityOf } from './social';
 import { reputeSpec, ethicsWeightFor, patronDeityOf, deityById } from '../content/fixture';
 

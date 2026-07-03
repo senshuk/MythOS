@@ -689,6 +689,9 @@ export const INTENTS: IntentDef[] = [
       { id: 'expansionist_lean', group: 'disposition', value: r(wvv(w, 'expansionist') * 0.3) },
       { id: 'neighbour_weakness', group: 'military', value: r(fv(p, 'neighbor_weakness') * 0.3) },
       { id: 'food_surplus', group: 'economy', value: r(Math.max(0, fv(p, 'food_security') - 50) * 0.3) },
+      // a polity in a succession CRISIS does not campaign abroad (0 unless recognition is contested;
+      // absent fact ⇒ neutral 50 ⇒ no penalty, so an unrecognized aggregate polity is never cautious)
+      { id: 'succession_crisis', group: 'internal', value: r(Math.min(0, (p.find((f) => f.id === 'succession_settled')?.value ?? 50) - 50) * 0.4) },
     ],
   },
   {
@@ -698,6 +701,9 @@ export const INTENTS: IntentDef[] = [
       { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.3) },
       { id: 'border_raids', group: 'military', value: r(fv(p, 'border_raids') * 10) },
       { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.2) },
+      // a contested succession turns a polity inward — it will not mobilise abroad while the throne
+      // is disputed (0 unless recognition is contested; absent fact ⇒ neutral 50 ⇒ no penalty)
+      { id: 'succession_crisis', group: 'internal', value: r(Math.min(0, (p.find((f) => f.id === 'succession_settled')?.value ?? 50) - 50) * 0.4) },
     ],
   },
   {

@@ -26,7 +26,7 @@ import {
   type StatusBelief,
   DAYS_PER_YEAR,
 } from './model';
-import { beliefOf, computeBelief, stanceFromConfidence, slotAssertion } from './belief';
+import { beliefOf, computeBelief, stanceFromConfidence, slotAssertion, coronationSlot } from './belief';
 import {
   VALUES,
   type ValueAxis,
@@ -171,6 +171,27 @@ export function perceive(world: World, orgId: OrgId): PerceptionFact[] {
   facts.push({ id: 'food_security', value: Math.round(clamp(yearsBuffer * 20, 0, 100)), confidence: 1, source: 'seat' });
   facts.push({ id: 'stability', value: Math.round(s.macro.stability), confidence: 1, source: 'seat' });
   facts.push({ id: 'own_strength', value: Math.round(pop), confidence: 1, source: 'seat' });
+
+  // LEGITIMACY (tri-state): does the institution recognize a settled ruler? A RECOGNIZED ruler is
+  // settled (100); ≥2 competing claimants with no clear winner is a CONTESTED crisis (0); anything
+  // else — no claimants, or no simulated members (an aggregate seat) — is UNKNOWN/neutral (50). The
+  // consumer reacts to CONTESTATION, never to ignorance, so aggregate polities are never made cautious.
+  {
+    const assertion = slotAssertion(coronationSlot(s.id));
+    const claimants = new Set<EntityId>();
+    for (const id of world.entities) {
+      if (world.homeSettlement.get(id) !== s.id) continue;
+      for (const b of world.beliefs.get(id) ?? []) if (b.assertion === assertion) claimants.add(b.subject);
+    }
+    let best = 0;
+    for (const c of claimants) {
+      const cf = orgBeliefOf(world, orgId, c, assertion).confidence;
+      if (cf > best) best = cf;
+    }
+    const recognized = stanceFromConfidence(best) === 'true';
+    const settled = recognized ? 100 : claimants.size >= 2 ? 0 : 50;
+    facts.push({ id: 'succession_settled', value: settled, confidence: 1, source: 'seat' });
+  }
 
   // --- immediate neighbours via the region graph (lower confidence: only what's visible) ---
   let hostilitySum = 0;
