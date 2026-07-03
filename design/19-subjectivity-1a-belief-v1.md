@@ -196,12 +196,15 @@ In 1B, **emotional** reactions became subjective (you mourn when you *learn*) wh
 
 Each step adds a producer, a reaction, or an assertion — **never a change to Belief itself**. That separation is the point:
 
-- **1A — Belief exists.** (witness + testimony producers) ✓
-- **1B — Belief causes one reaction.** (mourning) ✓
-- **1C-local — Belief spreads by conversation.** ✓ (`shareBelief` wired into `resolveInteract`; a kinsman who missed a death can learn of it in a conversation and then mourn — conversation is now causal, not cosmetic)
-- **1C-distal — Belief spreads across the map.** (carriers on the travel system, so kingdoms live on different timelines)
-- **1D — Belief gains richer assertions.** (`killed-by`, ownership, location, …)
-- **2 — Systems consume beliefs.** (crime, politics, diplomacy, succession react to what they believe)
+Each stage introduces one new **law**, not one new feature — that is MythOS's design language:
+
+- **Belief exists** — 1A (witness + testimony producers). ✓
+- **Belief changes behavior** — 1B (mourning reaction). ✓
+- **Belief spreads (locally)** — 1C-local (`shareBelief` in conversation). ✓
+- **Belief revises** — **1D-minimal**: the first *status* assertion (`reigns`), overturned by a contradicting claim. Proves belief revision *alone* — no kings, orgs, or allegiance. Event assertions are monotonic; status assertions are competitive (a slot with one filler), so they get a new fold `computeStatusBelief`, never a branchy `computeBelief` (ADR §9.7). ← next primitive
+- **Groups reason from belief** — organizations consume *revised* belief (allegiance via `orgBeliefOf`).
+- **Belief travels (geographically)** — 1C-distal (Evidence on carriers over the travel system) + ship the latency inspector.
+- **Politics runs on information** — coronation → allegiance → divergent timelines: a *consumer* of everything above, not a new primitive.
 
 This avoids solving "knowledge" all at once: the belief primitive is fixed; the world's use of it grows outward.
 

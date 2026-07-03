@@ -178,6 +178,36 @@ Prime Movers' two-layer world (objective vs. a hold on it) makes belief-about-be
 
 What mutates when a testimony is retold — its confidence, its detail, its subject, its assertion? Recommendation: v1 lowers `sourceTrust`/`observationConfidence` along the chain and drops detail; assertion-mutation ("the king was *poisoned*") is a later, higher-drama increment. This decision is needed before propagation is coded, not before the `Mark` refactor.
 
+### 9.7 Assertion kinds: event vs status (monotonic vs competitive) — DOCUMENTED, not yet built
+
+Beliefs come in two kinds, and conflating them would rot `computeBelief` into special cases. Documenting the distinction now, before the first status assertion is written, is what keeps the reducer clean.
+
+- **Event assertion** — `dead`, `born`, `married`. **Monotonic / append-only.** It happens once and never becomes false. Evidence *accumulates*: corroboration raises confidence; a rare false report pushes back through log-odds, but the truth is stable. This is exactly what `computeBelief` reduces today.
+- **Status assertion** — `reigns`, `owns`, `is-at-war`, `occupies-office`. **Competitive / replaceable.** It describes the *current* value of a slot that holds at most one thing, so it must be *revised*. A new claim (a coronation) doesn't merely add evidence — it competes for the slot and can **displace** the incumbent. A status belief is really the question **"who currently fills this slot?"** — a categorical belief over claimants, not a scalar over one proposition:
+
+```
+office:king-of-Thuba              office:king-of-Thuba
+  Aldric   0.91       ── coronation ──▶   Aldric   0.22
+  Beatrice 0.07                            Beatrice 0.95
+```
+
+Revising a status is not "adding a belief" — it is **replacing the winner of a category.**
+
+**The decision that keeps the primitive clean:** event and status are **different reducers over the same Evidence substrate**, never a branchy `computeBelief`. `computeBelief` stays the monotonic accumulator; a future `computeStatusBelief` arbitrates a slot's claimants (arg-max with confidence, so a new claim can overtake the incumbent). This is the same **Mark → many reducers** law that already gives `computeOpinion` / `computeStanding` / `computeBelief`: one substrate, one reducer per semantics. **A status belief is a new fold, not a new primitive.**
+
+**Why coronation feels heavier than mourning:** it is the engine's first *status* belief — the first **living** belief, one that can be overturned. It is therefore genuinely 1D, and the reason to enter the political milestone through the primitive rather than the feature.
+
+**`1D-minimal` proves exactly one property** — *a belief can change because later evidence outweighs earlier* — with no kings, organizations, or allegiance in scope:
+
+```
+believes: Aldric reigns
+  → learns: Beatrice was crowned
+  → no longer believes: Aldric reigns
+  → now believes:  Beatrice reigns
+```
+
+If that passes, revision is proven, and coronation / allegiance / divergent-timelines become consumers of it.
+
 ## 10. Consequences
 
 **Unlocks:** delayed and distorted news; organizations reasoning from stale/false information and diverging; documents as belief-carriers across generations (objects-as-historical-agents); "believed falsely that…" as a first-class historical annotation; secrets, propaganda, and heresy as emergent rather than scripted.
@@ -202,4 +232,5 @@ What mutates when a testimony is retold — its confidence, its detail, its subj
 |---|---|---|
 | 0.1 | 2026-07-03 | Initial ADR. Pressure-tests the "belief = Thought" unification and rejects it in favour of a shared `Mark` substrate with per-domain folds (§3). Decides belief referent (§4), truth-as-independent-claim with correspondence-never-stored-and-invisible-to-believer (§5), and Testimony-as-propagation-atom with documents as testimony-at-rest (§6). Fixes seeded distortion (§7) and a mandatory legibility budget (§8). Collects 5 open forks for ratification (§9). |
 | 0.2 | 2026-07-03 | Ratification review. **`Mark` promoted to a first-class ontology Construct** (`11` §Constructs), no longer ADR-local (§3). Belief field **`claim` renamed to `assertion`** to match the philosophy — an actor asserts; the historian judges correspondence (§2, §4, §5). Added the **belief-never-writes-reality guarantee as execution-model invariant 10** and cross-referenced it (§5): the causal chain is Reality → Belief → Reasoning → Intent → Action → Outcome → Reality, never Belief → Reality. |
+| 0.4 | 2026-07-03 | Documented **assertion kinds** (§9.7) ahead of implementation: **event** assertions are monotonic/append-only (`computeBelief` accumulates); **status** assertions are competitive/replaceable — a slot with at most one filler, revised by displacement, reduced by a future `computeStatusBelief` (arg-max over claimants). Different reducers over one Evidence substrate, never a branchy `computeBelief` (the Mark→many-reducers law). Coronation is the first status/"living" belief; `1D-minimal` proves belief revision alone (Aldric reigns → Beatrice crowned → Beatrice reigns) before any political consumer. |
 | 0.3 | 2026-07-03 | Resolved the confidence/arbitration forks (§9 rewritten from open forks to decisions). **Confidence math**: two-axis evidence (`observationConfidence` + culture-defined `sourceTrust`), confidence **derived, never stored** (§5, §9.1). **Arbitration**: evidence *accumulation* (Bayesian-in-spirit, order-independent), not "highest confidence wins" — principle **"Beliefs are revised, not replaced"** (§9.2). New resolved fork: **suspend judgment** — stance is True/False/**Unknown**, and UNKNOWN entities may refuse to act via invariant 10 (§9.3). Belief struct updated to an evidence stack (§2). Only the distortion model (§9.6) remains open, and it belongs to propagation. |
