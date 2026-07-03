@@ -18,7 +18,7 @@ import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible, escalateAnimosity } from '../engine/social';
-import { witnessDeed } from '../engine/perception';
+import { witnessDeed, perceiveEvent } from '../engine/perception';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
@@ -253,4 +253,5 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   // killActor returns the death event ID; that's what witnesses remember.
   const deathId = killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
   witnessDeed(world, deathId, killer, victim, 'bloodshed');
+  if (deathId >= 0) perceiveEvent(world, deathId); // witnesses come to know the death, not just fear the killer
 }

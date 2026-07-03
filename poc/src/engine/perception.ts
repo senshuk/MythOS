@@ -19,9 +19,10 @@
  */
 import { type World, type EntityId, type EventId } from './model';
 import { Rng, mixSeed } from './rng';
-import { fullActors, getRel, remember, emit } from './world';
+import { fullActors, getRel, remember, emit, getEvent } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
+import { witnessBelief } from './belief';
 import { escalateAnimosity, personalityOf } from './social';
 import { reputeSpec, ethicsWeightFor, patronDeityOf, deityById } from '../content/fixture';
 
@@ -138,4 +139,47 @@ export function standAgainst(world: World, threatEventId: EventId, settlementId:
   if (hero === undefined) return undefined;
   recordDeed(world, hero, 'valor', { witnesses: residents, cause: threatEventId });
   return hero;
+}
+
+/**
+ * BELIEF-WORTHY events: witnessing one makes co-residents come to KNOW it — the event type
+ * maps to the assertion a witness forms about its subject (subjects[0]). Deliberately TINY:
+ * witnessing a harvest, a tax update, or a festival must NOT spawn beliefs, or the evidence
+ * graph drowns in trivia before we learn what matters. Extend only when a new event type
+ * earns it — a clean (subject, assertion) pair — e.g. murder, birth→'alive', exile→'exiled',
+ * succession→'rules'. (Subjectivity 1A; see design/19.)
+ */
+export const BELIEF_WORTHY: Record<string, string> = {
+  died: 'dead',
+  died_brawl: 'dead',
+};
+
+/**
+ * Live-loop belief formation. When a belief-worthy event fires in the focused settlement,
+ * co-resident witnesses (a per-event seeded draw — not everyone sees everything) come to
+ * KNOW it firsthand. Returns the witnesses. A no-op for events not in BELIEF_WORTHY.
+ *
+ * DETERMINISM: witnesses are drawn from a LOCAL stream keyed by (seed, event, subject), so
+ * this never advances the shared settlement RNG — the rest of the sim is byte-identical
+ * whether or not anyone was watching (exactly like witnessDeed). INERT: forms beliefs, emits
+ * nothing (invariant 8). No system consumes these beliefs yet — the running world simply now
+ * holds subjective knowledge that diverges across actors.
+ */
+export function perceiveEvent(world: World, eventId: EventId): EntityId[] {
+  const ev = getEvent(world, eventId);
+  if (!ev) return [];
+  const assertion = BELIEF_WORTHY[ev.type];
+  if (assertion === undefined) return []; // most events are not belief-worthy
+  const subject = ev.subjects[0];
+  if (subject === undefined) return [];
+
+  const rng = new Rng(mixSeed(world.seed, eventId, subject));
+  const witnesses: EntityId[] = [];
+  for (const id of fullActors(world)) {
+    if (id === subject) continue; // the subject does not witness their own death
+    if (witnesses.length >= WITNESS_CAP) break;
+    if (rng.chance(WITNESS_CHANCE)) witnesses.push(id);
+  }
+  for (const w of witnesses) witnessBelief(world, w, subject, assertion, eventId);
+  return witnesses;
 }
