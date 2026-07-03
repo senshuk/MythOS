@@ -103,6 +103,7 @@ export function createWorld(seed: number, focus = true): World {
     ties: new Map(),
     memory: new Map(),
     reputation: new Map(),
+    beliefs: new Map(),
     faith: new Map(),
     exiles: new Map(),
     rels: new Map(),
