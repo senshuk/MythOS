@@ -196,17 +196,21 @@ In 1B, **emotional** reactions became subjective (you mourn when you *learn*) wh
 
 Each step adds a producer, a reaction, or an assertion — **never a change to Belief itself**. That separation is the point:
 
-Each stage introduces one new **law**, not one new feature — that is MythOS's design language:
+Each stage introduces one new **law**, and the engine grows by alternating **producers** (new sources of evidence) and **consumers** (new things that read belief) around a frozen primitive:
 
-- **Belief exists** — 1A (witness + testimony producers). ✓
-- **Belief changes behavior** — 1B (mourning reaction). ✓
-- **Belief spreads (locally)** — 1C-local (`shareBelief` in conversation). ✓
-- **Belief revises** — **1D-minimal** ✓ (`statusBelief.ts`: `computeStatusBelief` resolves competing `reigns:<slot>` claims by arg-max; `learnCoronation` holds the "one filler" competition, adding evidence for the new ruler and against the incumbent). `computeBelief` untouched. Two holders can already believe different rulers reign in one slot. Event assertions are monotonic; status assertions are competitive — a new fold + producer, never a branchy `computeBelief` (ADR §9.7).
-- **Groups reason from belief** — organizations consume *derived* belief. ✓ `orgBeliefOf` (event) and `orgStatusBeliefOf` (status/allegiance) reduce members' beliefs to an institutional stance; never stored, the collective twins of `computeBelief`/`computeStatusBelief`.
-- **Politics runs on information** — coronation → allegiance → divergent timelines. **Rung 1 ✓** `orgStatusBeliefOf` — a polity recognizes the ruler its members believe reigns; revises when they learn of a new one; recognizes no one without simulated members. **Rung 2 (next):** a live producer — a real succession event feeding `learnCoronation` for residents. **Rung 3:** the behavioral consequence (allegiance drives intent / an emitted recognition). A *consumer* of the foundation, not a new primitive.
-- **Belief travels (geographically)** — 1C-distal (Evidence on carriers over the travel system) + ship the latency inspector. This is what makes the "capital recognizes the queen, the frontier still obeys the dead king" divergence span the map (today it can diverge only within one focused settlement).
+- **Belief exists** — 1A · *producers*: witness, testimony. ✓
+- **Belief changes behavior** — 1B · *consumer*: mourning. ✓
+- **Belief spreads locally** — 1C-local · *producer*: conversation (`shareBelief`). ✓
+- **Belief revises** — 1D · *reducer + producer*: `computeStatusBelief` / `learnCoronation` (event = monotonic, status = competitive; a new fold, never a branchy `computeBelief` — ADR §9.7). ✓
+- **Groups derive belief** — Organizations · *collective reducers*: `orgBeliefOf`, `orgStatusBeliefOf` — members' beliefs reduced to an institutional stance, never stored. ✓
+- **Politics consumes belief** — coronation → allegiance · *consumer*. Rung 1 ✓ (`orgStatusBeliefOf`: a polity recognizes the ruler its members believe reigns). Next: a live producer (succession → `learnCoronation`), then allegiance → intent.
+- **Belief spreads geographically** — 1C-distal · *producer*: Evidence on carriers over the travel system + the latency inspector. Makes the "capital recognizes the queen, the frontier still obeys the dead king" divergence span the *map* (today it diverges only within one focused settlement).
 
-This avoids solving "knowledge" all at once: the belief primitive is fixed; the world's use of it grows outward.
+**The last two are a consumer/producer pair.** Implementation runs politics first — *make information matter before it travels* — but conceptually they continue the same rhythm: expand what *reads* belief, then expand what *creates* it. That alternation, not a feature list, is what keeps the staircase coherent.
+
+> ## The belief primitive is fixed; the world's use of it grows outward.
+>
+> This is no longer only about Belief — it is the **development methodology of MythOS itself.** Every layer followed it: build a minimal primitive (Intent, Organization, Mark, Belief), *freeze* it, and thereafter add only producers and consumers. It is why the architecture stayed clean while becoming far richer, and why nothing after this section designs a new primitive — everything is application. (Stated engine-wide in Prime Movers, `18`.)
 
 ## Where subjectivity may live — the LOD law (and what it means for 1C-distal)
 

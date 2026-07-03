@@ -125,9 +125,22 @@ Everything else — the ontology's categories, the execution model's ordering, t
 
 ---
 
+## How the engine grows
+
+If the sentence above is *how MythOS thinks*, this is *how MythOS is built* — the methodology behind every layer:
+
+> ## Build a minimal primitive, freeze it, and thereafter grow only producers and consumers. The primitive is fixed; the world's use of it grows outward.
+
+Every major layer followed it. `Intent` froze, then behaviours plugged in. `Organization` froze, then reasoning, resources, and interaction plugged in. `Mark` froze, then opinion, reputation, and belief plugged in. `Belief` froze, then witness, testimony, conversation, coronation, mourning, and allegiance plugged in — without one of them reopening the primitive.
+
+This is why the architecture stayed clean while becoming far richer, and why the laws in `11 §Mark` are phrased as **prohibitions** (*derived never stored; reducers read, producers write; a reducer depends only on reducers closer to the substrate*): a frozen primitive is one that new code is forbidden to change, only to *use*. When a new system arrives — espionage, religion, crime, a magic pack's divination — the question is never "what primitive do I add?" It is "is this a **producer** (new evidence enters) or a **consumer** (something reacts)?" That single question, and the refusal to answer it with a new primitive, is the discipline that keeps the engine comprehensible at any size.
+
+---
+
 ## Revision History
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-07-03 | Initial capstone. Re-cuts the ontology along the objective/subjective axis (§1), fixes the two change mechanisms — Actions for reality, perception/testimony/decay/reasoning for belief (§2), states the full causal chain Reality → Perception → Belief → Reasoning → Intent → Action → Outcome → History with the governing rule "no system may skip a stage" (§3), and gives the objective-vs-subjective teaching table (§4). Written after `11` (ontology), `15` (execution model), and `17` (Epistemics ADR) as the document that sits above them. |
 | 1.1 | 2026-07-03 | Added the project's philosophical thesis as an epigraph: **"Reality is simulated. Minds are inferred."** — the engine models evidence, memory, reasoning, and action, never consciousness; minds are inferred from the gap between the objective world and each entity's evidence of it. |
+| 1.2 | 2026-07-03 | Added the engine-wide **development methodology** ("How the engine grows"): *build a minimal primitive, freeze it, and thereafter grow only producers and consumers — the primitive is fixed, its use grows outward.* Promoted from a Belief-specific note (design/19) to the method behind every layer (Intent, Organization, Mark, Belief); explains why the `11 §Mark` laws are phrased as prohibitions. |
