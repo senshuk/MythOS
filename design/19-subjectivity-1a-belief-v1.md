@@ -204,6 +204,30 @@ Each step adds a producer, a reaction, or an assertion — **never a change to B
 
 This avoids solving "knowledge" all at once: the belief primitive is fixed; the world's use of it grows outward.
 
+## Where subjectivity may live — the LOD law (and what it means for 1C-distal)
+
+The dramatic time-delay stories (a village celebrates a ruler who died in the capital; a frontier fights a war the capital already ended) seem to need *aggregate* settlements to hold beliefs. They do not — and shouldn't. The governing law, now in the ontology (`11` §Mark):
+
+> **Subjectivity exists only where agency exists.** An Actor holds beliefs; an Organization *derives* them from its members; an aggregate settlement holds none.
+
+So the first question for 1C-distal is **not** "who *believes*?" but **"who *receives* the testimony?"** — and the answer is always an agent (a resident actor, or an organization through its members), never the aggregate:
+
+```
+capital death → carrier travels → a resident/governor receives → acquireEvidence → member belief
+                                                                        ↓
+                                                              orgBeliefOf (derived) → org reasoning
+```
+
+**Organizations derive belief, they never own it** — `orgBeliefOf` (shipped, in `orgReason.ts`) reduces member beliefs to an institutional stance, exactly as `worldviewOf` reduces member values to a worldview. The institution comes to know as its people do (one member knowing barely moves it; broad awareness makes it true). An org with no simulated members holds no belief — Unknown. No new epistemic source of truth; no exception to LOD.
+
+**Evidence has carriers.** Don't model testimony as a bare payload — model **Evidence as something a carrier transports**, and let the *existing* transport system move carriers with latency (`travel.ts` already models transit-with-duration). On arrival, the carrier calls `acquireEvidence`. The carrier set is a Universe Pack seam — the engine stays ignorant of fantasy vs. sci-fi:
+
+```
+Evidence ← carrier ∈ { witness · messenger · letter · caravan · priest · sensor · vision · … }
+```
+
+This is where time-delayed causality enters for free: `acquireEvidence` fires at the carrier's **arrival** tick, not the event tick. News travels slower than events, and the divergence is a consequence of transport, not special story logic.
+
 ---
 
 ## Revision History
@@ -212,3 +236,4 @@ This avoids solving "knowledge" all at once: the belief primitive is fixed; the 
 |---|---|---|
 | 1.0 | 2026-07-03 | Initial slice plan. Fences Belief v1 to the smallest scope that proves Subjectivity: `Evidence extends Mark`, `computeBelief` (log-odds accumulation → stance + confidence, Unknown as baseline), two producers built one-at-a-time (witness, then testimony), belief formation inert per invariant 8, v1 testimony inert with `told`-emits deferred to 1B. Test written before code; assertions on stance + confidence ordering, not floats. |
 | 1.1 | 2026-07-03 | Added the shipped **Subjectivity 1B** (first consumer): the `Belief → Reaction` pattern, mourning as the first reaction, the two boundary disciplines, the **temporary asymmetry** documented as a known inconsistency (emotional-subjective / social-legal-objective) pending an Epistemic Relationships phase, and the 1A→1B→1C→1D→2 progression (grow producers/reactions/assertions, never Belief itself). |
+| 1.2 | 2026-07-03 | Added the **LOD law** for 1C-distal: *subjectivity exists only where agency exists* (ontology `11` §Mark) — aggregate settlements never believe; the question is "who receives testimony?", answered by an agent. Shipped **`orgBeliefOf`** (organizations derive belief from members, own no evidence stack — the epistemic twin of `worldviewOf`; `stanceFromConfidence` extracted so direct and derived beliefs share one threshold). Framed **Evidence as carrier-transported** (carriers are a Universe Pack seam; `acquireEvidence` fires at arrival tick → time-delay for free). |

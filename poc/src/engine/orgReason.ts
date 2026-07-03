@@ -18,11 +18,14 @@
 import {
   type World,
   type OrgId,
+  type EntityId,
   type PerceptionFact,
   type Worldview,
   type OrgIntent,
+  type BeliefState,
   DAYS_PER_YEAR,
 } from './model';
+import { beliefOf, computeBelief, stanceFromConfidence } from './belief';
 import {
   VALUES,
   type ValueAxis,
@@ -72,6 +75,38 @@ export function worldviewOf(world: World, orgId: OrgId): Worldview {
   const s = seatOf(world, orgId);
   if (!s) return {};
   return worldviewFromValues(memberValueMean(world, s.id));
+}
+
+/**
+ * An organization's BELIEF about (subject, assertion) — DERIVED from its members, never stored.
+ * The epistemic twin of worldviewOf: an org owns no evidence stack of its own (that would be a
+ * second source of truth); it reasons from the mean of its living members' beliefs. The
+ * institution comes to know as its people do — one member knowing barely moves it; broad
+ * awareness makes it true.
+ *
+ * SUBJECTIVITY EXISTS ONLY WHERE AGENCY EXISTS. If no members are simulated (an aggregate,
+ * non-focused seat has no resident subjects), the org holds no belief — Unknown. When the
+ * settlement comes into focus and its actors instantiate, the org's belief derives from them
+ * again. No new exception to LOD — the same law worldviewOf already obeys, applied to knowledge.
+ *
+ * Pure read: touches no world state, adds no evidence stack to the org. A CONSUMER of derived
+ * belief, exactly as org reasoning consumes derived worldview.
+ */
+export function orgBeliefOf(world: World, orgId: OrgId, subject: EntityId, assertion: string): BeliefState {
+  const s = seatOf(world, orgId);
+  if (!s) return { stance: 'unknown', confidence: 0.5 };
+  let sum = 0;
+  let n = 0;
+  for (const id of world.entities) {
+    if (world.homeSettlement.get(id) !== s.id) continue;
+    if (!world.personality.get(id)) continue; // a simulated resident — a subject that can know
+    const held = beliefOf(world, id, subject, assertion);
+    sum += held ? computeBelief(held, world.tick).confidence : 0.5; // holds none → Unknown baseline
+    n++;
+  }
+  if (n === 0) return { stance: 'unknown', confidence: 0.5 }; // no subjects → no subjectivity
+  const confidence = sum / n;
+  return { stance: stanceFromConfidence(confidence), confidence };
 }
 
 /** STAGE 1 — what the org perceives. Bounded to its own seat, its immediate neighbours

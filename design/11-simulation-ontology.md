@@ -331,6 +331,8 @@ A subjective, sourced, time-varying assertion held by an entity. Marks are the s
 
 Marks are not independently addressed (they have no stable cross-world ID; they live in the stacks of the entities that hold them), but they are a first-class *structural category*: most of the engine's subjectivity is one Mark reduction or another. Recognizing Thought, Reputation, and Belief as three folds over one substrate — rather than three parallel systems — is what keeps the subjective layer elegant as it grows.
 
+**Subjectivity exists only where agency exists.** Marks attach to entities that *act*. An **Actor** holds them directly. An **Organization** *derives* them from its members — a fold of member Marks, exactly as it derives its worldview — and owns no stack of its own (an org with its own evidence would be a second, competing source of truth). A **Location**, a **Construct**, a fungible **Resource**, or an aggregate summary holds **none**. This is the same law LOD already enforces everywhere else — a population summary is not a person, an economic summary is not a merchant — now extended to knowledge: *a settlement does not believe.* When an aggregate settlement comes into focus and its actors instantiate, subjective state reappears among them naturally. The lowest-fidelity entity that can hold a Mark is simply the lowest-fidelity entity that still has agency — today, an Organization.
+
 ---
 
 ## Data

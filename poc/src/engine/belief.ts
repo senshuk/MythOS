@@ -74,8 +74,16 @@ export function computeBelief(belief: Belief, tick: number): BeliefState {
     logOdds += e.polarity * STRENGTH * weight;
   }
   const confidence = 1 / (1 + Math.exp(-logOdds)); // logistic → [0,1]; 0.5 = no net evidence
-  const stance: Stance = confidence >= BELIEVE ? 'true' : confidence <= 1 - BELIEVE ? 'false' : 'unknown';
-  return { stance, confidence };
+  return { stance: stanceFromConfidence(confidence), confidence };
+}
+
+/**
+ * Map a confidence in [0,1] to a stance against the pack thresholds — the SINGLE place the
+ * True / False / Unknown bands are defined. Any DERIVED belief (e.g. an organization's belief
+ * reduced from its members) reuses this so the bands never drift between direct and derived.
+ */
+export function stanceFromConfidence(confidence: number): Stance {
+  return confidence >= BELIEVE ? 'true' : confidence <= 1 - BELIEVE ? 'false' : 'unknown';
 }
 
 /**
