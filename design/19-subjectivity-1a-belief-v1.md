@@ -202,9 +202,9 @@ Each stage introduces one new **law**, not one new feature — that is MythOS's 
 - **Belief changes behavior** — 1B (mourning reaction). ✓
 - **Belief spreads (locally)** — 1C-local (`shareBelief` in conversation). ✓
 - **Belief revises** — **1D-minimal** ✓ (`statusBelief.ts`: `computeStatusBelief` resolves competing `reigns:<slot>` claims by arg-max; `learnCoronation` holds the "one filler" competition, adding evidence for the new ruler and against the incumbent). `computeBelief` untouched. Two holders can already believe different rulers reign in one slot. Event assertions are monotonic; status assertions are competitive — a new fold + producer, never a branchy `computeBelief` (ADR §9.7).
-- **Groups reason from belief** — organizations consume *revised* belief (allegiance via `orgBeliefOf`).
-- **Belief travels (geographically)** — 1C-distal (Evidence on carriers over the travel system) + ship the latency inspector.
-- **Politics runs on information** — coronation → allegiance → divergent timelines: a *consumer* of everything above, not a new primitive.
+- **Groups reason from belief** — organizations consume *derived* belief. ✓ `orgBeliefOf` (event) and `orgStatusBeliefOf` (status/allegiance) reduce members' beliefs to an institutional stance; never stored, the collective twins of `computeBelief`/`computeStatusBelief`.
+- **Politics runs on information** — coronation → allegiance → divergent timelines. **Rung 1 ✓** `orgStatusBeliefOf` — a polity recognizes the ruler its members believe reigns; revises when they learn of a new one; recognizes no one without simulated members. **Rung 2 (next):** a live producer — a real succession event feeding `learnCoronation` for residents. **Rung 3:** the behavioral consequence (allegiance drives intent / an emitted recognition). A *consumer* of the foundation, not a new primitive.
+- **Belief travels (geographically)** — 1C-distal (Evidence on carriers over the travel system) + ship the latency inspector. This is what makes the "capital recognizes the queen, the frontier still obeys the dead king" divergence span the map (today it can diverge only within one focused settlement).
 
 This avoids solving "knowledge" all at once: the belief primitive is fixed; the world's use of it grows outward.
 

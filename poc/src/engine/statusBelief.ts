@@ -15,21 +15,8 @@
  * just ordinary evidence accumulation resolved by arg-max. `dead` must NOT use this — it has no
  * slot and no competitors. Events → computeBelief; statuses → computeStatusBelief.
  */
-import { type World, type EntityId, type EventId } from './model';
-import { acquireEvidence, computeBelief, stanceFromConfidence } from './belief';
-
-/** The per-claimant proposition backing a status: "<claimant> currently fills <slot>". A status
- *  belief is a set of these ordinary beliefs, one per claimant, resolved by computeStatusBelief. */
-export function slotAssertion(slot: string): string {
-  return `reigns:${slot}`;
-}
-
-/** Who the holder believes occupies `slot`, and how sure. `occupant` is undefined when no
- *  claimant is believed — the slot is vacant / contested / unheard-of, so far as they know. */
-export interface StatusBelief {
-  occupant: EntityId | undefined;
-  confidence: number;
-}
+import { type World, type EntityId, type EventId, type StatusBelief } from './model';
+import { acquireEvidence, computeBelief, stanceFromConfidence, slotAssertion } from './belief';
 
 /**
  * PRODUCER — a coronation the holder comes to believe: `newRuler` was installed in `slot`. The

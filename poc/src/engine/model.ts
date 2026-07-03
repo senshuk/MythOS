@@ -170,6 +170,13 @@ export interface BeliefState {
   confidence: number;
 }
 
+/** The DERIVED reading of a STATUS belief (statusBelief.ts): who the holder believes occupies a
+ *  slot, and how sure. `occupant` is undefined when no claimant is believed (vacant/contested). */
+export interface StatusBelief {
+  occupant: EntityId | undefined;
+  confidence: number;
+}
+
 export type FigureId = EntityId; // shares the id space; resolves via the name registry
 
 /**

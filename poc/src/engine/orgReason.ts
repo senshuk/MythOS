@@ -23,9 +23,10 @@ import {
   type Worldview,
   type OrgIntent,
   type BeliefState,
+  type StatusBelief,
   DAYS_PER_YEAR,
 } from './model';
-import { beliefOf, computeBelief, stanceFromConfidence } from './belief';
+import { beliefOf, computeBelief, stanceFromConfidence, slotAssertion } from './belief';
 import {
   VALUES,
   type ValueAxis,
@@ -114,6 +115,44 @@ export function orgBeliefOf(world: World, orgId: OrgId, subject: EntityId, asser
   if (n === 0) return { stance: 'unknown', confidence: 0.5 }; // no subjects → no subjectivity
   const confidence = sum / n;
   return { stance: stanceFromConfidence(confidence), confidence };
+}
+
+/**
+ * An organization's recognized occupant of `slot` — its ALLEGIANCE — DERIVED from members, never
+ * stored. The status twin of `orgBeliefOf`, and the collective twin of `computeStatusBelief`: over
+ * every claimant the members have heard of, it arg-maxes the org's DERIVED belief that the claimant
+ * reigns (`orgBeliefOf` per claimant). So two polities whose members believe differently recognize
+ * DIFFERENT rulers — allegiance runs on what the institution's people believe, not on who
+ * objectively holds the throne, and it lags reality exactly as its members' knowledge does.
+ *
+ * Pure read; no state, no allegiance field. The reducer graph stays radial: this composes
+ * `orgBeliefOf` (a radius), never a peer. Subjectivity only where agency exists — a seat with no
+ * simulated members recognizes no one (Unknown), and re-derives when the settlement comes into focus.
+ */
+export function orgStatusBeliefOf(world: World, orgId: OrgId, slot: string): StatusBelief {
+  const s = seatOf(world, orgId);
+  if (!s) return { occupant: undefined, confidence: 0.5 };
+  const assertion = slotAssertion(slot);
+  // every claimant any resident member has heard of for this slot (deterministic insertion order)
+  const claimants = new Set<EntityId>();
+  for (const id of world.entities) {
+    if (world.homeSettlement.get(id) !== s.id) continue;
+    for (const b of world.beliefs.get(id) ?? []) {
+      if (b.assertion === assertion) claimants.add(b.subject);
+    }
+  }
+  // recognize the claimant the institution most collectively believes reigns
+  let occupant: EntityId | undefined;
+  let best = 0;
+  for (const c of claimants) {
+    const conf = orgBeliefOf(world, orgId, c, assertion).confidence;
+    if (conf > best) {
+      best = conf;
+      occupant = c;
+    }
+  }
+  if (occupant !== undefined && stanceFromConfidence(best) !== 'true') occupant = undefined;
+  return { occupant, confidence: best };
 }
 
 /** STAGE 1 — what the org perceives. Bounded to its own seat, its immediate neighbours

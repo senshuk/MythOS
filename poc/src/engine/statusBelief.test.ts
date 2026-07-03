@@ -10,8 +10,8 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
 import { fullActors, emit } from './world';
-import { computeBelief, beliefOf } from './belief';
-import { learnCoronation, computeStatusBelief, slotAssertion } from './statusBelief';
+import { computeBelief, beliefOf, slotAssertion } from './belief';
+import { learnCoronation, computeStatusBelief } from './statusBelief';
 
 const SLOT = 'king-of-thuba';
 

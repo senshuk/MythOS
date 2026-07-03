@@ -85,6 +85,14 @@ export function stanceFromConfidence(confidence: number): Stance {
   return confidence >= BELIEVE ? 'true' : confidence <= 1 - BELIEVE ? 'false' : 'unknown';
 }
 
+/** The per-claimant proposition backing a STATUS: "<claimant> currently fills <slot>". A status
+ *  belief is a set of these ordinary beliefs (one per claimant), resolved by computeStatusBelief.
+ *  The reserved `reigns:` assertion prefix is the key convention; it lives here because belief.ts
+ *  owns how beliefs are keyed by assertion. */
+export function slotAssertion(slot: string): string {
+  return `reigns:${slot}`;
+}
+
 /**
  * PRODUCER — Witness. An actor who directly saw `eventId` forms firsthand evidence FOR
  * `assertion` about `subject`: observationConfidence 1.0 (own eyes), sourceTrust 1.0 (self).
