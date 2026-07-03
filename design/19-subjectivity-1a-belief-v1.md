@@ -220,6 +220,8 @@ capital death → carrier travels → a resident/governor receives → acquireEv
 
 **Organizations derive belief, they never own it** — `orgBeliefOf` (shipped, in `orgReason.ts`) reduces member beliefs to an institutional stance, exactly as `worldviewOf` reduces member values to a worldview. The institution comes to know as its people do (one member knowing barely moves it; broad awareness makes it true). An org with no simulated members holds no belief — Unknown. No new epistemic source of truth; no exception to LOD.
 
+This is the first collective **belief** reducer, and the second collective reducer of any kind (after `worldviewOf`). They share a law — *individual minds are first-class; collective minds are always derived* (ontology `11` §Mark) — so member fears → collective fear, member morale → collective morale, etc. will take the same shape. The general concept (collective cognition) is real but stays unnamed until a second belief-consumer forces it: **write the reducer, don't add the field.**
+
 **Evidence has carriers.** Don't model testimony as a bare payload — model **Evidence as something a carrier transports**, and let the *existing* transport system move carriers with latency (`travel.ts` already models transit-with-duration). On arrival, the carrier calls `acquireEvidence`. The carrier set is a Universe Pack seam — the engine stays ignorant of fantasy vs. sci-fi:
 
 ```

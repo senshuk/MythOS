@@ -91,6 +91,13 @@ export function worldviewOf(world: World, orgId: OrgId): Worldview {
  *
  * Pure read: touches no world state, adds no evidence stack to the org. A CONSUMER of derived
  * belief, exactly as org reasoning consumes derived worldview.
+ *
+ * This is the first collective BELIEF reducer, and the second collective reducer overall
+ * (worldviewOf was the first). They are instances of one law — *individual minds are
+ * first-class; collective minds are always derived* — so member fears → collective fear,
+ * member morale → collective morale, etc. will follow the same shape. Do NOT preemptively
+ * generalize into a `collectiveXOf` abstraction: name the concept only when a second
+ * belief-consumer forces it. For now, keep this concrete.
  */
 export function orgBeliefOf(world: World, orgId: OrgId, subject: EntityId, assertion: string): BeliefState {
   const s = seatOf(world, orgId);
