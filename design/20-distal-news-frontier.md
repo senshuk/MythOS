@@ -26,20 +26,32 @@ An event happening, and word of it *physically arriving* at a place, are both **
 
 This preserves the agency law exactly. Aggregates never gain beliefs. They gain **infrastructure**.
 
+### News is not part of Epistemics — it is logistics
+
+The layer this milestone inserts belongs to *neither* Reality nor Belief. The mental model was `Reality → Belief`; it is now:
+
+```
+Reality  →  News  →  Evidence  →  Belief
+          (logistics)  (a mind reads it)
+```
+
+News is closer to **weather or trade than to opinion**. It is not a mental state, not history, not a `Mark`, not a subject of the epistemic laws. It is the objective *movement of word* across the map — pure logistics. **Epistemics begins only at Evidence**, the moment a mind reads the news. This is precisely why nothing in the frozen epistemic core changes: News sits *beneath* it, in the same tier as travel and geography, not inside it.
+
 ## The two layers
 
-**Objective — the News Frontier.** A per-settlement record of *which news has physically arrived, and when*. It exists at every settlement, focused or not, because it is transport state, not belief:
+**Objective — the News Frontier.** Do not think of this as a *record* (that sounds archival). Think of it as a **frontier in the graph-theory sense**: a wave of word expanding outward from where an event occurred, across the geography/travel graph, reaching each settlement at travel speed.
 
 ```
-Settlement (aggregate or focused)
-──────────────────────────────
-news frontier
-  · coronation of Beatrice — arrived tick 41 200
-  · peace with Souvou      — arrived tick 40 010
-  · (not yet: plague report)
+Death at the Capital
+      │   the frontier expands along the roads
+      ├── Village A   (day 3)
+      ├── Fort B      (day 8)
+      └── Harbor C    (day 12)
 ```
 
-News enters the frontier of the settlement where the event occurs, then propagates outward along the **geography/travel graph** at travel speed (`travel.ts` already models transit with duration). A settlement's arrival tick for a given piece of news = event tick + cumulative travel time along the route. That difference *is* information latency — no special logic, a consequence of transport.
+A settlement's stored arrival tick is merely a **cache of where the wave has already reached** — not an archive of facts, just the wavefront's position. The framing is deliberate: it scales *without change* to intercepted messengers, delayed caravans, telegraphs, newspapers, magical sending — all of which are just different **propagation mechanics** advancing the same frontier. The frontier is the abstraction; the mechanics are swappable.
+
+News enters the frontier at the settlement where the event occurs, then propagates outward at travel speed (`travel.ts` already models transit with duration). A settlement's arrival tick = event tick + cumulative travel time along the route. That difference *is* information latency — no special logic, a consequence of transport.
 
 **Subjective — Belief.** Unchanged. Where subjects exist (the focused settlement's residents), arrived news is converted into `Evidence` through the existing funnel:
 
@@ -50,6 +62,8 @@ news frontier ──▶ acquireEvidence ──▶ computeBelief / computeStatusB
 
 Every reducer and consumer already built is untouched. Distal is a **producer** feeding evidence from a new objective source — nothing more.
 
+**Only transport advances the frontier.** This is the new prohibition, and it sits beside the ones already protecting the layer — *only witnesses create Evidence; only producers call `acquireEvidence`; only reducers read Evidence*. The news frontier has exactly **one writer: the propagation system.** Nothing else — not a reaction, not a reducer, not the UI, not a focus change — ever advances a settlement's frontier. A stray `settlement.newsFrontier.set(...)` outside propagation is a violation, the same class of bug as a reducer that mutates. One writer keeps "what has arrived where" a single, traceable truth — the kind of law that saves an architecture years later.
+
 ## Coarse recognition at a distance (LOD, not a second truth)
 
 For a non-focused province's org, recognition is read **coarsely off the news frontier**, never from (nonexistent) member belief: *the province recognizes whoever's coronation-news last arrived here.* This is objective (based on arrival), lossy (no trust, no partial spread, no contest) — the LOD **approximation** of the fine, member-derived recognition that materializes on focus. Coarse at distance, exact up close, and the two agree to first order because both reflect what news arrived. It is a *coarser reading of the same objective input*, not a competing source of subjective truth.
@@ -59,6 +73,8 @@ This is what lets provinces make *different decisions from different news* while
 ## Reconcile-on-focus
 
 When a settlement is focused and its residents instantiate, their beliefs are **seeded from the settlement's news frontier** — they already know exactly what had arrived (and no more). This is the "subjectivity reappears on focus" principle from `11 §Mark`, now sourced from the objective frontier. The coarse aggregate recognition sharpens into real, potentially-divergent member beliefs — with no discontinuity, because both derive from the same arrived news.
+
+This preserves a further law: **the camera never creates information.** Focusing a settlement reveals no new facts — it materializes minds *into* an objective informational environment that already existed, unwatched. Residents come to exist already knowing precisely what had reached that place, and nothing more. LOD changes the *resolution* at which the world is simulated, never the *truth* of what is known where.
 
 ## What is frozen (everything downstream)
 
@@ -76,6 +92,14 @@ Intent · Action · Reality   ← unchanged
 ```
 
 The epistemic core does not move. Distal adds an objective transport layer *beneath* Evidence and one new arrow *into* `acquireEvidence`. If, on implementation, a single reducer or consumer needs to change, the design is wrong.
+
+## Acceptance criterion
+
+The whole design reduces to one testable sentence:
+
+> **Delete the camera.** Run the world entirely at aggregate LOD for 500 years, focusing nothing. Then focus any settlement. Its residents must instantiate believing **exactly** the news that objectively reached that place — and nothing else.
+
+If that holds, the frontier is doing precisely what this note promises: information exists and moves objectively whether or not anyone is watching, and minds are materialized *into* it — never the reverse. If a focused settlement's residents know **more** than the frontier delivered, the camera leaked omniscience (the "camera never creates information" law is broken). If they know **less**, belief wasn't seeded from the frontier (reconcile-on-focus is broken). The single sentence tests the entire model.
 
 ## v1 scope
 
@@ -98,3 +122,4 @@ The epistemic core does not move. Distal adds an objective transport layer *bene
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-07-03 | Initial design note. Defines the **News Frontier** (objective per-settlement arrival state) as the answer to "what exists before a mind believes it", freezing the boundary *news is objective, belief is subjective; transport moves news, minds convert it to evidence.* Aggregates gain infrastructure, never belief; coarse recognition is a lossy LOD reading of the same objective input; belief materializes from the frontier on focus. The entire epistemic core stays frozen — distal is a producer feeding `acquireEvidence` from a new objective transport layer. v1 = computed-latency frontier for coronations, no in-transit distortion, latency inspector alongside. |
+| 1.1 | 2026-07-03 | Sharpened four framings from review: **News is not Epistemics — it is logistics** (a distinct tier `Reality → News → Evidence → Belief`, closer to weather/trade than opinion; epistemics begins at Evidence). Reframed the frontier from a *record* to a **graph-theory frontier** — a wave whose arrival ticks are a cache of where it reached, so intercepted messengers / telegraphs / magical sending are just swappable propagation mechanics. Added the prohibition **only transport advances the frontier** (one writer, beside the Evidence laws). Made explicit that **the camera never creates information** (focus materializes minds into an environment that already existed). Added the acceptance criterion: **delete the camera** — run 500 years at aggregate LOD, focus anywhere, and residents must instantiate believing exactly the news that reached that place, no more, no less. |
