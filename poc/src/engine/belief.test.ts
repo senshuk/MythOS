@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
 import { fullActors, emit } from './world';
 import { serializeWorld, deserializeWorld } from './persistence';
-import { computeBelief, witnessBelief, beliefOf } from './belief';
+import { computeBelief, witnessBelief, tellBelief, acquireEvidence, beliefOf } from './belief';
 
 describe('Subjectivity 1A.1 — belief exists (witness)', () => {
   it('two actors derive different beliefs from the same objective death', () => {
@@ -54,5 +54,55 @@ describe('Subjectivity 1A.1 — belief exists (witness)', () => {
     const after = beliefOf(reloaded, alice, king, 'dead');
     expect(after).toBeDefined();
     expect(computeBelief(after!, reloaded.tick)).toEqual(before);
+  });
+});
+
+describe('Subjectivity 1A.2 — belief spreads (testimony)', () => {
+  it('testimony spreads belief with attenuated confidence; contradiction returns it to Unknown', () => {
+    const w = createWorld(123);
+    const [king, alice, bob, charlie, fraudster] = fullActors(w);
+
+    const kingDies = emit(w, 'died', [king], {});
+    witnessBelief(w, alice, king, 'dead', kingDies); // Alice saw it firsthand
+    tellBelief(w, alice, bob, king, 'dead'); // Alice tells Bob
+
+    const A = computeBelief(beliefOf(w, alice, king, 'dead')!, w.tick);
+    const B = computeBelief(beliefOf(w, bob, king, 'dead')!, w.tick);
+    expect(A.stance).toBe('true');
+    expect(B.stance).toBe('true');
+    expect(B.confidence).toBeLessThan(A.confidence); // secondhand is less certain than firsthand
+    expect(B.confidence).toBeGreaterThan(0.5);
+
+    // Charlie heard nothing → Unknown. Three actors, three different realities of one death.
+    expect(beliefOf(w, charlie, king, 'dead')).toBeUndefined();
+
+    // The fraudster is sincerely (and wrongly) convinced the king lives — and tells Bob so.
+    // No "lie" mechanic: just a mistaken source's contrary testimony (polarity −1).
+    acquireEvidence(w, fraudster, king, 'dead', {
+      kind: 'witness', polarity: -1, observationConfidence: 1, sourceTrust: 1, sinceTick: w.tick, cause: kingDies,
+    });
+    expect(computeBelief(beliefOf(w, fraudster, king, 'dead')!, w.tick).stance).toBe('false');
+    tellBelief(w, fraudster, bob, king, 'dead'); // "the king lives" — Bob trusts him ~as much as Alice
+
+    // Bob, with equal-and-opposite testimony, no longer knows what to believe.
+    expect(computeBelief(beliefOf(w, bob, king, 'dead')!, w.tick).stance).toBe('unknown');
+  });
+
+  it('a teller who holds no belief says nothing (no evidence transferred)', () => {
+    const w = createWorld(123);
+    const [king, alice, bob] = fullActors(w);
+    tellBelief(w, alice, bob, king, 'dead'); // Alice knows nothing of the king
+    expect(beliefOf(w, bob, king, 'dead')).toBeUndefined();
+  });
+
+  it('is deterministic across identical runs', () => {
+    const build = () => {
+      const w = createWorld(77);
+      const [king, alice, bob] = fullActors(w);
+      witnessBelief(w, alice, king, 'dead', emit(w, 'died', [king], {}));
+      tellBelief(w, alice, bob, king, 'dead');
+      return computeBelief(beliefOf(w, bob, king, 'dead')!, w.tick);
+    };
+    expect(build()).toEqual(build());
   });
 });
