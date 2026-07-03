@@ -196,7 +196,30 @@ In 1B, **emotional** reactions became subjective (you mourn when you *learn*) wh
 
 Each step adds a producer, a reaction, or an assertion — **never a change to Belief itself**. That separation is the point:
 
-Each stage introduces one new **law**, and the engine grows by alternating **producers** (new sources of evidence) and **consumers** (new things that read belief) around a frozen primitive:
+The whole layer is one loop with a single core. Every feature is a **producer** feeding evidence in or a **consumer** reading belief out — the centre (`Evidence → Belief`) never changes:
+
+```
+Reality
+   │
+   ▼   PRODUCERS ──  witness ✓ · testimony ✓ · conversation ✓ · coronation ✓ · (document · divination · sensor …)
+Evidence  (Mark)
+   │
+   ▼   REDUCERS  ──  computeBelief ✓ · computeStatusBelief ✓ · orgBeliefOf ✓ · orgStatusBeliefOf ✓
+Belief
+   │
+   ▼   CONSUMERS ──  mourning ✓ · allegiance ⏳ · (celebration · vengeance · diplomacy …)
+Decision
+   │
+   ▼
+Action
+   │
+   ▼
+Reality   (the loop closes — an action becomes new reality, which is witnessed anew)
+```
+
+The engine grows at the **edges** (producers, consumers), never the **centre**. Adding religion asks only: *is revelation a producer, is excommunication a consumer, does doctrine need a reducer?* — the methodology answers the design before the code.
+
+Read as a sequence, each stage introduces one new **law** and one new edge in that loop, alternating **producers** (new sources of evidence) and **consumers** (new things that read belief):
 
 - **Belief exists** — 1A · *producers*: witness, testimony. ✓
 - **Belief changes behavior** — 1B · *consumer*: mourning. ✓
