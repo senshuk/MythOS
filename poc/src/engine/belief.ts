@@ -154,3 +154,25 @@ export function tellBelief(
     cause: held.evidence[held.evidence.length - 1]?.cause, // trace back toward what the teller knows
   });
 }
+
+/**
+ * PRODUCER — Conversation (Subjectivity 1C-local). When `teller` and `hearer` interact
+ * socially, the teller passes ONE piece of news the hearer doesn't yet have: the first
+ * proposition the teller holds a definite stance on (`true`/`false`) that the hearer holds NO
+ * belief about. This spreads knowledge within a settlement using the existing social loop as
+ * the medium — no new transport, storage, or assertions.
+ *
+ * Bounded by construction: a hearer is told a proposition only while they still know nothing
+ * of it, so repeated conversations can't pile evidence up without end. Deterministic — the
+ * first eligible belief in list order; no RNG. Inert like all belief formation (invariant 8).
+ */
+export function shareBelief(world: World, teller: EntityId, hearer: EntityId): void {
+  const held = world.beliefs.get(teller);
+  if (!held) return;
+  for (const b of held) {
+    if (computeBelief(b, world.tick).stance === 'unknown') continue; // nothing definite to pass on
+    if (beliefOf(world, hearer, b.subject, b.assertion)) continue; // the hearer already has this news
+    tellBelief(world, teller, hearer, b.subject, b.assertion);
+    return; // one piece of news per conversation
+  }
+}

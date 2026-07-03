@@ -198,7 +198,8 @@ Each step adds a producer, a reaction, or an assertion — **never a change to B
 
 - **1A — Belief exists.** (witness + testimony producers) ✓
 - **1B — Belief causes one reaction.** (mourning) ✓
-- **1C — Belief spreads in the live world.** (wire testimony into the loop, so absent kin learn)
+- **1C-local — Belief spreads by conversation.** ✓ (`shareBelief` wired into `resolveInteract`; a kinsman who missed a death can learn of it in a conversation and then mourn — conversation is now causal, not cosmetic)
+- **1C-distal — Belief spreads across the map.** (carriers on the travel system, so kingdoms live on different timelines)
 - **1D — Belief gains richer assertions.** (`killed-by`, ownership, location, …)
 - **2 — Systems consume beliefs.** (crime, politics, diplomacy, succession react to what they believe)
 

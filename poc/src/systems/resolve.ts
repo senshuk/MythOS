@@ -19,6 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible, escalateAnimosity } from '../engine/social';
 import { witnessDeed, perceiveEvent } from '../engine/perception';
+import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
 import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
@@ -128,6 +129,11 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   // companionship is built (or frayed) by spending time together — both feel it
   bumpBelonging(world, a, positive ? 34 : -12);
   bumpBelonging(world, b, positive ? 34 : -12);
+
+  // conversation carries news: each tells the other one thing they don't yet know (1C-local).
+  // Uses no RNG, so the social loop's seeded outcomes above are unperturbed.
+  shareBelief(world, a, b);
+  shareBelief(world, b, a);
 
   // a *notable* encounter is recorded as an event AND a stronger thought — but only
   // while the bond is still forming, so settled relationships don't flood history.
