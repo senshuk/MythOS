@@ -201,7 +201,7 @@ Each stage introduces one new **law**, not one new feature — that is MythOS's 
 - **Belief exists** — 1A (witness + testimony producers). ✓
 - **Belief changes behavior** — 1B (mourning reaction). ✓
 - **Belief spreads (locally)** — 1C-local (`shareBelief` in conversation). ✓
-- **Belief revises** — **1D-minimal**: the first *status* assertion (`reigns`), overturned by a contradicting claim. Proves belief revision *alone* — no kings, orgs, or allegiance. Event assertions are monotonic; status assertions are competitive (a slot with one filler), so they get a new fold `computeStatusBelief`, never a branchy `computeBelief` (ADR §9.7). ← next primitive
+- **Belief revises** — **1D-minimal** ✓ (`statusBelief.ts`: `computeStatusBelief` resolves competing `reigns:<slot>` claims by arg-max; `learnCoronation` holds the "one filler" competition, adding evidence for the new ruler and against the incumbent). `computeBelief` untouched. Two holders can already believe different rulers reign in one slot. Event assertions are monotonic; status assertions are competitive — a new fold + producer, never a branchy `computeBelief` (ADR §9.7).
 - **Groups reason from belief** — organizations consume *revised* belief (allegiance via `orgBeliefOf`).
 - **Belief travels (geographically)** — 1C-distal (Evidence on carriers over the travel system) + ship the latency inspector.
 - **Politics runs on information** — coronation → allegiance → divergent timelines: a *consumer* of everything above, not a new primitive.

@@ -178,7 +178,7 @@ Prime Movers' two-layer world (objective vs. a hold on it) makes belief-about-be
 
 What mutates when a testimony is retold — its confidence, its detail, its subject, its assertion? Recommendation: v1 lowers `sourceTrust`/`observationConfidence` along the chain and drops detail; assertion-mutation ("the king was *poisoned*") is a later, higher-drama increment. This decision is needed before propagation is coded, not before the `Mark` refactor.
 
-### 9.7 Assertion kinds: event vs status (monotonic vs competitive) — DOCUMENTED, not yet built
+### 9.7 Assertion kinds: event vs status (monotonic vs competitive) — SHIPPED (1D-minimal)
 
 Beliefs come in two kinds, and conflating them would rot `computeBelief` into special cases. Documenting the distinction now, before the first status assertion is written, is what keeps the reducer clean.
 
@@ -207,6 +207,13 @@ believes: Aldric reigns
 ```
 
 If that passes, revision is proven, and coronation / allegiance / divergent-timelines become consumers of it.
+
+**Shipped** in `statusBelief.ts` (5 tests). Two functions, and neither touches `computeBelief`:
+
+- `computeStatusBelief(holder, slot)` — a **resolver over competing beliefs**, not a new belief. It arg-maxes the per-claimant event beliefs (`reigns:<slot>`) and returns the occupant (or none). The orthogonal question: `computeBelief` answers *"is P believed?"*, `computeStatusBelief` answers *"among claimants for slot S, who wins?"*. `dead` never uses it — it has no slot and no competitors.
+- `learnCoronation(holder, newRuler, slot)` — the **producer**, where the "one filler" competition lives: it adds evidence *for* the new ruler and *against* every incumbent claimant (a slot holds one filler, so a successor unseats the predecessor). Revision is then ordinary evidence accumulation resolved by arg-max — which is why Aldric's confidence *drops* rather than merely being outranked.
+
+A status belief is a new **fold + producer** over the unchanged Evidence substrate — not a new primitive. The test suite already shows two holders believing *different* rulers reign in one slot (divergent timelines in miniature), so the political milestone is now purely a consumer of this reducer.
 
 ## 10. Consequences
 
