@@ -61,6 +61,16 @@ export function clampOpinion(v: number): number {
   return v < -1000 ? -1000 : v > 1000 ? 1000 : v;
 }
 
+/**
+ * How far one actor trusts another as a source, derived from opinion and mapped to [0,1]
+ * (neutral 0.5 at indifference). Opinion owns "how much one actor trusts another"; the caller
+ * combines it with belief. This keeps the trust POLICY here, not baked into a belief producer —
+ * a pack that derives trust from rank / sensor-fidelity / attunement swaps this, not belief.ts.
+ */
+export function trustFromOpinion(opinion: number): number {
+  return (clampOpinion(opinion) + 1000) / 2000;
+}
+
 /** Drop all expired thoughts on an edge (housekeeping to bound memory). */
 export function pruneThoughts(edge: RelEdge, tick: number): void {
   edge.thoughts = dropExpired(edge.thoughts, tick);

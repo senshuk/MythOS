@@ -21,7 +21,7 @@ import { ageCompatible, escalateAnimosity } from '../engine/social';
 import { witnessDeed, perceiveEvent } from '../engine/perception';
 import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
-import { addThought, computeOpinion, pruneThoughts } from '../engine/opinion';
+import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
 import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
@@ -131,9 +131,11 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   bumpBelonging(world, b, positive ? 34 : -12);
 
   // conversation carries news: each tells the other one thing they don't yet know (1C-local).
+  // Trust is the orchestration layer's call (here: opinion-derived); belief.ts stays agnostic.
   // Uses no RNG, so the social loop's seeded outcomes above are unperturbed.
-  shareBelief(world, a, b);
-  shareBelief(world, b, a);
+  const trust = trustFromOpinion(computeOpinion(edge, world.tick));
+  shareBelief(world, a, b, trust);
+  shareBelief(world, b, a, trust);
 
   // a *notable* encounter is recorded as an event AND a stronger thought — but only
   // while the bond is still forming, so settled relationships don't flood history.

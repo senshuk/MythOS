@@ -17,7 +17,6 @@
  */
 import { type World, type EntityId, type EventId, type Evidence, type Belief, type BeliefState, type Stance } from './model';
 import { activeMarks } from './mark';
-import { computeOpinion, clampOpinion } from './opinion';
 
 /** Evidence strength: scales effective weight [0,1] into log-odds. Pack data (a v1 constant). */
 const STRENGTH = 3;
@@ -110,24 +109,14 @@ export function witnessBelief(
 }
 
 /**
- * How far `hearer` trusts `teller` as a source — DERIVED from the existing social graph, not
- * a new trust store. A liked source is more persuasive, a distrusted one less; strangers are
- * neither saints nor liars. Pure read: computeOpinion (−1000..1000) mapped to [0,1], neutral
- * 0.5 when no relationship exists. (Charisma, authority, culture modifiers are later — v1
- * grounds trust entirely in shared history.)
- */
-function trustIn(world: World, hearer: EntityId, teller: EntityId): number {
-  const edge = world.rels.get(hearer)?.get(teller);
-  if (!edge) return 0.5; // no relationship → neutral trust
-  return (clampOpinion(computeOpinion(edge, world.tick)) + 1000) / 2000;
-}
-
-/**
  * PRODUCER — Testimony. `teller` conveys their stance on (subject, assertion) to `hearer` as
  * one piece of Evidence: polarity from the teller's stance, observationConfidence from how
- * CERTAIN the teller is in that stance, sourceTrust from the hearer's opinion of the teller.
- * A teller who is Unknown says nothing. Inert — no Event (v1); when telling becomes a
- * first-class spoken Action it will emit `told` per invariant 9.
+ * CERTAIN the teller is in that stance, and `sourceTrust` SUPPLIED BY THE CALLER. Trust is a
+ * policy the orchestration layer owns — it may derive from opinion (see `trustFromOpinion`),
+ * rank, sensor fidelity, or attunement — so belief.ts never learns *why* a source is trusted,
+ * only records evidence at the given trust (defaults to neutral 0.5). A teller who is Unknown
+ * says nothing. Inert — no Event (v1); when telling becomes a first-class spoken Action it will
+ * emit `told` per invariant 9.
  *
  * A false belief needs no "lie" mechanic: a teller sincerely convinced of a falsehood conveys
  * it, and a hearer who trusts a mistaken source comes to doubt (or believe) the truth.
@@ -138,6 +127,7 @@ export function tellBelief(
   hearer: EntityId,
   subject: EntityId,
   assertion: string,
+  sourceTrust = 0.5,
 ): void {
   const held = beliefOf(world, teller, subject, assertion);
   if (!held) return; // the teller holds no belief — nothing to say
@@ -149,7 +139,7 @@ export function tellBelief(
     kind: 'testimony',
     polarity: stance === 'true' ? 1 : -1,
     observationConfidence: certainty,
-    sourceTrust: trustIn(world, hearer, teller),
+    sourceTrust,
     sinceTick: world.tick,
     cause: held.evidence[held.evidence.length - 1]?.cause, // trace back toward what the teller knows
   });
@@ -166,13 +156,13 @@ export function tellBelief(
  * of it, so repeated conversations can't pile evidence up without end. Deterministic — the
  * first eligible belief in list order; no RNG. Inert like all belief formation (invariant 8).
  */
-export function shareBelief(world: World, teller: EntityId, hearer: EntityId): void {
+export function shareBelief(world: World, teller: EntityId, hearer: EntityId, sourceTrust = 0.5): void {
   const held = world.beliefs.get(teller);
   if (!held) return;
   for (const b of held) {
     if (computeBelief(b, world.tick).stance === 'unknown') continue; // nothing definite to pass on
     if (beliefOf(world, hearer, b.subject, b.assertion)) continue; // the hearer already has this news
-    tellBelief(world, teller, hearer, b.subject, b.assertion);
+    tellBelief(world, teller, hearer, b.subject, b.assertion, sourceTrust);
     return; // one piece of news per conversation
   }
 }
