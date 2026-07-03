@@ -1,0 +1,52 @@
+/**
+ * MARK — the substrate of subjectivity.
+ *
+ * This module owns lifecycle ONLY: create-time filtering, expiry, and indexing of the
+ * sourced, decaying marks that every subjective system holds. A Mark carries a `kind`,
+ * a birth tick, an optional expiry, and a cause — and NOTHING about what it means.
+ *
+ * It must never:
+ *   - interpret payload            (it cannot even see `value`, `witnesses`, …)
+ *   - score marks                  (no diminishing returns, no witness weighting)
+ *   - compare meanings             (no "is this better than that")
+ *   - know domain vocabulary       (no Thought, Reputation, Belief, Evidence)
+ *   - perform domain-specific reduction
+ *
+ * If a function needs to know what a mark MEANS, it belongs elsewhere: sentiment in
+ * opinion.ts, standing in reputation.ts, belief (later) in its own module. Each is a
+ * separate consumer of this substrate with its own reducer. The substrate stays boring
+ * on purpose — it should remain almost ignorant, and grow almost never.
+ */
+import { type Mark } from './model';
+
+/** A mark is active if it has not yet expired. Permanent marks (no expiry) never lapse. */
+export function isActive(m: Mark, tick: number): boolean {
+  return m.expiresTick === undefined || m.expiresTick > tick;
+}
+
+/** The active subset, in input order. Ordering for a fold is the caller's concern. */
+export function activeMarks<T extends Mark>(marks: T[], tick: number): T[] {
+  return marks.filter((m) => isActive(m, tick));
+}
+
+/**
+ * Drop expired marks, returning the pruned list. Returns the SAME array reference when
+ * nothing has expired (a cheap no-op), or a new filtered array otherwise. Callers that
+ * store the result (`x.marks = dropExpired(x.marks, tick)`) get correct behaviour either
+ * way; the identity shortcut just avoids needless allocation on the common path.
+ */
+export function dropExpired<T extends Mark>(marks: T[], tick: number): T[] {
+  return marks.some((m) => !isActive(m, tick)) ? marks.filter((m) => isActive(m, tick)) : marks;
+}
+
+/** Index marks by their `kind`, preserving input order within each bucket (Map keeps
+ *  insertion order of kinds, so a downstream fold is deterministic). */
+export function indexByKind<T extends Mark>(marks: T[]): Map<string, T[]> {
+  const byKind = new Map<string, T[]>();
+  for (const m of marks) {
+    const arr = byKind.get(m.kind);
+    if (arr) arr.push(m);
+    else byKind.set(m.kind, [m]);
+  }
+  return byKind;
+}

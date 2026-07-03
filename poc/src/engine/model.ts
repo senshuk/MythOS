@@ -73,12 +73,24 @@ export interface ThoughtSpec {
   label: string; // shown in the inspector
 }
 
-export interface Thought {
-  kind: ThoughtKind;
-  value: number; // opinion delta (+/-)
+/**
+ * MARK — the substrate of subjectivity (see engine/mark.ts and design/11 §Constructs).
+ * The lifecycle fields shared by every sourced, decaying assertion an entity holds: a
+ * `kind`, a birth tick, an optional expiry, and a `cause`. Payload — value, witnesses,
+ * confidence, an assertion — lives in the EXTENDING interface. The substrate never sees
+ * it. A Mark can be false; an Event cannot.
+ */
+export interface Mark {
+  kind: string;
   sinceTick: number;
   expiresTick?: number; // undefined = permanent
   cause?: EventId; // the event that produced it (legibility)
+}
+
+/** A sourced, decaying opinion mark on a relationship edge (payload: a signed value). */
+export interface Thought extends Mark {
+  kind: ThoughtKind;
+  value: number; // opinion delta (+/-)
 }
 
 /** Undirected relationship edge (stored symmetrically in both actors' maps). */
@@ -112,13 +124,10 @@ export interface ReputeSpec {
  * (see reputation.ts), so reputation is legible ("known for: shed blood, seen by 7")
  * and earned (only what others witnessed counts).
  */
-export interface ReputeMark {
+export interface ReputeMark extends Mark {
   kind: string; // open id; the SET is pack data (content/fixture REPUTE_SPECS)
   value: number; // standing delta (+/-)
-  sinceTick: number;
-  expiresTick?: number; // undefined = permanent
   witnesses: number; // how many saw it — scales how widely it is known
-  cause?: EventId; // the event that produced it (legibility)
 }
 
 /** An actor's public reputation: a bounded list of sourced marks. */
