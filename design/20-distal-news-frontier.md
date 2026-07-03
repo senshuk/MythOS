@@ -101,6 +101,25 @@ The whole design reduces to one testable sentence:
 
 If that holds, the frontier is doing precisely what this note promises: information exists and moves objectively whether or not anyone is watching, and minds are materialized *into* it — never the reverse. If a focused settlement's residents know **more** than the frontier delivered, the camera leaked omniscience (the "camera never creates information" law is broken). If they know **less**, belief wasn't seeded from the frontier (reconcile-on-focus is broken). The single sentence tests the entire model.
 
+This acceptance criterion is really the engine's first **observer-independence** test — *changing what is simulated must never change what is true* (`18` §Observer independence). News is where that property is first made concrete; it is a north star for the whole engine, not just this layer.
+
+## Future generalization — a note, not a change
+
+News is not the only thing that moves objectively beneath agency. The engine already has **three** such layers:
+
+```
+Reality
+  ├── Physical transport      — people, goods, armies       (travel.ts)
+  ├── Informational transport — news                         (this note)
+  └── Biological transport    — births, deaths, migration    (lifecycle, lod)
+        ↓
+   subjective simulation
+```
+
+Travel is no longer special; it is one instance of a general idea — **objective fields propagate independently of observation.** The News Frontier may therefore be the first *payload* of a more general **Propagation** substrate that could later also carry plague, magical corruption, rumor, fashion, innovation, or a pack's own field. *Propagation* is the system; *News* is only the first payload.
+
+**This is a mental note, not a change.** Nothing here renames the frontier or alters v1 — build News concretely. But if the pattern recurs (and the list above suggests it will), "News Frontier" may naturally become one specialization of a propagation substrate, and this note marks the seam where that generalization would attach. If it never recurs, nothing is lost — which is exactly when to defer an abstraction rather than invent it.
+
 ## v1 scope
 
 - **News types:** coronations first (feeds coronation→allegiance across the map). Deaths of notables next.
@@ -122,4 +141,5 @@ If that holds, the frontier is doing precisely what this note promises: informat
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-07-03 | Initial design note. Defines the **News Frontier** (objective per-settlement arrival state) as the answer to "what exists before a mind believes it", freezing the boundary *news is objective, belief is subjective; transport moves news, minds convert it to evidence.* Aggregates gain infrastructure, never belief; coarse recognition is a lossy LOD reading of the same objective input; belief materializes from the frontier on focus. The entire epistemic core stays frozen — distal is a producer feeding `acquireEvidence` from a new objective transport layer. v1 = computed-latency frontier for coronations, no in-transit distortion, latency inspector alongside. |
+| 1.2 | 2026-07-03 | Tied the acceptance criterion to the engine-wide **observer-independence** north star (`18`). Added a **future-generalization note** (not a change): the engine already has three objective transport layers (physical/informational/biological), all instances of *objective fields propagate independently of observation*; News may be the first payload of a general **Propagation** substrate — recorded as a seam, deliberately not built. |
 | 1.1 | 2026-07-03 | Sharpened four framings from review: **News is not Epistemics — it is logistics** (a distinct tier `Reality → News → Evidence → Belief`, closer to weather/trade than opinion; epistemics begins at Evidence). Reframed the frontier from a *record* to a **graph-theory frontier** — a wave whose arrival ticks are a cache of where it reached, so intercepted messengers / telegraphs / magical sending are just swappable propagation mechanics. Added the prohibition **only transport advances the frontier** (one writer, beside the Evidence laws). Made explicit that **the camera never creates information** (focus materializes minds into an environment that already existed). Added the acceptance criterion: **delete the camera** — run 500 years at aggregate LOD, focus anywhere, and residents must instantiate believing exactly the news that reached that place, no more, no less. |

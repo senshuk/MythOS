@@ -137,6 +137,18 @@ This is why the architecture stayed clean while becoming far richer, and why the
 
 ---
 
+## Observer independence (the north star)
+
+"World before player" (CLAUDE.md) has a technical form, and this is it:
+
+> ## Changing what is *simulated* must never change what is *true*.
+
+Level-of-detail is an **optimization** — how finely the engine spends compute — never a **rule of the world**. The camera changes simulation *fidelity*; it must never change *ontology*. A place's truth is defined by the objective fields evolving beneath it — physical transport (people, goods), informational transport (the news frontier, `20`), biological transport (births, deaths, migration) — not by whether anyone is looking. Those fields propagate independently of observation; the subjective simulation is materialized *into* them where minds exist.
+
+**This is a north star, not yet a fact.** The News Frontier (`20`) is the first system built fully to the standard — its acceptance test *is* observer independence ("delete the camera": run 500 years unwatched, focus anywhere, and residents know exactly what reached that place). Older systems only approximate it — aggregate promotion still mints individual identities on focus, so focusing today adds fine-grained truths that did not exist before. Those are the seams to move *toward* the standard, never away from it. If the property holds across the next several systems, MythOS gains something very few simulations possess: a world that exists independently of attention, exactly as the vision demands.
+
+---
+
 ## Revision History
 
 | Version | Date | Change |
@@ -144,3 +156,4 @@ This is why the architecture stayed clean while becoming far richer, and why the
 | 1.0 | 2026-07-03 | Initial capstone. Re-cuts the ontology along the objective/subjective axis (§1), fixes the two change mechanisms — Actions for reality, perception/testimony/decay/reasoning for belief (§2), states the full causal chain Reality → Perception → Belief → Reasoning → Intent → Action → Outcome → History with the governing rule "no system may skip a stage" (§3), and gives the objective-vs-subjective teaching table (§4). Written after `11` (ontology), `15` (execution model), and `17` (Epistemics ADR) as the document that sits above them. |
 | 1.1 | 2026-07-03 | Added the project's philosophical thesis as an epigraph: **"Reality is simulated. Minds are inferred."** — the engine models evidence, memory, reasoning, and action, never consciousness; minds are inferred from the gap between the objective world and each entity's evidence of it. |
 | 1.2 | 2026-07-03 | Added the engine-wide **development methodology** ("How the engine grows"): *build a minimal primitive, freeze it, and thereafter grow only producers and consumers — the primitive is fixed, its use grows outward.* Promoted from a Belief-specific note (design/19) to the method behind every layer (Intent, Organization, Mark, Belief); explains why the `11 §Mark` laws are phrased as prohibitions. |
+| 1.3 | 2026-07-03 | Added **Observer independence** ("the north star"): *changing what is simulated must never change what is true* — the technical form of "world before player". LOD is an optimization, not a rule of the world; objective fields (physical/informational/biological transport) propagate independently of observation, and minds are materialized into them. Stated honestly as a target the News Frontier meets fully and older systems (aggregate promotion) only approximate. |
