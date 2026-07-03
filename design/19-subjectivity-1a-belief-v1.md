@@ -167,8 +167,48 @@ Bisecting the history years from now yields two clean conceptual milestones — 
 
 ---
 
+## Subjectivity 1B — the first consumer (shipped)
+
+Belief v1 (above) is a producer of knowledge. 1B is the first **consumer**: the pattern is
+
+```
+Belief ──▶ Reaction        (NOT: Belief ──▶ special-case mourning)
+```
+
+`reactToBeliefs` (weekly) asks `computeBelief` and dispatches on the belief's assertion. Adding future reactions never touches Belief itself — only the dispatch table and (later) the assertion vocabulary grow:
+
+```
+dead      → mourn        (shipped)
+born      → celebrate
+married   → congratulate
+crowned   → acclaim
+killed-by → avenge
+heresy    → denounce
+```
+
+Two disciplines make this durable: **reactions ask `computeBelief`, never inspect `Evidence`** (the reducer is the only API into belief), and **reaction state lives in `world.reactions`, never on the `Belief`** (belief is knowledge; reacting is behaviour — Belief ≠ Reaction, as Intent ≠ Action). Reactions are edge-triggered (fire once, when a stance first crosses to believed).
+
+### Temporary asymmetry (a known inconsistency — not the desired model)
+
+In 1B, **emotional** reactions became subjective (you mourn when you *learn*) while **social/legal** state stays objective — `killActor` still severs bonds and widows at the instant of death, before anyone knows. This is intentional: it proves the Belief→Decision pipeline **without** making relationships epistemic. A future **Epistemic Relationships** phase may migrate individual systems (widowhood, inheritance, membership) behind belief, one at a time. Until then, "relationships are objective" is not *how MythOS works* — it is how MythOS works *until that phase*.
+
+### The progression this establishes
+
+Each step adds a producer, a reaction, or an assertion — **never a change to Belief itself**. That separation is the point:
+
+- **1A — Belief exists.** (witness + testimony producers) ✓
+- **1B — Belief causes one reaction.** (mourning) ✓
+- **1C — Belief spreads in the live world.** (wire testimony into the loop, so absent kin learn)
+- **1D — Belief gains richer assertions.** (`killed-by`, ownership, location, …)
+- **2 — Systems consume beliefs.** (crime, politics, diplomacy, succession react to what they believe)
+
+This avoids solving "knowledge" all at once: the belief primitive is fixed; the world's use of it grows outward.
+
+---
+
 ## Revision History
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-07-03 | Initial slice plan. Fences Belief v1 to the smallest scope that proves Subjectivity: `Evidence extends Mark`, `computeBelief` (log-odds accumulation → stance + confidence, Unknown as baseline), two producers built one-at-a-time (witness, then testimony), belief formation inert per invariant 8, v1 testimony inert with `told`-emits deferred to 1B. Test written before code; assertions on stance + confidence ordering, not floats. |
+| 1.1 | 2026-07-03 | Added the shipped **Subjectivity 1B** (first consumer): the `Belief → Reaction` pattern, mourning as the first reaction, the two boundary disciplines, the **temporary asymmetry** documented as a known inconsistency (emotional-subjective / social-legal-objective) pending an Epistemic Relationships phase, and the 1A→1B→1C→1D→2 progression (grow producers/reactions/assertions, never Belief itself). |

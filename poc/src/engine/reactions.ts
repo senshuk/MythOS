@@ -21,6 +21,15 @@
  *
  *   3. Mourning is an ACTION taken upon a belief, so it emits (invariant 9). Belief FORMATION
  *      stays inert (invariant 8); only the reaction to a belief enters history.
+ *
+ * TEMPORARY ASYMMETRY (a known inconsistency, NOT the desired model). In 1B, EMOTIONAL
+ * reactions become subjective (you mourn when you learn) while SOCIAL/LEGAL state stays
+ * objective — killActor still severs bonds and widows at the instant of death, before anyone
+ * knows. This is intentional: it proves the Belief→Decision pipeline without making
+ * relationships epistemic. A future "Epistemic Relationships" phase may migrate individual
+ * systems (widowhood, inheritance, membership) behind belief, one at a time. Until then, do
+ * not read "relationships are objective" as how MythOS works — read it as how MythOS works
+ * *until* that phase.
  */
 import { type World, type EntityId, type Belief } from './model';
 import { isKin, emit } from './world';
