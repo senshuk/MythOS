@@ -15,15 +15,12 @@
  * Fully deterministic (no wall-clock; expiry is by tick), exactly like opinion.ts.
  * What each kind of mark is worth is PACK DATA (content/fixture REPUTE_SPECS).
  */
-import { type World, type EntityId, type Reputation, type ReputeMark, type EventId } from './model';
+import { type World, type EntityId, type Reputation, type EventId } from './model';
 import { reputeSpec } from '../content/fixture';
+import { activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Bound the marks kept on one actor (housekeeping; the deep past lives in events). */
 const REPUTE_MARK_LIMIT = 16;
-
-function isActive(m: ReputeMark, tick: number): boolean {
-  return m.expiresTick === undefined || m.expiresTick > tick;
-}
 
 /**
  * How widely a deed is known, from how many witnessed it. A lone witness still
@@ -73,7 +70,7 @@ export function addMark(
   opts?: { value?: number; witnesses?: number; cause?: EventId },
 ): void {
   const spec = reputeSpec(kind);
-  rep.marks = rep.marks.filter((m) => isActive(m, tick));
+  rep.marks = dropExpired(rep.marks, tick);
   rep.marks.push({
     kind,
     value: opts?.value ?? spec.base,
@@ -88,31 +85,25 @@ export function addMark(
 /** Effective standing: witness-weighted sum of active marks (− = notorious, + = renowned). */
 export function computeStanding(rep: Reputation, tick: number): number {
   let sum = 0;
-  for (const m of rep.marks) {
-    if (!isActive(m, tick)) continue;
-    sum += m.value * knownFactor(m.witnesses);
-  }
+  for (const m of activeMarks(rep.marks, tick)) sum += m.value * knownFactor(m.witnesses);
   return sum < -1000 ? -1000 : sum > 1000 ? 1000 : sum;
 }
 
 /** The human-readable reasons behind a standing, strongest first (for the UI). */
 export function standingReasons(rep: Reputation, tick: number, limit = 6): { label: string; value: number }[] {
-  const byKind = new Map<string, { value: number }>();
-  for (const m of rep.marks) {
-    if (!isActive(m, tick)) continue;
-    const row = byKind.get(m.kind) ?? { value: 0 };
-    row.value += m.value * knownFactor(m.witnesses);
-    byKind.set(m.kind, row);
-  }
+  // substrate supplies the active per-kind index; the witness-weighted sum is reputation's own.
+  const byKind = indexByKind(activeMarks(rep.marks, tick));
   const rows: { label: string; value: number }[] = [];
-  for (const [kind, row] of byKind) rows.push({ label: reputeSpec(kind).label, value: Math.round(row.value) });
+  for (const [kind, arr] of byKind) {
+    let value = 0;
+    for (const m of arr) value += m.value * knownFactor(m.witnesses);
+    rows.push({ label: reputeSpec(kind).label, value: Math.round(value) });
+  }
   rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   return rows.slice(0, limit);
 }
 
 /** Drop expired marks (housekeeping to bound memory). */
 export function pruneMarks(rep: Reputation, tick: number): void {
-  if (rep.marks.some((m) => !isActive(m, tick))) {
-    rep.marks = rep.marks.filter((m) => isActive(m, tick));
-  }
+  rep.marks = dropExpired(rep.marks, tick);
 }

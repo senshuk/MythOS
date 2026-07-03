@@ -6,12 +6,9 @@
  * fade unless renewed) — the RimWorld idea, adapted to MythOS and kept fully
  * deterministic (no wall-clock; expiry is by tick).
  */
-import { type RelEdge, type Thought, type ThoughtKind, type EventId } from './model';
+import { type RelEdge, type ThoughtKind, type EventId } from './model';
 import { thoughtSpec } from '../content/fixture';
-
-function isActive(t: Thought, tick: number): boolean {
-  return t.expiresTick === undefined || t.expiresTick > tick;
-}
+import { isActive, activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Add a thought to an edge, pruning expired ones of that kind and enforcing the
  *  per-kind stack limit (oldest evicted first). Optional value/cause overrides. */
@@ -22,7 +19,8 @@ export function addThought(
   opts?: { value?: number; cause?: EventId },
 ): void {
   const spec = thoughtSpec(kind);
-  // drop expired thoughts of this kind
+  // drop expired thoughts OF THIS KIND (a per-kind prune — a domain policy, not the
+  // substrate's blanket dropExpired: other kinds' lapsed thoughts are left untouched here)
   edge.thoughts = edge.thoughts.filter((t) => t.kind !== kind || isActive(t, tick));
   // enforce stack limit (evict oldest of this kind)
   const sameKind = edge.thoughts.filter((t) => t.kind === kind);
@@ -43,14 +41,9 @@ export function addThought(
 
 /** Effective opinion: per kind, sum active thoughts with diminishing returns. */
 export function computeOpinion(edge: RelEdge, tick: number): number {
-  // bucket active thoughts by kind, most-recent first
-  const byKind = new Map<ThoughtKind, Thought[]>();
-  for (const t of edge.thoughts) {
-    if (!isActive(t, tick)) continue;
-    const arr = byKind.get(t.kind) ?? [];
-    arr.push(t);
-    byKind.set(t.kind, arr);
-  }
+  // substrate supplies the active subset and the per-kind index; the diminishing-returns
+  // fold below is the opinion domain's own reduction and stays here.
+  const byKind = indexByKind(activeMarks(edge.thoughts, tick));
   let sum = 0;
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick); // newest counts at full weight
@@ -70,21 +63,13 @@ export function clampOpinion(v: number): number {
 
 /** Drop all expired thoughts on an edge (housekeeping to bound memory). */
 export function pruneThoughts(edge: RelEdge, tick: number): void {
-  if (edge.thoughts.some((t) => !isActive(t, tick))) {
-    edge.thoughts = edge.thoughts.filter((t) => isActive(t, tick));
-  }
+  edge.thoughts = dropExpired(edge.thoughts, tick);
 }
 
 /** The human-readable reasons behind an opinion, strongest first (for the UI). */
 export function opinionReasons(edge: RelEdge, tick: number, limit = 6): { label: string; value: number }[] {
   // aggregate active thoughts by kind into one line each, with the diminished total
-  const byKind = new Map<ThoughtKind, Thought[]>();
-  for (const t of edge.thoughts) {
-    if (!isActive(t, tick)) continue;
-    const arr = byKind.get(t.kind) ?? [];
-    arr.push(t);
-    byKind.set(t.kind, arr);
-  }
+  const byKind = indexByKind(activeMarks(edge.thoughts, tick));
   const rows: { label: string; value: number }[] = [];
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick);

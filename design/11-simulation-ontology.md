@@ -57,7 +57,8 @@ Simulation
 ├── Constructs        (structural elements — addressed but not simulated as participants)
 │   ├── Event
 │   ├── Relationship
-│   └── Record
+│   ├── Record
+│   └── Mark
 │
 ├── Data              (fungible quantities — not addressed as entities)
 │   └── Resource
@@ -316,6 +317,20 @@ An entry in an entity's personal timeline — a pointer to an Event annotated wi
 - The same Event produces Records in multiple entities' timelines.
 - Records are the foundation of legibility: "why does this actor distrust this organization?" is answered by reading their Records.
 
+### Mark
+
+A subjective, sourced, time-varying assertion held by an entity. Marks are the shared substrate beneath every system that models what an entity *feels, reckons, or holds true* — the engine's unit of subjectivity.
+
+- A Mark carries: a `kind`, a magnitude or `assertion`, the tick it arose (`sinceTick`), an optional expiry (its certainty decays unless renewed), and a `cause`/`source` (provenance — *why* it is held).
+- Marks live in bounded, decaying stacks and are reduced to a domain-specific reading. **The substrate is shared; the reduction semantics differ by domain:**
+  - **Sentiment** — a stack of `Thought` marks on a Relationship edge reduces to an opinion.
+  - **Reputation** — a stack of witness-weighted marks reduces to public standing.
+  - **Belief** — a stack of *evidence* marks (witness / testimony / document / inference) reduces to a held stance (True / False / Unknown) and a **derived** confidence (Epistemics; see ADR `17`). Confidence is never a stored number — it is computed from the evidence, the same way sentiment and standing are.
+- **A Mark is never objective.** It is what an entity *holds*, not what is *true*. The objective record is the Event log; Marks are the subjective layer above it. This is why a Mark can be false while an Event cannot.
+- **Marks are self-explaining:** the stack *is* the reason list. Opinions, reputations, and beliefs all answer "why?" through the same inspector pattern.
+
+Marks are not independently addressed (they have no stable cross-world ID; they live in the stacks of the entities that hold them), but they are a first-class *structural category*: most of the engine's subjectivity is one Mark reduction or another. Recognizing Thought, Reputation, and Belief as three folds over one substrate — rather than three parallel systems — is what keeps the subjective layer elegant as it grows.
+
 ---
 
 ## Data
@@ -369,3 +384,4 @@ The line between an Object and an Actor is Agency. A golem that follows orders f
 |---|---|---|
 | 1.0 | 2026-06-28 | Initial ontology |
 | 1.1 | 2026-06-28 | Vehicle moved from top-level to Location sub-type (mobility=mobile); Actor definition changed from "autonomous individual" to "autonomous agent" to support hive minds and swarms; Organization Agency changed to Collective Decision Making; Resource moved from entity hierarchy to Data tier; Constructs tier introduced; Dual-role entity guidance expanded; Document split into three: ontology (this), capabilities, simulation-rules |
+| 1.2 | 2026-07-03 | **Mark** promoted to a first-class Construct — the shared subjective substrate beneath Thought (sentiment), Reputation (standing), and Belief (Epistemics). Names the layer where the engine's subjectivity lives; a Mark can be false while an Event cannot. Introduced alongside the Epistemics ADR (`17`). |
