@@ -20,6 +20,7 @@ import {
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
+import { perceiveCoronation } from './perception';
 import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
 import { tongueFor } from '../content/languages';
 import { startCivilWarClock } from './factions';
@@ -200,6 +201,11 @@ function installRuler(
   // appointLeader closes the previous leader's roster record and opens the heir's — the org
   // remembers its line of leaders.
   appointLeader(world, s.polityId, heir.id);
+
+  // residents of a FOCUSED settlement come to believe their new ruler reigns → the polity
+  // recognizes them (orgStatusBeliefOf). A no-op for aggregate settlements, which have no
+  // simulated residents to hear it (they learn later, once news travels — 1C-distal).
+  perceiveCoronation(world, s.id, heir.id, evId);
 
   // a heir who is a real SIMULATED actor (rose from the focused settlement, not a minted
   // record) earns ASCENSION renown — a public elevation the whole town knows. This feeds

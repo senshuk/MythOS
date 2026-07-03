@@ -18,6 +18,12 @@
 import { type World, type EntityId, type EventId, type StatusBelief } from './model';
 import { acquireEvidence, computeBelief, stanceFromConfidence, slotAssertion } from './belief';
 
+/** The status slot for "who rules settlement S" — one ruler office per settlement. The producer
+ *  (perceiveCoronation) and any consumer (an orgStatusBeliefOf caller) agree on the slot via this. */
+export function coronationSlot(settlementId: number): string {
+  return `ruler:${settlementId}`;
+}
+
 /**
  * PRODUCER — a coronation the holder comes to believe: `newRuler` was installed in `slot`. The
  * holder gains supporting evidence for `newRuler` AND contradicting evidence against every OTHER

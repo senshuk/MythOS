@@ -23,6 +23,7 @@ import { fullActors, getRel, remember, emit, getEvent } from './world';
 import { addThought } from './opinion';
 import { recordDeed } from './reputation';
 import { witnessBelief } from './belief';
+import { learnCoronation, coronationSlot } from './statusBelief';
 import { escalateAnimosity, personalityOf } from './social';
 import { reputeSpec, ethicsWeightFor, patronDeityOf, deityById } from '../content/fixture';
 
@@ -182,4 +183,22 @@ export function perceiveEvent(world: World, eventId: EventId): EntityId[] {
   }
   for (const w of witnesses) witnessBelief(world, w, subject, assertion, eventId);
   return witnesses;
+}
+
+/**
+ * Live coronation producer (coronation → allegiance, rung 2). When a settlement seats a new ruler
+ * (an `ascension` / `dynasty` event), its resident actors come to believe that ruler reigns — so
+ * the polity, via `orgStatusBeliefOf`, comes to recognize them. A coronation is public LOCAL news,
+ * so EVERY resident learns it (broad awareness is what lets the institution recognize the ruler).
+ *
+ * Only fires where residents are simulated — the focused settlement. Remote settlements learn later,
+ * once news travels (1C-distal). Inert (invariant 8) — forms beliefs, emits nothing. No RNG, so the
+ * yearly succession pass stays byte-identical whether or not anyone is home to hear it.
+ */
+export function perceiveCoronation(world: World, settlementId: number, rulerId: EntityId, eventId: EventId): void {
+  if (settlementId !== world.focusedSettlementId) return; // only where subjects exist to hold a belief
+  const slot = coronationSlot(settlementId);
+  for (const id of fullActors(world)) {
+    if (world.homeSettlement.get(id) === settlementId) learnCoronation(world, id, rulerId, slot, eventId);
+  }
 }
