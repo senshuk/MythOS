@@ -115,12 +115,18 @@ Ratified after the Prime Movers capstone (`18`) and a confidence/arbitration rev
 Reject the single scalar: it conflates *observation* with *trust*. "I watched the king die" and "a drunk merchant told me the king died" can both read 0.9 — but they are not the same knowledge. Each piece of evidence therefore carries **two axes**:
 
 ```ts
-Evidence { kind, observationConfidence, sourceTrust, sinceTick, expiresTick?, cause }
-//  kind ∈ 'witness' | 'testimony' | 'document' | 'inference'
+Evidence extends Mark {          // Mark supplies { kind, sinceTick, expiresTick?, cause }
+  kind: 'witness' | 'testimony' | 'document' | 'inference'
+  polarity: 1 | -1               // supports (+1) or contradicts (-1) the belief's assertion
+  observationConfidence: number  // [0,1] how direct/clear the sensing
+  sourceTrust: number            // [0,1] how far the holder trusts the source (culture data)
+}
 
-Belief   { subject, assertion, evidence: Evidence[], lastUpdated }
-//  confidence AND stance are DERIVED from evidence — never stored fields
+Belief { subject, assertion, evidence: Evidence[], lastUpdated }
+//  confidence AND stance (True/False/Unknown) are DERIVED from evidence — never stored
 ```
+
+The first implementation slice of this design is scoped in `19-subjectivity-1a-belief-v1.md`: witness + testimony producers only, everything else deferred as a future producer/consumer of Evidence.
 
 - `observationConfidence` — how direct and clear the sensing was (a personal witnessing ≈ 1.0; a glimpse through fog, far less).
 - `sourceTrust` — how far the holder trusts the source. **Source trust is pack/culture data.** This means cultures differ in *epistemology* with no new system: a mystical culture assigns dreams high trust, a rationalist one near zero; a zealot trusts the priest, a cynic the ledger.
