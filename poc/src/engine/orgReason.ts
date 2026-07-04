@@ -18,11 +18,15 @@
 import {
   type World,
   type OrgId,
+  type EntityId,
   type PerceptionFact,
   type Worldview,
   type OrgIntent,
+  type BeliefState,
+  type StatusBelief,
   DAYS_PER_YEAR,
 } from './model';
+import { beliefOf, computeBelief, stanceFromConfidence, slotAssertion, coronationSlot } from './belief';
 import {
   VALUES,
   type ValueAxis,
@@ -74,6 +78,83 @@ export function worldviewOf(world: World, orgId: OrgId): Worldview {
   return worldviewFromValues(memberValueMean(world, s.id));
 }
 
+/**
+ * An organization's BELIEF about (subject, assertion) — DERIVED from its members, never stored.
+ * The epistemic twin of worldviewOf: an org owns no evidence stack of its own (that would be a
+ * second source of truth); it reasons from the mean of its living members' beliefs. The
+ * institution comes to know as its people do — one member knowing barely moves it; broad
+ * awareness makes it true.
+ *
+ * SUBJECTIVITY EXISTS ONLY WHERE AGENCY EXISTS. If no members are simulated (an aggregate,
+ * non-focused seat has no resident subjects), the org holds no belief — Unknown. When the
+ * settlement comes into focus and its actors instantiate, the org's belief derives from them
+ * again. No new exception to LOD — the same law worldviewOf already obeys, applied to knowledge.
+ *
+ * Pure read: touches no world state, adds no evidence stack to the org. A CONSUMER of derived
+ * belief, exactly as org reasoning consumes derived worldview.
+ *
+ * This is the first collective BELIEF reducer, and the second collective reducer overall
+ * (worldviewOf was the first). They are instances of one law — *individual minds are
+ * first-class; collective minds are always derived* — so member fears → collective fear,
+ * member morale → collective morale, etc. will follow the same shape. Do NOT preemptively
+ * generalize into a `collectiveXOf` abstraction: name the concept only when a second
+ * belief-consumer forces it. For now, keep this concrete.
+ */
+export function orgBeliefOf(world: World, orgId: OrgId, subject: EntityId, assertion: string): BeliefState {
+  const s = seatOf(world, orgId);
+  if (!s) return { stance: 'unknown', confidence: 0.5 };
+  let sum = 0;
+  let n = 0;
+  for (const id of world.entities) {
+    if (world.homeSettlement.get(id) !== s.id) continue;
+    if (!world.personality.get(id)) continue; // a simulated resident — a subject that can know
+    const held = beliefOf(world, id, subject, assertion);
+    sum += held ? computeBelief(held, world.tick).confidence : 0.5; // holds none → Unknown baseline
+    n++;
+  }
+  if (n === 0) return { stance: 'unknown', confidence: 0.5 }; // no subjects → no subjectivity
+  const confidence = sum / n;
+  return { stance: stanceFromConfidence(confidence), confidence };
+}
+
+/**
+ * An organization's recognized occupant of `slot` — its ALLEGIANCE — DERIVED from members, never
+ * stored. The status twin of `orgBeliefOf`, and the collective twin of `computeStatusBelief`: over
+ * every claimant the members have heard of, it arg-maxes the org's DERIVED belief that the claimant
+ * reigns (`orgBeliefOf` per claimant). So two polities whose members believe differently recognize
+ * DIFFERENT rulers — allegiance runs on what the institution's people believe, not on who
+ * objectively holds the throne, and it lags reality exactly as its members' knowledge does.
+ *
+ * Pure read; no state, no allegiance field. The reducer graph stays radial: this composes
+ * `orgBeliefOf` (a radius), never a peer. Subjectivity only where agency exists — a seat with no
+ * simulated members recognizes no one (Unknown), and re-derives when the settlement comes into focus.
+ */
+export function orgStatusBeliefOf(world: World, orgId: OrgId, slot: string): StatusBelief {
+  const s = seatOf(world, orgId);
+  if (!s) return { occupant: undefined, confidence: 0.5 };
+  const assertion = slotAssertion(slot);
+  // every claimant any resident member has heard of for this slot (deterministic insertion order)
+  const claimants = new Set<EntityId>();
+  for (const id of world.entities) {
+    if (world.homeSettlement.get(id) !== s.id) continue;
+    for (const b of world.beliefs.get(id) ?? []) {
+      if (b.assertion === assertion) claimants.add(b.subject);
+    }
+  }
+  // recognize the claimant the institution most collectively believes reigns
+  let occupant: EntityId | undefined;
+  let best = 0;
+  for (const c of claimants) {
+    const conf = orgBeliefOf(world, orgId, c, assertion).confidence;
+    if (conf > best) {
+      best = conf;
+      occupant = c;
+    }
+  }
+  if (occupant !== undefined && stanceFromConfidence(best) !== 'true') occupant = undefined;
+  return { occupant, confidence: best };
+}
+
 /** STAGE 1 — what the org perceives. Bounded to its own seat, its immediate neighbours
  *  (the existing region graph), and recent events it was party to. Every fact carries a
  *  confidence; nothing global or hidden is read. Ephemeral — rebuilt each call. */
@@ -90,6 +171,27 @@ export function perceive(world: World, orgId: OrgId): PerceptionFact[] {
   facts.push({ id: 'food_security', value: Math.round(clamp(yearsBuffer * 20, 0, 100)), confidence: 1, source: 'seat' });
   facts.push({ id: 'stability', value: Math.round(s.macro.stability), confidence: 1, source: 'seat' });
   facts.push({ id: 'own_strength', value: Math.round(pop), confidence: 1, source: 'seat' });
+
+  // LEGITIMACY (tri-state): does the institution recognize a settled ruler? A RECOGNIZED ruler is
+  // settled (100); ≥2 competing claimants with no clear winner is a CONTESTED crisis (0); anything
+  // else — no claimants, or no simulated members (an aggregate seat) — is UNKNOWN/neutral (50). The
+  // consumer reacts to CONTESTATION, never to ignorance, so aggregate polities are never made cautious.
+  {
+    const assertion = slotAssertion(coronationSlot(s.id));
+    const claimants = new Set<EntityId>();
+    for (const id of world.entities) {
+      if (world.homeSettlement.get(id) !== s.id) continue;
+      for (const b of world.beliefs.get(id) ?? []) if (b.assertion === assertion) claimants.add(b.subject);
+    }
+    let best = 0;
+    for (const c of claimants) {
+      const cf = orgBeliefOf(world, orgId, c, assertion).confidence;
+      if (cf > best) best = cf;
+    }
+    const recognized = stanceFromConfidence(best) === 'true';
+    const settled = recognized ? 100 : claimants.size >= 2 ? 0 : 50;
+    facts.push({ id: 'succession_settled', value: settled, confidence: 1, source: 'seat' });
+  }
 
   // --- immediate neighbours via the region graph (lower confidence: only what's visible) ---
   let hostilitySum = 0;

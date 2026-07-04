@@ -135,6 +135,48 @@ export interface Reputation {
   marks: ReputeMark[];
 }
 
+// ── Belief (Subjectivity 1A — see design/19-subjectivity-1a-belief-v1.md, engine/belief.ts) ──
+
+/** How an actor came to a piece of Evidence. v1 has two producers; documents/inference later. */
+export type EvidenceKind = 'witness' | 'testimony';
+
+/**
+ * A single sourced, (optionally) decaying piece of Evidence bearing on a proposition — the
+ * belief layer's Mark. Payload: which way it cuts (`polarity`) and how strong it is (the two
+ * confidence axes). A belief's confidence is DERIVED from a stack of these (belief.ts
+ * computeBelief), never stored — the same discipline as Thought→opinion and ReputeMark→standing.
+ */
+export interface Evidence extends Mark {
+  kind: EvidenceKind;
+  polarity: 1 | -1; // supports (+1) or contradicts (-1) the belief's assertion
+  observationConfidence: number; // [0,1] how direct/clear the sensing (a witness ≈ 1.0)
+  sourceTrust: number; // [0,1] how far the holder trusts the source (self = 1.0)
+}
+
+/** What an actor holds true about ONE proposition: an evidence stack, reduced on demand.
+ *  A Belief may be FALSE — it asserts what the holder thinks, not what the Event log records. */
+export interface Belief {
+  subject: EntityId; // v1: the entity the proposition is about (e.g. the king)
+  assertion: string; // v1: a simple predicate (e.g. 'dead')
+  evidence: Evidence[];
+  lastUpdated: number;
+}
+
+/** The stance an actor takes on a proposition. Unknown is the baseline (no net evidence). */
+export type Stance = 'true' | 'false' | 'unknown';
+/** The DERIVED reading of a Belief: where it lands, and how sure the holder is. */
+export interface BeliefState {
+  stance: Stance;
+  confidence: number;
+}
+
+/** The DERIVED reading of a STATUS belief (statusBelief.ts): who the holder believes occupies a
+ *  slot, and how sure. `occupant` is undefined when no claimant is believed (vacant/contested). */
+export interface StatusBelief {
+  occupant: EntityId | undefined;
+  confidence: number;
+}
+
 export type FigureId = EntityId; // shares the id space; resolves via the name registry
 
 /**
@@ -826,6 +868,22 @@ export interface World {
   /** per-actor public standing as witness-weighted, decaying marks (reputation.ts).
    *  Minted by perception when a deed is seen, so notoriety is earned, not assumed. */
   reputation: Map<EntityId, Reputation>;
+  /** per-actor BELIEFS: what each holder holds true about propositions, as evidence stacks
+   *  reduced on demand (belief.ts). The subjective layer — a belief may diverge from, or
+   *  contradict, the objective Event log. Keyed by holder; one Belief per (subject, assertion).
+   *  Written by acquireEvidence (inert — never emits, per invariant 8). Serialized. */
+  beliefs: Map<EntityId, Belief[]>;
+  /** The reaction system's memory (reactions.ts): which `actor|kind|subject|assertion`
+   *  belief-triggered reactions have already fired, so each runs ONCE when a stance first
+   *  crosses to believed. Kept OUT of Belief on purpose — belief is knowledge, reacting is
+   *  behaviour (Belief ≠ Reaction, as Intent ≠ Action). Serialized. */
+  reactions: Set<string>;
+  /** THE NEWS FRONTIER (Subjectivity 1C-distal; design/20 & news.ts) — OBJECTIVE transport state,
+   *  not belief. Per (observer settlement, subject) it records the tick at which word of an event
+   *  ARRIVES there, propagated across the map at travel speed. It exists whether or not anyone is
+   *  simulated to believe it; minds convert it to Evidence where they exist. ONLY the propagation
+   *  system writes it (never a reducer, consumer, or focus change). Serialized. */
+  newsFront: Map<string, { ruler: EntityId; arrival: number }>;
   /** per-actor religious faith: the id of the deity they follow, or '' if faithless.
    *  Assigned at birth from the settlement's patron deity + trait-modified probability;
    *  stored (not re-derived) so faith is stable for life and survives a save/load. */

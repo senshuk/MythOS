@@ -8,6 +8,7 @@
 import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
 import { createActor, emit, primarySpouse } from '../engine/world';
 import { killActor } from '../engine/world';
+import { perceiveEvent } from '../engine/perception';
 import {
   speciesById,
   generateGiven,
@@ -38,7 +39,8 @@ export function lifecycleYearly(world: World, actors: EntityId[]): void {
     lc.ageYears += 1;
     const sp = speciesById(world.identity.get(id)!.speciesId);
     if (rng.chance(deathProbability(lc.ageYears, sp.lifespan))) {
-      killActor(world, id, world.tick, 'died', [], []);
+      const deathId = killActor(world, id, world.tick, 'died', [], []);
+      if (deathId >= 0) perceiveEvent(world, deathId); // co-residents come to know the death
     }
   }
 

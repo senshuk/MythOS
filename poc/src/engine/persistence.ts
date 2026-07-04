@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type Belief, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 19;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -95,6 +95,12 @@ export interface SaveFile {
   ties: [number, SocialTies][];
   memory: [number, number[]][];
   reputation: [number, Reputation][];
+  /** per-actor beliefs (Subjectivity 1A). Optional for saves predating v17 (default none). */
+  beliefs?: [number, Belief[]][];
+  /** fired belief-triggered reactions (Subjectivity 1B). Optional for saves predating v18. */
+  reactions?: string[];
+  /** the news frontier (Subjectivity 1C-distal). Optional for saves predating v19. */
+  newsFront?: [string, { ruler: number; arrival: number }][];
   faith?: [number, string][]; // actor → deity id ('' = faithless); optional for v7 compat
   exiles?: [number, ExileRecord][]; // optional for saves pre-dating Stage 2
 
@@ -187,6 +193,9 @@ export function serializeWorld(world: World): SaveFile {
     ties: [...world.ties],
     memory: [...world.memory],
     reputation: [...world.reputation],
+    beliefs: [...world.beliefs],
+    reactions: [...world.reactions],
+    newsFront: [...world.newsFront],
     faith: [...world.faith],
     exiles: [...world.exiles],
 
@@ -361,6 +370,9 @@ export function deserializeWorld(s: SaveFile): World {
     ties: new Map(s.ties),
     memory: new Map(s.memory),
     reputation: new Map(s.reputation ?? []), // public standing as witnessed-deed marks
+    beliefs: new Map(s.beliefs ?? []),       // subjective beliefs — empty on pre-1A saves
+    reactions: new Set(s.reactions ?? []),   // fired belief-reactions — empty on pre-1B saves
+    newsFront: new Map(s.newsFront ?? []),   // objective news frontier — empty on pre-1C-distal saves
     faith: new Map(s.faith ?? []),           // religious affiliation, stable from birth
     exiles: new Map(s.exiles ?? []),         // exile records — empty on pre-Stage-2 saves
     rels,
