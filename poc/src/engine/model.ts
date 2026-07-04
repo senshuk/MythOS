@@ -1289,6 +1289,26 @@ export interface StoryBeat {
   note?: string; // e.g. "you were there" · "word reached you 19 days later"
 }
 
+/** A live, UNRESOLVED thread the player can anticipate — a bond warming, word on the road, a
+ *  need at risk. Present tense, changes every tick; this is what makes "Advance" worth pressing. */
+export interface Tension {
+  icon: string;
+  text: string;
+  ref?: EventRef;
+}
+
+/** A person who matters to the player — an anchor, so when the world says "Rowan heard first"
+ *  the player already cares. */
+export interface CastMember {
+  icon: string;
+  role: string;
+  status: string; // a live one-line state ("content" · "legitimacy uncertain" · "your rival grows") — turns a name into a character
+  kind: 'actor' | 'figure'; // how to inspect them (a co-resident vs a remembered ruler)
+  id: EntityId;
+  name: string;
+  note: string;
+}
+
 export interface PlayerView {
   id: EntityId;
   name: string;
@@ -1309,6 +1329,17 @@ export interface PlayerView {
   /** the player's life told as a linked, chronological story (life events + losses they've come
    *  to know of, annotated with how the news reached them). */
   story: StoryBeat[];
+  /** live unresolved threads — WHAT'S HAPPENING (present, changing every tick). */
+  tensions: Tension[];
+  /** openings the world is presenting — OPPORTUNITIES (what could I do?). */
+  opportunities: Tension[];
+  /** narrative worries — THREATS (what should I fear?). */
+  threats: Tension[];
+  /** WHAT YOU BELIEVE — the player's own subjective reality (who reigns, who's dead, what news
+   *  has NOT reached them). Can diverge from the objective world, exactly like any NPC. */
+  belief: Tension[];
+  /** the small cast of people who matter to the player right now. */
+  cast: CastMember[];
 }
 
 export interface Snapshot {
