@@ -34,7 +34,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
-import { computeStanding, standingReasons, emptyReputation } from './reputation';
+import { computeStanding, standingReasons, emptyReputation, standingOf } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById } from './figures';
@@ -679,13 +679,14 @@ function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
     const sb = computeStatusBelief(world, id, coronationSlot(home));
     const rulerId = sb.occupant ?? world.settlements[home]?.currentRulerId;
     const name = rulerId !== undefined ? getFigure(world, rulerId)?.name ?? fullName(world, rulerId) : undefined;
-    if (name) b.push({ icon: '👑', text: `You believe ${name} rules ${world.settlements[home]?.name ?? 'your home'}.` });
+    // stated as the character's own truth, not "you believe" — this is "what you KNOW" (design/21)
+    if (name) b.push({ icon: '👑', text: `${name} rules ${world.settlements[home]?.name ?? 'your home'}.` });
   }
 
   // losses you have come to know
   for (const bel of world.beliefs.get(id) ?? []) {
     if (bel.assertion !== 'dead' || computeBelief(bel, world.tick).stance !== 'true') continue;
-    b.push({ icon: '⚰', text: `You believe ${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject } });
+    b.push({ icon: '⚰', text: `${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject } });
     if (b.length >= 4) break;
   }
 
@@ -700,6 +701,63 @@ function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
   }
 
   return b.slice(0, 6);
+}
+
+/**
+ * GOAL AS DIAGNOSIS — not a quest tracker. The engine already knows why the player is failing;
+ * this tells them, from inside their own head: what stands in the way, the best thing to do about
+ * it, and a rough sense of how close they are. Derived from the aspiration ladder (aspirations.ts).
+ */
+function buildGoalDiagnosis(
+  world: World,
+  id: EntityId,
+  asp: ReturnType<typeof currentAspiration>,
+): { obstacle?: string; nextStep?: string; progress?: number } {
+  const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const targetName = asp.target !== undefined ? fullName(world, asp.target) : undefined;
+  const home = world.homeSettlement.get(id);
+
+  // the best thing to do about it, from the goal's own action
+  let nextStep: string | undefined =
+    asp.action === 'court' && targetName ? `Court ${targetName} — win their heart.`
+    : asp.action === 'socialize' && targetName ? `Spend time with ${targetName}.`
+    : asp.action === 'socialize' ? 'Seek out others and make yourself known.'
+    : asp.action === 'work' ? 'Work at your trade — it builds your name.'
+    : undefined;
+
+  let obstacle: string | undefined;
+  let progress: number | undefined;
+  switch (asp.kind) {
+    case 'rule': {
+      const rulerId = home !== undefined ? world.settlements[home]?.currentRulerId : undefined;
+      const rname = rulerId !== undefined ? getFigure(world, rulerId)?.name : undefined;
+      obstacle = rname ? `${rname} still holds the seat.` : 'No seat is yet within your reach.';
+      progress = clamp01(standingOf(world, id) / 300);
+      nextStep = 'Raise your standing — a village follows the renowned.';
+      break;
+    }
+    case 'wed': {
+      if (asp.target === undefined) obstacle = 'You have no one in mind yet.';
+      else {
+        const edge = world.rels.get(id)?.get(asp.target);
+        const op = edge ? computeOpinion(edge, world.tick) : 0;
+        progress = clamp01(op / 650);
+        obstacle = op < 200 ? `${targetName} scarcely knows you.` : `You have not yet won ${targetName}'s heart.`;
+      }
+      break;
+    }
+    case 'reconcile':
+      obstacle = targetName ? `The bad blood with ${targetName} still festers.` : undefined;
+      break;
+    case 'family':
+      obstacle = 'You have no children yet.';
+      break;
+    case 'belonging':
+      obstacle = 'You feel apart from those around you.';
+      break;
+  }
+
+  return { obstacle, nextStep, progress };
 }
 
 function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefined {
@@ -774,6 +832,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
       label: aspirationLabel(world, id, asp),
       targetName: asp.target !== undefined ? fullName(world, asp.target) : undefined,
       suggested,
+      ...buildGoalDiagnosis(world, id, asp),
     },
     lastAchieved,
     actions: PLAYER_ACTIONS,

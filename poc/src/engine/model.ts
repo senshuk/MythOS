@@ -1321,7 +1321,17 @@ export interface PlayerView {
   needs: Needs;
   // the actor's current drive (a goal). `suggested` is the one-click action that
   // pursues it, when the goal points at a concrete action/target.
-  aspiration: { kind: string; label: string; targetName?: string; suggested?: Intent };
+  aspiration: {
+    kind: string;
+    label: string;
+    targetName?: string;
+    suggested?: Intent;
+    /** goal-as-diagnosis: what stands in your way, the best thing to do about it, a rough sense
+     *  of how far along you are — written from inside the player's head, never as a quest. */
+    obstacle?: string;
+    nextStep?: string;
+    progress?: number; // 0..1, coarse; omitted when not meaningfully measurable
+  };
   /** rendered text of a recently-fulfilled goal, for a transient celebration. */
   lastAchieved?: string;
   actions: PlayerActionView[];

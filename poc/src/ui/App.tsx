@@ -863,17 +863,30 @@ function PlayerPanel({
         <>
           {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
           <div className="goal">
-            <span className="goal-tag">🎯 Goal</span>{' '}
-            <span className="goal-label">{player.aspiration.label}</span>
-            {player.aspiration.suggested && (
-              <button
-                className="act-btn goal-pursue"
-                onClick={() => onAct(player.aspiration.suggested!)}
-                disabled={busy}
-                title="take the action your character is driven toward"
-              >
-                Pursue ▸
-              </button>
+            <div className="goal-head">
+              <span className="goal-tag">🎯 Goal</span>{' '}
+              <span className="goal-label">{player.aspiration.label}</span>
+              {player.aspiration.suggested && (
+                <button
+                  className="act-btn goal-pursue"
+                  onClick={() => onAct(player.aspiration.suggested!)}
+                  disabled={busy}
+                  title="take the action your character is driven toward"
+                >
+                  Pursue ▸
+                </button>
+              )}
+            </div>
+            {player.aspiration.progress !== undefined && (
+              <div className="goal-progress" title={`${Math.round(player.aspiration.progress * 100)}% of the way`}>
+                <div className="goal-progress-fill" style={{ width: `${Math.round(player.aspiration.progress * 100)}%` }} />
+              </div>
+            )}
+            {player.aspiration.obstacle && (
+              <div className="goal-diag"><span className="diag-key">In your way:</span> {player.aspiration.obstacle}</div>
+            )}
+            {player.aspiration.nextStep && (
+              <div className="goal-diag"><span className="diag-key">Best move:</span> {player.aspiration.nextStep}</div>
             )}
           </div>
 
@@ -913,7 +926,7 @@ function PlayerPanel({
           )}
 
           <Threads head="What's happening" items={player.tensions} onRef={onRef} />
-          <Threads head="What you believe" items={player.belief} onRef={onRef} />
+          <Threads head="What you know" items={player.belief} onRef={onRef} />
           <Threads head="Opportunities" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
           <Threads head="Things to worry about" items={player.threats} onRef={onRef} />
 
