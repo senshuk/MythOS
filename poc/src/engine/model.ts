@@ -1332,8 +1332,12 @@ export interface PlayerView {
   deathYear?: number;
   settlement: string;
   needs: Needs;
-  /** each need as a lived word + tone (design/21 §5) — presentation of `needs`. */
+  /** each need as a lived word + tone (design/21 §5) — presentation of `needs`, shown in the journal. */
   needFeels: NeedFeel[];
+  /** the single most pressing drive, phrased as a narrative beat ("Hunger is beginning to gnaw at
+   *  you.") and folded into the Current Situation instead of a row of meters. Omitted when nothing
+   *  is notable. */
+  bodyNote?: string;
   // the actor's current drive (a goal). `suggested` is the one-click action that
   // pursues it, when the goal points at a concrete action/target.
   aspiration: {

@@ -46,7 +46,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -722,6 +722,23 @@ function buildNeedFeels(world: World, id: EntityId): NeedFeel[] {
   });
 }
 
+/** The single most pressing drive as a narrative beat, folded into the situation (design/21 §5).
+ *  A starving need speaks first; else an earned high note; else silence. */
+function buildBodyNote(world: World, id: EntityId): string | undefined {
+  const needs = world.needs.get(id);
+  if (!needs) return undefined;
+  let worst: { k: string; v: number } | undefined;
+  let best: { k: string; v: number } | undefined;
+  for (const k of NEEDS) {
+    const v = needs[k] ?? 0;
+    if (!worst || v < worst.v) worst = { k, v };
+    if (!best || v > best.v) best = { k, v };
+  }
+  if (worst && worst.v < 300 && NEED_BEAT_LOW[worst.k]) return NEED_BEAT_LOW[worst.k];
+  if (best && best.v >= 820 && NEED_BEAT_HIGH[best.k]) return NEED_BEAT_HIGH[best.k];
+  return undefined;
+}
+
 /**
  * GOAL AS DIAGNOSIS — not a quest tracker. The engine already knows why the player is failing;
  * this tells them, from inside their own head: what stands in the way, the best thing to do about
@@ -856,6 +873,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
     needFeels: buildNeedFeels(world, id),
+    bodyNote: buildBodyNote(world, id),
     aspiration: {
       kind: asp.kind,
       label: aspirationLabel(world, id, asp),

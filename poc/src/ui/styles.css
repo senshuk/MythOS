@@ -454,19 +454,21 @@ button { font-family: inherit; }
 .link.strong { font-weight: 600; font-size: 16px; font-family: var(--serif); color: var(--ink); }
 .player-dead { color: var(--rose); }
 
-/* Needs as lived words, not bars — how the body/heart feel right now (design/21 §5). A quiet
-   footer to the journal: present, but not why you're here. */
-.needs { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
-.need-feel {
-  display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px;
-  border: 1px solid var(--line); border-radius: 999px; font-size: 0.82em; background: var(--panel-2);
+/* The cockpit rhythm — give the eye places to rest between the few always-on blocks (design/21 §6). */
+.situation-body { margin: 0 0 10px; font-style: italic; color: var(--ink-dim); font-size: 0.98em; }
+.cast { margin-top: 16px; }
+.action-bar { border-top: 1px solid var(--line-soft); padding-top: 16px; margin-top: 16px; }
+
+/* THE JOURNAL — one click, collapsed by default. A notification drawer, not an encyclopedia. */
+.journal { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.journal-head {
+  color: var(--gold-dim); font-size: 0.82em; letter-spacing: 0.09em; text-transform: uppercase;
+  cursor: pointer; list-style: none; padding: 4px 0; user-select: none;
 }
-.need-feel .nf-key { color: var(--muted); text-transform: capitalize; font-size: 0.85em; letter-spacing: 0.03em; }
-.need-feel .nf-word { font-weight: 600; }
-.need-feel.nf-good .nf-word { color: var(--jade); }
-.need-feel.nf-warn .nf-word { color: var(--neutral); }
-.need-feel.nf-bad { border-color: var(--rose); }
-.need-feel.nf-bad .nf-word { color: var(--rose); }
+.journal-head::before { content: '▸'; display: inline-block; margin-right: 8px; transition: transform 0.15s; }
+.journal[open] > .journal-head::before { transform: rotate(90deg); }
+.journal-head::-webkit-details-marker { display: none; }
+.journal-body { margin-top: 10px; }
 
 /* People who matter — tiny status cards: a name that reads as a character */
 .cast { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
@@ -652,6 +654,5 @@ button { font-family: inherit; }
 }
 
 @media (max-width: 420px) {
-  .needs { gap: 8px; }
-  .need { min-width: 100%; }
+  .situation-aim { font-size: 1.15em; }
 }

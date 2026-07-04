@@ -836,6 +836,40 @@ function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
   );
 }
 
+/** THE JOURNAL — everything you browse rather than stare at each week: what's changing, what you
+ *  know, openings, worries, and your life so far. Collapsed by default so the cockpit stays one
+ *  screen high and the map can breathe (design/21 §6 — cockpit vs journal). */
+function Journal({ player, onRef }: { player: PlayerView; onRef: (ref: EventRef) => void }) {
+  const count =
+    player.tensions.length + player.belief.length + player.opportunities.length + player.threats.length;
+  return (
+    <details className="journal">
+      <summary className="journal-head">
+        Journal{count > 0 ? ` (${count})` : ''}
+      </summary>
+      <div className="journal-body">
+        <Threads head="What's changing around you" items={player.tensions} onRef={onRef} />
+        <WorldView items={player.belief} onRef={onRef} />
+        <Threads head="What could change your life" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
+        <Threads head="What might go wrong" items={player.threats} onRef={onRef} />
+        {player.story.length > 0 && (
+          <div className="whats-happening">
+            <h4 className="wh-head">Your story so far</h4>
+            <ul className="story-beats">
+              {player.story.slice(-12).reverse().map((b, i) => (
+                <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
+                  <span className="beat-icon" aria-hidden="true">{STORY_ICON[b.tone] ?? '•'}</span> <EventText parts={b.parts} onRef={onRef} />
+                  {b.note && <span className="muted"> — {b.note}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function PlayerPanel({
   player,
   onAct,
@@ -910,6 +944,7 @@ function PlayerPanel({
             </div>
             <p className="situation-aim">{player.aspiration.label}</p>
             {player.aspiration.obstacle && <p className="situation-read">{player.aspiration.obstacle}</p>}
+            {player.bodyNote && <p className="situation-body">{player.bodyNote}</p>}
             {player.aspiration.progress !== undefined && (
               <div className="goal-progress" title={`${Math.round(player.aspiration.progress * 100)}% of the way`}>
                 <div className="goal-progress-fill" style={{ width: `${Math.round(player.aspiration.progress * 100)}%` }} />
@@ -939,26 +974,8 @@ function PlayerPanel({
             </div>
           )}
 
-          <Threads head="What's changing around you" items={player.tensions} onRef={onRef} />
-
-          {/* THE THESIS OF MythOS — your subjective grasp of the world, certainty set apart from
-              absence of knowledge. Not just another journal section (design/21 §3–4). */}
-          <WorldView items={player.belief} onRef={onRef} />
-
-          <Threads head="What could change your life" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
-          <Threads head="What might go wrong" items={player.threats} onRef={onRef} />
-
-          {player.needFeels.length > 0 && (
-            <div className="needs" aria-label="how you feel">
-              {player.needFeels.map((n) => (
-                <span className={`need-feel nf-${n.tone}`} key={n.key} title={`${n.key}: ${n.value}/1000`}>
-                  <span className="nf-key">{n.key}</span>
-                  <span className="nf-word">{n.feel}</span>
-                </span>
-              ))}
-            </div>
-          )}
-
+          {/* ACTIONS — the last thing the cockpit needs before you fly. Everything below is the
+              journal: things you browse, not stare at every week (design/21 §6, cockpit vs journal). */}
           <div className="action-bar">
             <select
               value={actionKind}
@@ -991,10 +1008,12 @@ function PlayerPanel({
             </button>
             <span className="muted action-hint">{action.hint}</span>
           </div>
+
+          <Journal player={player} onRef={onRef} />
         </>
       )}
 
-      {player.story.length > 0 && (
+      {!player.alive && player.story.length > 0 && (
         <details className="player-story" open>
           <summary className="story-head">Your story so far</summary>
           <ul className="story-beats">

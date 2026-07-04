@@ -1371,3 +1371,19 @@ export const NEED_FEELS: Record<string, [string, string, string, string, string]
 };
 export const NEED_FEELS_GENERIC: [string, string, string, string, string] =
   ['Empty', 'Low', 'Steady', 'Good', 'Full'];
+
+// A single pressing need, folded into the Current Situation as a narrative beat instead of a meter
+// (design/21 §5 — "narrative beats labels"). LOW fires when a drive is starving; HIGH is an earned,
+// encouraging note. Pack flavour: a need with no sentence simply stays silent.
+export const NEED_BEAT_LOW: Record<string, string> = {
+  food: 'Hunger is beginning to gnaw at you.',
+  wealth: 'Your purse is running dangerously light.',
+  safety: 'You no longer feel safe where you live.',
+  esteem: 'You feel overlooked by those around you.',
+  belonging: 'A loneliness has settled over you.',
+};
+export const NEED_BEAT_HIGH: Record<string, string> = {
+  esteem: 'People are beginning to know your name.',
+  belonging: 'You feel truly at home among your people.',
+  wealth: 'You want for nothing that coin can buy.',
+};
