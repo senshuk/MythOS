@@ -1279,6 +1279,16 @@ export interface PlayerTargetView {
 /** The controlled actor's actionable state: who they are, how they're doing, and
  *  what they can do right now (and to whom). The affordance view the action bar
  *  renders — distinct from the read-only ActorDetail inspector. */
+/** One beat in the player's life story — a narrated moment, with clickable links and an optional
+ *  note about HOW the player came to know it (the seam where belief explains behaviour: "word
+ *  reached you 19 days later"). Presentation only — built by the snapshot, never stored. */
+export interface StoryBeat {
+  year: number;
+  parts: EventPart[];
+  tone: string; // the event type, reused for colouring
+  note?: string; // e.g. "you were there" · "word reached you 19 days later"
+}
+
 export interface PlayerView {
   id: EntityId;
   name: string;
@@ -1296,6 +1306,9 @@ export interface PlayerView {
   lastAchieved?: string;
   actions: PlayerActionView[];
   targets: PlayerTargetView[];
+  /** the player's life told as a linked, chronological story (life events + losses they've come
+   *  to know of, annotated with how the news reached them). */
+  story: StoryBeat[];
 }
 
 export interface Snapshot {

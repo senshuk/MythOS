@@ -20,6 +20,7 @@ import {
   type SettlementDetail,
   type PlayerView,
   type PlayerTargetView,
+  type StoryBeat,
   type OrgId,
   type OrgIntentView,
   DAYS_PER_YEAR,
@@ -29,7 +30,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, pruneRelationshipGraph } from './world';
+import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeStanding, standingReasons, emptyReputation } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
@@ -438,6 +439,66 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
 
 /** The controlled actor's actionable state, or undefined if no one is possessed
  *  (or the player has been freed from the world). */
+/**
+ * The player's life as a linked, chronological story. Two threads woven together: the player's own
+ * recorded life events, and the deaths of KIN they have come to believe — each loss annotated with
+ * how the news reached them. That annotation is the seam where belief explains behaviour: today a
+ * witnessed death reads "you were there"; once news travels, a distant one will read "word reached
+ * you 19 days later", and the player will have lived inside the epistemic layer without inspecting it.
+ */
+function buildPlayerStory(world: World, id: EntityId): StoryBeat[] {
+  const beats: { tick: number; beat: StoryBeat }[] = [];
+  const RELATIONSHIP_EVENTS = new Set(['married', 'feud', 'rivalry', 'friendship']); // told first-person below
+
+  // 1) the player's own recorded life events (born, ascension, a goal met, a brawl…)
+  for (const eid of world.eventsBySubject.get(id) ?? []) {
+    const ev = getEvent(world, eid);
+    if (!ev || RELATIONSHIP_EVENTS.has(ev.type)) continue;
+    beats.push({ tick: ev.tick, beat: { year: ev.year, parts: renderEventParts(world, ev), tone: ev.type } });
+  }
+
+  // 2) losses: kin the player has come to believe are dead — annotated with HOW they learned.
+  //    (Today a witnessed death reads "you were there"; once news travels, a distant one will read
+  //    "word reached you 19 days later" — belief explaining the player's behaviour, not inspected.)
+  for (const b of world.beliefs.get(id) ?? []) {
+    if (b.assertion !== 'dead' || !isKin(world, id, b.subject)) continue;
+    const cause = b.evidence[0]?.cause;
+    const deathEv = cause !== undefined ? getEvent(world, cause) : undefined;
+    if (!deathEv) continue;
+    const learnedTick = b.evidence[0]?.sinceTick ?? deathEv.tick;
+    const delay = Math.max(0, learnedTick - deathEv.tick);
+    const note = delay === 0 ? 'you were there' : `word reached you ${delay} day${delay === 1 ? '' : 's'} later`;
+    beats.push({ tick: learnedTick, beat: { year: Math.floor(learnedTick / DAYS_PER_YEAR), parts: renderEventParts(world, deathEv), tone: 'died', note } });
+  }
+
+  // 3) relationship milestones — who came to matter, and when. First-person, always available (a
+  //    promoted actor's marriage may predate any recorded event, but the bond itself is there).
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    const f = edge.flags;
+    const op = computeOpinion(edge, world.tick);
+    let verb: string | undefined;
+    let tone = 'friendship';
+    if (f.spouse) { verb = 'You wed'; tone = 'married'; }
+    else if (f.feud) { verb = 'You came to hate'; tone = 'feud'; }
+    else if (f.rival) { verb = 'You fell out with'; tone = 'rivalry'; }
+    else if (f.friend) { verb = 'You befriended'; tone = 'friendship'; }
+    else if (op >= 400) { verb = 'You grew fond of'; tone = 'friendship'; }
+    else if (op <= -400) { verb = 'You came to resent'; tone = 'rivalry'; }
+    if (!verb) continue;
+    beats.push({
+      tick: edge.sinceTick,
+      beat: {
+        year: Math.floor(edge.sinceTick / DAYS_PER_YEAR),
+        parts: [{ text: `${verb} ` }, { text: fullName(world, other), ref: { kind: 'actor', id: other } }, { text: '.' }],
+        tone,
+      },
+    });
+  }
+
+  beats.sort((a, b) => a.tick - b.tick); // a life told from its beginning
+  return beats.slice(-40).map((x) => x.beat);
+}
+
 function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefined {
   const id = world.playerId;
   if (id === undefined || !world.identity.has(id)) return undefined;
@@ -514,6 +575,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     lastAchieved,
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
+    story: buildPlayerStory(world, id),
   };
 }
 

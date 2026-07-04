@@ -289,6 +289,7 @@ export default function App() {
               onAct={(intent) => sim.playerAct(intent)}
               onRelease={() => sim.release()}
               onInspect={(id) => sim.inspectActor(id)}
+              onRef={inspectRef}
               busy={sim.busy}
             />
           ) : onboardDismissed ? null : (
@@ -771,12 +772,14 @@ function PlayerPanel({
   onAct,
   onRelease,
   onInspect,
+  onRef,
   busy,
 }: {
   player: PlayerView;
   onAct: (intent: Intent) => void;
   onRelease: () => void;
   onInspect: (id: number) => void;
+  onRef: (ref: EventRef) => void;
   busy: boolean;
 }) {
   const [actionKind, setActionKind] = useState<PlayerView['actions'][number]['kind']>('work');
@@ -883,6 +886,20 @@ function PlayerPanel({
             <span className="muted action-hint">{action.hint}</span>
           </div>
         </>
+      )}
+
+      {player.story.length > 0 && (
+        <details className="player-story" open>
+          <summary className="story-head">Your story so far</summary>
+          <ul className="story-beats">
+            {player.story.slice(-12).reverse().map((b, i) => (
+              <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
+                <span className="ev-year">y{b.year}</span> <EventText parts={b.parts} onRef={onRef} />
+                {b.note && <span className="muted"> — {b.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );
