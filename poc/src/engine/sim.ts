@@ -20,6 +20,9 @@ import {
   type SettlementDetail,
   type PlayerView,
   type PlayerTargetView,
+  type StoryBeat,
+  type Tension,
+  type CastMember,
   type OrgId,
   type OrgIntentView,
   DAYS_PER_YEAR,
@@ -29,12 +32,14 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, pruneRelationshipGraph } from './world';
+import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeStanding, standingReasons, emptyReputation } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById } from './figures';
+import { computeBelief, coronationSlot } from './belief';
+import { computeStatusBelief } from './statusBelief';
 import { focusSettlement } from './lod';
 import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
@@ -438,6 +443,265 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
 
 /** The controlled actor's actionable state, or undefined if no one is possessed
  *  (or the player has been freed from the world). */
+/**
+ * The player's life as a linked, chronological story. Two threads woven together: the player's own
+ * recorded life events, and the deaths of KIN they have come to believe — each loss annotated with
+ * how the news reached them. That annotation is the seam where belief explains behaviour: today a
+ * witnessed death reads "you were there"; once news travels, a distant one will read "word reached
+ * you 19 days later", and the player will have lived inside the epistemic layer without inspecting it.
+ */
+function buildPlayerStory(world: World, id: EntityId): StoryBeat[] {
+  const beats: { tick: number; beat: StoryBeat }[] = [];
+  const RELATIONSHIP_EVENTS = new Set(['married', 'feud', 'rivalry', 'friendship']); // told first-person below
+
+  // 1) the player's own recorded life events (born, ascension, a goal met, a brawl…)
+  for (const eid of world.eventsBySubject.get(id) ?? []) {
+    const ev = getEvent(world, eid);
+    if (!ev || RELATIONSHIP_EVENTS.has(ev.type)) continue;
+    beats.push({ tick: ev.tick, beat: { year: ev.year, parts: renderEventParts(world, ev), tone: ev.type } });
+  }
+
+  // 2) losses: kin the player has come to believe are dead — annotated with HOW they learned.
+  //    (Today a witnessed death reads "you were there"; once news travels, a distant one will read
+  //    "word reached you 19 days later" — belief explaining the player's behaviour, not inspected.)
+  for (const b of world.beliefs.get(id) ?? []) {
+    if (b.assertion !== 'dead' || !isKin(world, id, b.subject)) continue;
+    const cause = b.evidence[0]?.cause;
+    const deathEv = cause !== undefined ? getEvent(world, cause) : undefined;
+    if (!deathEv) continue;
+    const learnedTick = b.evidence[0]?.sinceTick ?? deathEv.tick;
+    const delay = Math.max(0, learnedTick - deathEv.tick);
+    const note = delay === 0 ? 'you were there' : `word reached you ${delay} day${delay === 1 ? '' : 's'} later`;
+    beats.push({ tick: learnedTick, beat: { year: Math.floor(learnedTick / DAYS_PER_YEAR), parts: renderEventParts(world, deathEv), tone: 'died', note } });
+  }
+
+  // 3) relationship milestones — who came to matter, and when. First-person, always available (a
+  //    promoted actor's marriage may predate any recorded event, but the bond itself is there).
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    const f = edge.flags;
+    const op = computeOpinion(edge, world.tick);
+    let verb: string | undefined;
+    let tone = 'friendship';
+    if (f.spouse) { verb = 'You wed'; tone = 'married'; }
+    else if (f.feud) { verb = 'You came to hate'; tone = 'feud'; }
+    else if (f.rival) { verb = 'You fell out with'; tone = 'rivalry'; }
+    else if (f.friend) { verb = 'You befriended'; tone = 'friendship'; }
+    else if (op >= 400) { verb = 'You grew fond of'; tone = 'friendship'; }
+    else if (op <= -400) { verb = 'You came to resent'; tone = 'rivalry'; }
+    if (!verb) continue;
+    beats.push({
+      tick: edge.sinceTick,
+      beat: {
+        year: Math.floor(edge.sinceTick / DAYS_PER_YEAR),
+        parts: [{ text: `${verb} ` }, { text: fullName(world, other), ref: { kind: 'actor', id: other } }, { text: '.' }],
+        tone,
+      },
+    });
+  }
+
+  beats.sort((a, b) => a.tick - b.tick); // a life told from its beginning
+  return beats.slice(-40).map((x) => x.beat);
+}
+
+/**
+ * WHAT'S HAPPENING — the live, unresolved threads the player can anticipate. Present tense, and it
+ * changes every tick: bonds warming toward friendship or souring toward enmity, a need slipping
+ * toward crisis, and — the anticipation hook that only MythOS has — word on the road that the
+ * player does not yet know (read straight off the objective news frontier). This is what makes
+ * "Advance a week" a thing you *want* to press.
+ */
+function buildPlayerTensions(world: World, id: EntityId): Tension[] {
+  const t: Tension[] = [];
+  const tick = world.tick;
+
+  // bonds not yet resolved into a flag — will they become friendship? enmity? (as story, not value)
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    const f = edge.flags;
+    if (f.spouse || f.feud || f.friend || f.rival) continue;
+    const op = computeOpinion(edge, tick);
+    const name = fullName(world, other);
+    if (op >= 300) t.push({ icon: '💞', text: `${name} seems to be warming to you.`, ref: { kind: 'actor', id: other } });
+    else if (op <= -300) t.push({ icon: '💢', text: `${name}'s ill feeling toward you is growing.`, ref: { kind: 'actor', id: other } });
+  }
+
+  // word on the road — as EXPECTATION, not an audit line (the player is waiting, not measuring)
+  const home = world.homeSettlement.get(id);
+  if (home !== undefined) {
+    let soonest: { subj: number; arrival: number } | undefined;
+    for (const [key, val] of world.newsFront) {
+      if (!key.startsWith(`${home}:ruler:`) || val.arrival <= tick) continue;
+      if (!soonest || val.arrival < soonest.arrival) soonest = { subj: Number(key.split(':')[2]), arrival: val.arrival };
+    }
+    if (soonest) {
+      const from = world.settlements[soonest.subj]?.name ?? 'afar';
+      const days = soonest.arrival - tick;
+      const when = days <= 7 ? 'any day now' : days <= 30 ? 'within the month' : 'before long';
+      t.push({ icon: '📨', text: `You're waiting on news from ${from} — it should reach you ${when}.` });
+    }
+  }
+
+  return t.slice(0, 5);
+}
+
+/** OPPORTUNITIES — openings the world is presenting, derived from state. Not quests: just "if you
+ *  wanted to do something interesting right now, here is what's open to you." */
+function buildPlayerOpportunities(world: World, id: EntityId, actors: EntityId[]): Tension[] {
+  const o: Tension[] = [];
+
+  // an unwed player has courtship prospects — surface the one they already like most
+  if (!world.ties.get(id)?.spouses.length) {
+    let best: EntityId | undefined;
+    let bestOp = -1;
+    for (const other of actors) {
+      if (other === id || isKin(world, id, other)) continue;
+      if (world.lifecycle.get(other)!.ageYears < maturityOf(world.identity.get(other)!.speciesId)) continue;
+      if (world.ties.get(other)?.spouses.length) continue;
+      const edge = world.rels.get(id)?.get(other);
+      const op = edge ? computeOpinion(edge, world.tick) : 0;
+      if (op > bestOp) { bestOp = op; best = other; }
+    }
+    if (best !== undefined) o.push({ icon: '💍', text: `You could court ${fullName(world, best)}.`, ref: { kind: 'actor', id: best } });
+  }
+
+  // a warm bond on the cusp of true friendship
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    if (edge.flags.friend || edge.flags.spouse) continue;
+    if (computeOpinion(edge, world.tick) >= 450) {
+      o.push({ icon: '🤝', text: `${fullName(world, other)} could become a true friend.`, ref: { kind: 'actor', id: other } });
+      break;
+    }
+  }
+
+  return o.slice(0, 4);
+}
+
+/** THREATS — narrative worries (not health bars), derived from state: an enemy, a failing need,
+ *  a divided town, the weight of years. What the player should be afraid of. */
+function buildPlayerThreats(world: World, id: EntityId): Tension[] {
+  const th: Tension[] = [];
+
+  // the one who wishes you most ill
+  let foe: EntityId | undefined;
+  let foeOp = -300;
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    const op = computeOpinion(edge, world.tick);
+    if (edge.flags.feud || op < foeOp) { foeOp = Math.min(foeOp, op); foe = other; }
+  }
+  if (foe !== undefined) th.push({ icon: '⚔', text: `${fullName(world, foe)} bears you a grudge.`, ref: { kind: 'actor', id: foe } });
+
+  // a need slipping toward crisis
+  const needs = world.needs.get(id);
+  if (needs) {
+    let lowKey: string | undefined;
+    let lowVal = 260;
+    for (const [k, v] of Object.entries(needs)) if (v < lowVal) { lowVal = v; lowKey = k; }
+    if (lowKey) th.push({ icon: '⚠', text: `Your ${lowKey} is running dangerously low.` });
+  }
+
+  // your town divided (the focused settlement's faction split)
+  const home = world.homeSettlement.get(id);
+  if (world.factionSplit && home === world.focusedSettlementId) {
+    th.push({ icon: '⚠', text: `${world.settlements[home]?.name ?? 'Your town'} is divided against itself.` });
+  }
+
+  // the weight of years
+  const lc = world.lifecycle.get(id);
+  const sp = speciesById(world.identity.get(id)!.speciesId);
+  if (lc && sp.lifespan && lc.ageYears >= sp.lifespan * 0.85) {
+    th.push({ icon: '⏳', text: `Your years are catching up with you.` });
+  }
+
+  return th.slice(0, 4);
+}
+
+/** PEOPLE WHO MATTER — a tiny cast of anchors, each with a live one-line STATUS so a name reads as
+ *  a character: spouse, the one you're courting, your closest ally, your bitterest rival, your ruler. */
+function buildPlayerCast(world: World, id: EntityId): CastMember[] {
+  const cast: CastMember[] = [];
+  const seen = new Set<number>();
+  const add = (icon: string, role: string, other: number | undefined, note: string, status: string, kind: 'actor' | 'figure' = 'actor') => {
+    if (other === undefined || other === id || seen.has(other)) return;
+    seen.add(other);
+    cast.push({ icon, role, status, kind, id: other, name: kind === 'figure' ? getFigure(world, other)?.name ?? fullName(world, other) : fullName(world, other), note });
+  };
+  // your feeling toward someone, as a word
+  const mood = (op: number) => (op > 600 ? 'devoted' : op > 200 ? 'content' : op > -100 ? 'growing distant' : op > -500 ? 'strained' : 'bitter');
+
+  const ties = world.ties.get(id);
+  if (ties?.spouses.length) {
+    const sp = ties.spouses[0];
+    const edge = world.rels.get(id)?.get(sp);
+    add('❤️', 'spouse', sp, 'your spouse', edge ? mood(computeOpinion(edge, world.tick)) : 'your spouse');
+  }
+
+  const asp = currentAspiration(world, id);
+  if (asp.kind === 'partner' && asp.target !== undefined) {
+    const edge = world.rels.get(id)?.get(asp.target);
+    const op = edge ? computeOpinion(edge, world.tick) : 0;
+    add('💍', 'courting', asp.target, 'you hope to wed', op >= 250 ? 'warming to you' : 'not yet won');
+  }
+
+  // closest ally and bitterest rival, by opinion
+  let ally: number | undefined, allyOp = 150, foe: number | undefined, foeOp = -150;
+  for (const [other, edge] of world.rels.get(id) ?? []) {
+    if (edge.flags.spouse) continue;
+    const op = computeOpinion(edge, world.tick);
+    if (edge.flags.friend || op > allyOp) { allyOp = Math.max(allyOp, op); ally = other; }
+    if (edge.flags.feud || edge.flags.rival || op < foeOp) { foeOp = Math.min(foeOp, op); foe = other; }
+  }
+  add('🤝', 'ally', ally, 'stands with you', allyOp > 600 ? 'a steadfast friend' : 'stands with you');
+  add('⚔', 'rival', foe, 'wishes you ill', foeOp < -600 ? 'openly hostile' : 'no love lost');
+
+  const home = world.homeSettlement.get(id);
+  const rulerId = home !== undefined ? world.settlements[home]?.currentRulerId : undefined;
+  if (rulerId !== undefined) {
+    const fig = getFigure(world, rulerId);
+    const reign = fig ? Math.floor(world.tick / DAYS_PER_YEAR) - fig.reignStart : 0;
+    add('👑', 'ruler', rulerId, 'rules over you', reign >= 20 ? 'long-reigning' : reign <= 3 ? 'newly risen' : 'on the throne', 'figure');
+  }
+
+  return cast.slice(0, 6);
+}
+
+/**
+ * WHAT YOU BELIEVE — the player's own subjective reality, the payoff of the whole epistemic layer.
+ * Who they believe rules (which will one day lag reality when a distant coronation's news is slow),
+ * the losses they have come to know, and — pointedly — what they do NOT yet know. The player now
+ * inhabits a subjective world exactly like every NPC, rather than reading the objective one.
+ */
+function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
+  const b: Tension[] = [];
+  const home = world.homeSettlement.get(id);
+
+  // who you believe rules your own place (an explicit belief if you hold one; else the ruler you
+  // live under — you know your own sovereign, whatever the distant world has since done)
+  if (home !== undefined) {
+    const sb = computeStatusBelief(world, id, coronationSlot(home));
+    const rulerId = sb.occupant ?? world.settlements[home]?.currentRulerId;
+    const name = rulerId !== undefined ? getFigure(world, rulerId)?.name ?? fullName(world, rulerId) : undefined;
+    if (name) b.push({ icon: '👑', text: `You believe ${name} rules ${world.settlements[home]?.name ?? 'your home'}.` });
+  }
+
+  // losses you have come to know
+  for (const bel of world.beliefs.get(id) ?? []) {
+    if (bel.assertion !== 'dead' || computeBelief(bel, world.tick).stance !== 'true') continue;
+    b.push({ icon: '⚰', text: `You believe ${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject } });
+    if (b.length >= 4) break;
+  }
+
+  // what you do NOT know — news still on the road (subjective absence: you are out of the loop)
+  if (home !== undefined) {
+    let soonest: { subj: number; arrival: number } | undefined;
+    for (const [key, val] of world.newsFront) {
+      if (!key.startsWith(`${home}:ruler:`) || val.arrival <= world.tick) continue;
+      if (!soonest || val.arrival < soonest.arrival) soonest = { subj: Number(key.split(':')[2]), arrival: val.arrival };
+    }
+    if (soonest) b.push({ icon: '📨', text: `No word has yet reached you from ${world.settlements[soonest.subj]?.name ?? 'afar'}.` });
+  }
+
+  return b.slice(0, 6);
+}
+
 function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefined {
   const id = world.playerId;
   if (id === undefined || !world.identity.has(id)) return undefined;
@@ -514,6 +778,12 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     lastAchieved,
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
+    story: buildPlayerStory(world, id),
+    tensions: buildPlayerTensions(world, id),
+    opportunities: buildPlayerOpportunities(world, id, actors),
+    threats: buildPlayerThreats(world, id),
+    belief: buildPlayerBeliefs(world, id),
+    cast: buildPlayerCast(world, id),
   };
 }
 

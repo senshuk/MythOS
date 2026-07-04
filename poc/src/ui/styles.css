@@ -463,6 +463,36 @@ button { font-family: inherit; }
 .need-warn { background: var(--neutral); }
 .need-bad { background: var(--rose); }
 
+/* People who matter — tiny status cards: a name that reads as a character */
+.cast { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.cast-card {
+  background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 6px 11px; font: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; text-align: left; min-width: 132px;
+}
+.cast-card:hover { border-color: var(--gold); }
+.cast-card .cc-icon { font-size: 1.15em; }
+.cast-card .cc-body { display: flex; flex-direction: column; line-height: 1.25; }
+.cast-card .cc-name { font-weight: 600; }
+.cast-card .cc-status { font-size: 0.78em; }
+
+/* Journal sections — live, unresolved threads (present / belief / opportunities / worries) */
+.whats-happening { margin-bottom: 13px; }
+.wh-head { margin: 0 0 6px; color: var(--gold-dim); font-size: 0.8em; letter-spacing: 0.07em; text-transform: uppercase; }
+.tensions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.tension { border-left: 2px solid var(--line); padding: 2px 0 2px 10px; font-size: 0.93em; }
+.tension .t-icon { margin-right: 2px; }
+.thread-empty { margin: 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--line-soft); font-size: 0.9em; font-style: italic; }
+.story-head { color: var(--gold-dim); font-size: 0.8em; letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; }
+.story-beats { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.story-beats .beat-icon { margin-right: 3px; }
+
+/* compress the needs — mechanically important, but not why you're here: give the journal the room */
+.needs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; opacity: 0.88; }
+.needs .need { min-width: 88px; }
+.needs .need-label { font-size: 0.72em; }
+.needs .need-bar { height: 5px; }
+
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
   background: linear-gradient(180deg, #9cc4ff, var(--cyan)); color: #0b1220; border: none; font-weight: 600;

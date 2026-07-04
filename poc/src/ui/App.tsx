@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -289,6 +289,7 @@ export default function App() {
               onAct={(intent) => sim.playerAct(intent)}
               onRelease={() => sim.release()}
               onInspect={(id) => sim.inspectActor(id)}
+              onRef={inspectRef}
               busy={sim.busy}
             />
           ) : onboardDismissed ? null : (
@@ -766,17 +767,59 @@ function Dashboard({
 
 const NEED_BARS: NeedKey[] = NEEDS; // the pack's need vector (content/fixture)
 
+const STORY_ICON: Record<string, string> = {
+  married: '💍', friendship: '🤝', feud: '⚔', rivalry: '⚔', born: '👶', died: '⚰',
+  ascension: '👑', dynasty: '👑', goal_met: '✓', brawl: '⚔', widowed: '🖤', exile: '🚪',
+};
+
+/** A block of live threads — present tensions, beliefs, opportunities, or worries. Each is a short
+ *  line, clickable when it points at a person. Hidden when empty unless an `emptyText` is given. */
+function Threads({ head, items, onRef, emptyText }: { head: string; items: Tension[]; onRef: (ref: EventRef) => void; emptyText?: string }) {
+  if (items.length === 0 && !emptyText) return null;
+  return (
+    <div className="whats-happening">
+      <h4 className="wh-head">{head}</h4>
+      {items.length === 0 ? (
+        <p className="thread-empty muted">{emptyText}</p>
+      ) : (
+      <ul className="tensions">
+        {items.map((t, i) => (
+          <li key={i} className="tension">
+            <span className="t-icon" aria-hidden="true">{t.icon}</span>{' '}
+            {t.ref ? (
+              <span
+                className="ev-inspect"
+                role="button"
+                tabIndex={0}
+                onClick={() => onRef(t.ref!)}
+                onKeyDown={(e) => onActivate(e, () => onRef(t.ref!))}
+              >
+                {t.text}
+              </span>
+            ) : (
+              <span>{t.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      )}
+    </div>
+  );
+}
+
 function PlayerPanel({
   player,
   onAct,
   onRelease,
   onInspect,
+  onRef,
   busy,
 }: {
   player: PlayerView;
   onAct: (intent: Intent) => void;
   onRelease: () => void;
   onInspect: (id: number) => void;
+  onRef: (ref: EventRef) => void;
   busy: boolean;
 }) {
   const [actionKind, setActionKind] = useState<PlayerView['actions'][number]['kind']>('work');
@@ -850,6 +893,30 @@ function PlayerPanel({
             })}
           </div>
 
+          {player.cast.length > 0 && (
+            <div className="cast" aria-label="who matters">
+              {player.cast.map((c) => (
+                <button
+                  key={`${c.kind}${c.id}`}
+                  className="cast-card"
+                  title={c.note}
+                  onClick={() => onRef({ kind: c.kind, id: c.id })}
+                >
+                  <span className="cc-icon" aria-hidden="true">{c.icon}</span>
+                  <span className="cc-body">
+                    <span className="cc-name">{c.name}</span>
+                    <span className="cc-status muted">{c.role} · {c.status}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Threads head="What's happening" items={player.tensions} onRef={onRef} />
+          <Threads head="What you believe" items={player.belief} onRef={onRef} />
+          <Threads head="Opportunities" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
+          <Threads head="Things to worry about" items={player.threats} onRef={onRef} />
+
           <div className="action-bar">
             <select
               value={actionKind}
@@ -883,6 +950,20 @@ function PlayerPanel({
             <span className="muted action-hint">{action.hint}</span>
           </div>
         </>
+      )}
+
+      {player.story.length > 0 && (
+        <details className="player-story" open>
+          <summary className="story-head">Your story so far</summary>
+          <ul className="story-beats">
+            {player.story.slice(-12).reverse().map((b, i) => (
+              <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
+                <span className="beat-icon" aria-hidden="true">{STORY_ICON[b.tone] ?? '•'}</span> <EventText parts={b.parts} onRef={onRef} />
+                {b.note && <span className="muted"> — {b.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );
