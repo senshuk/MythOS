@@ -862,6 +862,12 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     suggested = { kind: asp.action, target: asp.target };
   }
 
+  // the four "active" streams + cast, built once — the attention feed merges them (design/21 §7)
+  const tensions = buildPlayerTensions(world, id);
+  const opportunities = buildPlayerOpportunities(world, id, actors);
+  const threats = buildPlayerThreats(world, id);
+  const cast = buildPlayerCast(world, id);
+
   return {
     id,
     name: fullName(world, id),
@@ -885,12 +891,41 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
     story: buildPlayerStory(world, id),
-    tensions: buildPlayerTensions(world, id),
-    opportunities: buildPlayerOpportunities(world, id, actors),
-    threats: buildPlayerThreats(world, id),
+    attention: buildAttention(tensions, opportunities, threats, cast),
+    tensions,
+    opportunities,
+    threats,
     belief: buildPlayerBeliefs(world, id),
-    cast: buildPlayerCast(world, id),
+    cast,
   };
+}
+
+/**
+ * WHAT DESERVES MY ATTENTION (design/21 §7) — the four "active" streams and the cast are one
+ * category, not five: people, changes, openings, worries. Merge them into a single feed sorted by
+ * importance, like notifications. The categorized lists remain (as the journal's drill-down); this
+ * is the digest the cockpit shows.
+ */
+function buildAttention(
+  tensions: Tension[],
+  opportunities: Tension[],
+  threats: Tension[],
+  cast: CastMember[],
+): Tension[] {
+  const items: { t: Tension; w: number; i: number }[] = [];
+  let i = 0;
+  // people you care about become attention lines — "Spouse — devoted", clickable to the person
+  for (const c of cast) {
+    const roleCap = c.role.charAt(0).toUpperCase() + c.role.slice(1);
+    const hot = /rival|feud|enemy/.test(c.role) || c.role === 'spouse' || c.role === 'child' || c.role === 'parent';
+    items.push({ t: { icon: c.icon, text: `${roleCap} — ${c.status}`, ref: { kind: c.kind, id: c.id } }, w: hot ? 5 : 3, i: i++ });
+  }
+  for (const t of threats) items.push({ t, w: 4, i: i++ }); // worries deserve attention
+  for (const t of tensions) items.push({ t, w: 3, i: i++ }); // what's changing
+  for (const t of opportunities) items.push({ t, w: 2, i: i++ }); // openings
+  // importance first, original order as a deterministic tiebreak
+  items.sort((a, b) => b.w - a.w || a.i - b.i);
+  return items.slice(0, 7).map((x) => x.t);
 }
 
 export function buildSnapshot(world: World, feedSize = 400): Snapshot {

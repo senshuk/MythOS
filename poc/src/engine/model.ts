@@ -1359,6 +1359,10 @@ export interface PlayerView {
   /** the player's life told as a linked, chronological story (life events + losses they've come
    *  to know of, annotated with how the news reached them). */
   story: StoryBeat[];
+  /** ONE feed — WHAT DESERVES MY ATTENTION. People, changes, openings and worries merged and
+   *  sorted by importance, notification-style (design/21 §7). The cockpit's second question; the
+   *  categorized lists below are its full-detail drill-down, kept for the journal. */
+  attention: Tension[];
   /** live unresolved threads — WHAT'S HAPPENING (present, changing every tick). */
   tensions: Tension[];
   /** openings the world is presenting — OPPORTUNITIES (what could I do?). */

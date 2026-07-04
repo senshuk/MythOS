@@ -459,16 +459,28 @@ button { font-family: inherit; }
 .cast { margin-top: 16px; }
 .action-bar { border-top: 1px solid var(--line-soft); padding-top: 16px; margin-top: 16px; }
 
-/* THE JOURNAL — one click, collapsed by default. A notification drawer, not an encyclopedia. */
-.journal { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
-.journal-head {
-  color: var(--gold-dim); font-size: 0.82em; letter-spacing: 0.09em; text-transform: uppercase;
-  cursor: pointer; list-style: none; padding: 4px 0; user-select: none;
+/* WHAT DESERVES YOUR ATTENTION — one merged feed, notification-style (design/21 §7). */
+.attention { margin: 18px 0; }
+.att-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.att-item {
+  display: flex; align-items: baseline; gap: 9px; padding: 9px 4px;
+  border-bottom: 1px solid var(--line-soft); font-size: 0.98em; line-height: 1.4;
 }
+.att-item:last-child { border-bottom: none; }
+.att-item .att-icon { flex: none; font-size: 1.05em; }
+
+/* THE JOURNAL — one click, collapsed by default. Reflective, not actionable: reads like a button. */
+.journal { margin-top: 18px; }
+.journal-head {
+  display: inline-block; color: var(--gold-dim); font-size: 0.85em; letter-spacing: 0.04em;
+  cursor: pointer; list-style: none; padding: 7px 14px; user-select: none;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2);
+}
+.journal-head:hover { border-color: var(--gold-dim); color: var(--gold); }
 .journal-head::before { content: '▸'; display: inline-block; margin-right: 8px; transition: transform 0.15s; }
 .journal[open] > .journal-head::before { transform: rotate(90deg); }
 .journal-head::-webkit-details-marker { display: none; }
-.journal-body { margin-top: 10px; }
+.journal-body { margin-top: 14px; }
 
 /* People who matter — tiny status cards: a name that reads as a character */
 .cast { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }

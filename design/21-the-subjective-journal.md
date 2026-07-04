@@ -70,6 +70,23 @@ Two corollaries:
 - **Whitespace is information.** Give the eye places to rest. A hairline between cockpit blocks is not decoration; it is hierarchy.
 - **The map is the protagonist.** The simulation happens on the map; the journal explains your place in it. A bloated dashboard that shoves the map below the fold has the priority backwards — shrink the cockpit and the world rises on its own.
 
+## Three questions, one feed (organize by the mind, not the engine)
+
+The deepest failure mode is subtler than clutter: **organizing by engine subsystem.** Relationships, beliefs, opportunities, threats, story — each section is individually justified, but together they express no single mental model, and the player cannot tell which is the main thing. Everything says *"I'm important."*
+
+> ## A player has exactly three questions. Build the panel as those three, and nothing else.
+
+1. **What should I do?** — Current Situation (with the pressing need folded in as a beat) and, *immediately under it*, the recommended action. The page reads top-to-bottom like a thought: here is where I stand, so here is what I'll do. The action never floats halfway down the page.
+2. **What deserves my attention?** — **one feed**, sorted by importance, notification-style. "What's changing", "opportunities", "threats", and the cast are not four concepts plus a list — they are all *active situations*. Merge them. People become attention lines (*"Spouse — devoted"*, *"Rival — gaining on you"*), so people and events stop being redundant with each other.
+3. **What do I know?** — Your world: who reigns, what news hasn't arrived, what is contested. Then a single **Open the journal** button, behind which everything reflective lives.
+
+Two structural consequences:
+
+- **Story is reflective, not actionable.** Nobody deciding what to do *this week* needs their wedding from forty years ago. It moves into the journal. Present belongs on the cockpit; the past is a click away.
+- **Organize by time, not subsystem.** Humans think Past (what happened) / Present (what needs attention) / Future (what might). The engine thinks in tables. The UI's job is the translation. Question 2's feed collapses present-and-future into "attention"; the journal holds the past.
+
+The editor's rule: **visibility is a scarce resource.** When the simulation is rich, the UI's job stops being "show everything we know" and becomes "help the player answer the three questions." Hiding more makes the world feel *deeper* — players discover layers instead of being confronted with all of them at once.
+
 ## The sentence that does the most work
 
 > **No word has reached you from Krypa.**
@@ -84,3 +101,4 @@ Most games either reveal information or hide it. MythOS says a third thing: *the
 |---|---|---|
 | 1.0 | 2026-07-04 | Initial UI constitution. The north star (*every panel written from inside the player's head*) and its underlying law (*reveal what the character could think, never what the engine knows* — the UI twin of the epistemic laws). "What you know" over "what you believe". The journal as a cognition pipeline (who matters → happening → know → opportunities/threats → story = people → events → interpret → choose → remember). Goal-as-diagnosis; Your-Story-as-autobiography (future LLM memoir). Protects the observer-independence sentence "no word has reached you from Krypa". |
 | 1.1 | 2026-07-04 | Added the interaction model (§ *Cockpit, not encyclopedia*): three layers — cockpit (always-on, ~one screen: situation · people · actions), journal (one click, collapsed), deep inspection (click a thread). The removal test ("would the player make worse decisions?"). Corollaries: narrative beats labels (fold the pressing need into the situation, drop meters), whitespace is information, the map is the protagonist. Resolves the sim-game trap where every good addition still bloats the page. |
+| 1.2 | 2026-07-04 | Added the information architecture (§ *Three questions, one feed*): the panel IS the player's three questions — what should I do / what deserves my attention / what do I know — and nothing else. The four "active" sections plus the cast are one category, merged into a single importance-sorted Attention feed (people become attention lines). Action moves directly under the situation (reads top-to-bottom like a thought). Story is reflective → journal. Organize by time (past/present/future), not by engine subsystem. Visibility is a scarce resource; hiding more makes the world feel deeper. |
