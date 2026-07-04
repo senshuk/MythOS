@@ -106,6 +106,7 @@ export function createWorld(seed: number, focus = true): World {
     reputation: new Map(),
     beliefs: new Map(),
     reactions: new Set(),
+    newsFront: new Map(),
     faith: new Map(),
     exiles: new Map(),
     rels: new Map(),

@@ -21,6 +21,7 @@ import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
 import { perceiveCoronation } from './perception';
+import { propagateCoronation } from './news';
 import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
 import { tongueFor } from '../content/languages';
 import { startCivilWarClock } from './factions';
@@ -206,6 +207,9 @@ function installRuler(
   // recognizes them (orgStatusBeliefOf). A no-op for aggregate settlements, which have no
   // simulated residents to hear it (they learn later, once news travels — 1C-distal).
   perceiveCoronation(world, s.id, heir.id, evId);
+  // …and word of it begins travelling the map objectively, arriving at each settlement by travel
+  // time (the News Frontier). Nothing consumes this yet — it is the objective layer beneath belief.
+  propagateCoronation(world, s.id, heir.id);
 
   // a heir who is a real SIMULATED actor (rose from the focused settlement, not a minted
   // record) earns ASCENSION renown — a public elevation the whole town knows. This feeds

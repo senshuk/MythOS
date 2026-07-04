@@ -878,6 +878,12 @@ export interface World {
    *  crosses to believed. Kept OUT of Belief on purpose — belief is knowledge, reacting is
    *  behaviour (Belief ≠ Reaction, as Intent ≠ Action). Serialized. */
   reactions: Set<string>;
+  /** THE NEWS FRONTIER (Subjectivity 1C-distal; design/20 & news.ts) — OBJECTIVE transport state,
+   *  not belief. Per (observer settlement, subject) it records the tick at which word of an event
+   *  ARRIVES there, propagated across the map at travel speed. It exists whether or not anyone is
+   *  simulated to believe it; minds convert it to Evidence where they exist. ONLY the propagation
+   *  system writes it (never a reducer, consumer, or focus change). Serialized. */
+  newsFront: Map<string, { ruler: EntityId; arrival: number }>;
   /** per-actor religious faith: the id of the deity they follow, or '' if faithless.
    *  Assigned at birth from the settlement's patron deity + trait-modified probability;
    *  stored (not re-derived) so faith is stable for life and survives a save/load. */
