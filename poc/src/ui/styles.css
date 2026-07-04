@@ -454,14 +454,19 @@ button { font-family: inherit; }
 .link.strong { font-weight: 600; font-size: 16px; font-family: var(--serif); color: var(--ink); }
 .player-dead { color: var(--rose); }
 
-.needs { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
-.need { display: flex; align-items: center; gap: 8px; min-width: 150px; flex: 1; }
-.need-label { color: var(--muted); width: 64px; text-align: right; font-size: 12px; text-transform: capitalize; }
-.need-bar { flex: 1; height: 9px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
-.need-fill { height: 100%; border-radius: 5px; }
-.need-good { background: var(--jade); }
-.need-warn { background: var(--neutral); }
-.need-bad { background: var(--rose); }
+/* Needs as lived words, not bars — how the body/heart feel right now (design/21 §5). A quiet
+   footer to the journal: present, but not why you're here. */
+.needs { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
+.need-feel {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px;
+  border: 1px solid var(--line); border-radius: 999px; font-size: 0.82em; background: var(--panel-2);
+}
+.need-feel .nf-key { color: var(--muted); text-transform: capitalize; font-size: 0.85em; letter-spacing: 0.03em; }
+.need-feel .nf-word { font-weight: 600; }
+.need-feel.nf-good .nf-word { color: var(--jade); }
+.need-feel.nf-warn .nf-word { color: var(--neutral); }
+.need-feel.nf-bad { border-color: var(--rose); }
+.need-feel.nf-bad .nf-word { color: var(--rose); }
 
 /* People who matter — tiny status cards: a name that reads as a character */
 .cast { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
@@ -487,11 +492,21 @@ button { font-family: inherit; }
 .story-beats { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .story-beats .beat-icon { margin-right: 3px; }
 
-/* compress the needs — mechanically important, but not why you're here: give the journal the room */
-.needs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; opacity: 0.88; }
-.needs .need { min-width: 88px; }
-.needs .need-label { font-size: 0.72em; }
-.needs .need-bar { height: 5px; }
+/* YOUR VIEW OF THE WORLD — the thesis panel, given real weight (design/21 §3). A framed block,
+   set apart from the ordinary journal threads. */
+.worldview {
+  margin: 4px 0 16px; padding: 12px 14px; border: 1px solid var(--gold-dim);
+  border-radius: var(--radius-sm); background: linear-gradient(180deg, rgba(198,160,74,0.06), transparent);
+}
+.wv-head { margin: 0 0 9px; color: var(--gold); font-size: 0.82em; letter-spacing: 0.09em; text-transform: uppercase; }
+.wv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.wv-item { font-size: 1.02em; padding-left: 12px; border-left: 2px solid var(--line); line-height: 1.4; }
+.wv-item .wv-icon { margin-right: 4px; }
+/* certainty set apart from absence of knowledge (design/21 §4) */
+.wv-item.c-known { border-left-color: var(--gold); }
+.wv-item.c-unknown { border-left-style: dashed; border-left-color: var(--muted); color: var(--ink-dim); font-style: italic; }
+.wv-item.c-contested { border-left-color: var(--rose); }
+.wv-item.c-rumor { border-left-color: var(--muted); color: var(--ink-dim); }
 
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
@@ -520,19 +535,21 @@ button { font-family: inherit; }
   font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
 }
 .onboard-x:hover { color: var(--ink); }
-.goal {
-  display: flex; flex-direction: column; gap: 6px;
-  margin-bottom: 12px; padding: 10px 12px;
+/* CURRENT SITUATION — the dominant block: the one reason to press Advance (design/21 §1–2).
+   Given the most visual weight of anything in the panel. */
+.situation {
+  margin-bottom: 16px; padding: 14px 16px;
   background: var(--panel-2); border-radius: var(--radius-sm); border-left: 3px solid var(--gold);
 }
-.goal-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.goal-tag { color: var(--gold); font-weight: 600; }
-.goal-label { font-weight: 600; font-family: var(--serif); }
-.goal-pursue { padding: 6px 12px; }
-.goal-progress { height: 6px; background: var(--panel-3); border-radius: 3px; overflow: hidden; max-width: 260px; }
+.situation-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.situation-tag { color: var(--gold); font-weight: 600; font-size: 0.8em; letter-spacing: 0.09em; text-transform: uppercase; }
+.situation-head .goal-pursue { padding: 6px 12px; margin-left: auto; }
+.situation-aim { margin: 0 0 8px; font-family: var(--serif); font-size: 1.28em; font-weight: 600; color: var(--gold); line-height: 1.25; }
+.situation-read { margin: 0 0 10px; font-size: 1.05em; line-height: 1.5; color: var(--ink); }
+.goal-progress { height: 6px; background: var(--panel-3); border-radius: 3px; overflow: hidden; max-width: 300px; margin-bottom: 10px; }
 .goal-progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); }
-.goal-diag { font-size: 0.86em; color: var(--ink-dim); }
-.goal-diag .diag-key { color: var(--gold-dim); }
+.situation-step { margin: 0; font-size: 0.96em; color: var(--ink-dim); }
+.situation-step .step-label { color: var(--gold-dim); text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.07em; margin-right: 8px; }
 .achieved {
   margin-bottom: 12px; padding: 10px 14px; border-radius: var(--radius-sm);
   background: rgba(95, 208, 138, 0.13); border: 1px solid var(--jade); color: var(--jade); font-weight: 600;

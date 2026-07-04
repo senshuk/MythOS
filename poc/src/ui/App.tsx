@@ -7,9 +7,8 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
 import type { Intent } from '../engine/intent';
-import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield } from './terrain';
@@ -765,8 +764,6 @@ function Dashboard({
   );
 }
 
-const NEED_BARS: NeedKey[] = NEEDS; // the pack's need vector (content/fixture)
-
 const STORY_ICON: Record<string, string> = {
   married: '💍', friendship: '🤝', feud: '⚔', rivalry: '⚔', born: '👶', died: '⚰',
   ascension: '👑', dynasty: '👑', goal_met: '✓', brawl: '⚔', widowed: '🖤', exile: '🚪',
@@ -803,6 +800,38 @@ function Threads({ head, items, onRef, emptyText }: { head: string; items: Tensi
         ))}
       </ul>
       )}
+    </div>
+  );
+}
+
+/** YOUR VIEW OF THE WORLD — the player's own subjective reality, elevated as the thesis it is.
+ *  Certainty (what you KNOW) is set visually apart from absence of knowledge (news not yet
+ *  arrived) and, later, contested claims and rumor (design/21 §3–4). */
+function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="worldview">
+      <h4 className="wv-head">Your view of the world</h4>
+      <ul className="wv-list">
+        {items.map((t, i) => (
+          <li key={i} className={`wv-item c-${t.certainty ?? 'known'}`}>
+            <span className="wv-icon" aria-hidden="true">{t.icon}</span>{' '}
+            {t.ref ? (
+              <span
+                className="ev-inspect"
+                role="button"
+                tabIndex={0}
+                onClick={() => onRef(t.ref!)}
+                onKeyDown={(e) => onActivate(e, () => onRef(t.ref!))}
+              >
+                {t.text}
+              </span>
+            ) : (
+              <span>{t.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -862,10 +891,12 @@ function PlayerPanel({
       ) : (
         <>
           {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
-          <div className="goal">
-            <div className="goal-head">
-              <span className="goal-tag">🎯 Goal</span>{' '}
-              <span className="goal-label">{player.aspiration.label}</span>
+
+          {/* THE DOMINANT QUESTION — the one thing that should make you press Advance.
+              A narrator's reading of where you stand, not a quest tracker (design/21 §1–2). */}
+          <div className="situation">
+            <div className="situation-head">
+              <span className="situation-tag">Current situation</span>
               {player.aspiration.suggested && (
                 <button
                   className="act-btn goal-pursue"
@@ -877,33 +908,16 @@ function PlayerPanel({
                 </button>
               )}
             </div>
+            <p className="situation-aim">{player.aspiration.label}</p>
+            {player.aspiration.obstacle && <p className="situation-read">{player.aspiration.obstacle}</p>}
             {player.aspiration.progress !== undefined && (
               <div className="goal-progress" title={`${Math.round(player.aspiration.progress * 100)}% of the way`}>
                 <div className="goal-progress-fill" style={{ width: `${Math.round(player.aspiration.progress * 100)}%` }} />
               </div>
             )}
-            {player.aspiration.obstacle && (
-              <div className="goal-diag"><span className="diag-key">In your way:</span> {player.aspiration.obstacle}</div>
-            )}
             {player.aspiration.nextStep && (
-              <div className="goal-diag"><span className="diag-key">Best move:</span> {player.aspiration.nextStep}</div>
+              <p className="situation-step"><span className="step-label">Best next step</span> {player.aspiration.nextStep}</p>
             )}
-          </div>
-
-          <div className="needs">
-            {NEED_BARS.map((k) => {
-              const v = player.needs[k];
-              const pct = Math.round((v / 1000) * 100);
-              const tone = v < 250 ? 'need-bad' : v < 450 ? 'need-warn' : 'need-good';
-              return (
-                <div className="need" key={k} title={`${k}: ${v}/1000`}>
-                  <span className="need-label">{k}</span>
-                  <div className="need-bar">
-                    <div className={`need-fill ${tone}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
           </div>
 
           {player.cast.length > 0 && (
@@ -925,10 +939,25 @@ function PlayerPanel({
             </div>
           )}
 
-          <Threads head="What's happening" items={player.tensions} onRef={onRef} />
-          <Threads head="What you know" items={player.belief} onRef={onRef} />
-          <Threads head="Opportunities" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
-          <Threads head="Things to worry about" items={player.threats} onRef={onRef} />
+          <Threads head="What's changing around you" items={player.tensions} onRef={onRef} />
+
+          {/* THE THESIS OF MythOS — your subjective grasp of the world, certainty set apart from
+              absence of knowledge. Not just another journal section (design/21 §3–4). */}
+          <WorldView items={player.belief} onRef={onRef} />
+
+          <Threads head="What could change your life" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
+          <Threads head="What might go wrong" items={player.threats} onRef={onRef} />
+
+          {player.needFeels.length > 0 && (
+            <div className="needs" aria-label="how you feel">
+              {player.needFeels.map((n) => (
+                <span className={`need-feel nf-${n.tone}`} key={n.key} title={`${n.key}: ${n.value}/1000`}>
+                  <span className="nf-key">{n.key}</span>
+                  <span className="nf-word">{n.feel}</span>
+                </span>
+              ))}
+            </div>
+          )}
 
           <div className="action-bar">
             <select

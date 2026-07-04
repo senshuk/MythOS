@@ -23,6 +23,7 @@ import {
   type StoryBeat,
   type Tension,
   type CastMember,
+  type NeedFeel,
   type OrgId,
   type OrgIntentView,
   DAYS_PER_YEAR,
@@ -45,7 +46,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -680,27 +681,45 @@ function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
     const rulerId = sb.occupant ?? world.settlements[home]?.currentRulerId;
     const name = rulerId !== undefined ? getFigure(world, rulerId)?.name ?? fullName(world, rulerId) : undefined;
     // stated as the character's own truth, not "you believe" — this is "what you KNOW" (design/21)
-    if (name) b.push({ icon: '👑', text: `${name} rules ${world.settlements[home]?.name ?? 'your home'}.` });
+    if (name) b.push({ icon: '👑', text: `${name} rules ${world.settlements[home]?.name ?? 'your home'}.`, certainty: 'known' });
   }
 
   // losses you have come to know
   for (const bel of world.beliefs.get(id) ?? []) {
     if (bel.assertion !== 'dead' || computeBelief(bel, world.tick).stance !== 'true') continue;
-    b.push({ icon: '⚰', text: `${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject } });
+    b.push({ icon: '⚰', text: `${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject }, certainty: 'known' });
     if (b.length >= 4) break;
   }
 
-  // what you do NOT know — news still on the road (subjective absence: you are out of the loop)
+  // what you do NOT know — news still on the road (subjective absence: you are out of the loop).
+  // this is the sentence that carries the thesis: the world holds information independent of you.
   if (home !== undefined) {
     let soonest: { subj: number; arrival: number } | undefined;
     for (const [key, val] of world.newsFront) {
       if (!key.startsWith(`${home}:ruler:`) || val.arrival <= world.tick) continue;
       if (!soonest || val.arrival < soonest.arrival) soonest = { subj: Number(key.split(':')[2]), arrival: val.arrival };
     }
-    if (soonest) b.push({ icon: '📨', text: `No word has yet reached you from ${world.settlements[soonest.subj]?.name ?? 'afar'}.` });
+    if (soonest) b.push({ icon: '…', text: `No word has reached you from ${world.settlements[soonest.subj]?.name ?? 'afar'}.`, certainty: 'unknown' });
   }
 
   return b.slice(0, 6);
+}
+
+/**
+ * NEEDS AS LIVED EXPERIENCE (design/21 §5) — translate each raw drive into how it FEELS from the
+ * inside ("Lonely", "Comfortable"), with a coarse tone. The words are pack flavour (NEED_FEELS);
+ * the engine stays a number-store. A need with no pack words falls back to a generic band.
+ */
+function buildNeedFeels(world: World, id: EntityId): NeedFeel[] {
+  const needs = world.needs.get(id);
+  if (!needs) return [];
+  const band = (v: number) => (v < 200 ? 0 : v < 400 ? 1 : v < 600 ? 2 : v < 800 ? 3 : 4);
+  return NEEDS.map((k) => {
+    const value = needs[k] ?? 0;
+    const words = NEED_FEELS[k] ?? NEED_FEELS_GENERIC;
+    const tone: NeedFeel['tone'] = value < 250 ? 'bad' : value < 450 ? 'warn' : 'good';
+    return { key: k, feel: words[band(value)], tone, value };
+  });
 }
 
 /**
@@ -731,18 +750,27 @@ function buildGoalDiagnosis(
     case 'rule': {
       const rulerId = home !== undefined ? world.settlements[home]?.currentRulerId : undefined;
       const rname = rulerId !== undefined ? getFigure(world, rulerId)?.name : undefined;
-      obstacle = rname ? `${rname} still holds the seat.` : 'No seat is yet within your reach.';
-      progress = clamp01(standingOf(world, id) / 300);
+      const std = standingOf(world, id);
+      // narrator reading of your renown, then the person in the way — legible from your standing
+      const reading =
+        std < 60 ? 'Few beyond your own door know your name.'
+        : std < 150 ? 'People know your name, but it has not spread far enough.'
+        : 'Your name carries real weight now — the seat is nearly within reach.';
+      obstacle = rname ? `${reading} ${rname} still holds the seat.` : reading;
+      progress = clamp01(std / 300);
       nextStep = 'Raise your standing — a village follows the renowned.';
       break;
     }
     case 'wed': {
-      if (asp.target === undefined) obstacle = 'You have no one in mind yet.';
+      if (asp.target === undefined) obstacle = 'There is no one you have set your heart on yet.';
       else {
         const edge = world.rels.get(id)?.get(asp.target);
         const op = edge ? computeOpinion(edge, world.tick) : 0;
         progress = clamp01(op / 650);
-        obstacle = op < 200 ? `${targetName} scarcely knows you.` : `You have not yet won ${targetName}'s heart.`;
+        obstacle =
+          op < 200 ? `${targetName} scarcely knows you yet.`
+          : op < 400 ? `You and ${targetName} are growing closer, but it is not yet love.`
+          : `${targetName}'s heart is nearly yours.`;
       }
       break;
     }
@@ -827,6 +855,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
+    needFeels: buildNeedFeels(world, id),
     aspiration: {
       kind: asp.kind,
       label: aspirationLabel(world, id, asp),

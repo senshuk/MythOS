@@ -1295,6 +1295,19 @@ export interface Tension {
   icon: string;
   text: string;
   ref?: EventRef;
+  /** the epistemic weight of the line, when it is a piece of the player's knowledge: something
+   *  KNOWN for certain, an absence of knowledge (news not yet arrived), a CONTESTED claim, or a
+   *  RUMOR. Lets presentation separate certainty from uncertainty (design/21 §4). */
+  certainty?: 'known' | 'unknown' | 'contested' | 'rumor';
+}
+
+/** How one need FEELS right now — the lived word ("Lonely", "Comfortable") plus a coarse tone,
+ *  translated from the engine's raw value in the snapshot. Presentation, not simulation. */
+export interface NeedFeel {
+  key: string;
+  feel: string;
+  tone: 'bad' | 'warn' | 'good';
+  value: number; // 0..1000, kept for the title/tooltip
 }
 
 /** A person who matters to the player — an anchor, so when the world says "Rowan heard first"
@@ -1319,6 +1332,8 @@ export interface PlayerView {
   deathYear?: number;
   settlement: string;
   needs: Needs;
+  /** each need as a lived word + tone (design/21 §5) — presentation of `needs`. */
+  needFeels: NeedFeel[];
   // the actor's current drive (a goal). `suggested` is the one-click action that
   // pursues it, when the goal points at a concrete action/target.
   aspiration: {
@@ -1326,8 +1341,9 @@ export interface PlayerView {
     label: string;
     targetName?: string;
     suggested?: Intent;
-    /** goal-as-diagnosis: what stands in your way, the best thing to do about it, a rough sense
-     *  of how far along you are — written from inside the player's head, never as a quest. */
+    /** goal-as-diagnosis: the situation read as a narrator would ("People know your name, but it
+     *  has not spread far enough. Aeriril still holds the seat."), the best thing to do about it,
+     *  and a rough sense of how far along — written from inside the player's head, never a quest. */
     obstacle?: string;
     nextStep?: string;
     progress?: number; // 0..1, coarse; omitted when not meaningfully measurable
