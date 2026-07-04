@@ -30,10 +30,10 @@ import type { World } from './model';
 
 const roundTrip = (w: World): World => deserializeWorld(JSON.parse(JSON.stringify(serializeWorld(w))));
 const ORG_FIXTURE_SEED = 8;
-const ORG_FIXTURE_YEARS = 60;
+const ORG_FIXTURE_YEARS = 1;
 
 /**
- * The seed-8 world after 60 years, built ONCE and shared by every test that only
+ * The seed-8 world after one year, built ONCE and shared by every test that only
  * reads it (successions, dissolutions, snapshots, save/load round-trips — roundTrip
  * and hashWorld are pure). Fields that must be sampled BEFORE the run (the founding
  * polity's identity) are captured at build time. Rebuilding this world per test was
@@ -257,7 +257,7 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('round-trips the membership roster through save/load identically', () => {
-    const { w } = orgFixture(); // 60y is enough: the succession test proves ≥2 leaders by then
+    const { w } = orgFixture(); // the succession test proves the fixture has ≥2 leaders
     const loaded = roundTrip(w);
     expect(hashWorld(loaded)).toBe(hashWorld(w)); // roster is in the determinism hash
     for (const org of w.organizations) {
