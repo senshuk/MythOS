@@ -668,6 +668,45 @@ export interface AspirationDef {
   fulfilled?(world: World, id: EntityId, target: EntityId | undefined): boolean;
 }
 
+/**
+ * A player's committed AMBITION — a long-horizon goal the player CHOSE (unlike an aspiration, which
+ * is derived and handed to them). It is the player's private steering layer: the world records
+ * DEEDS (a marriage, a killing) through the normal event system; the ambition is only the player's
+ * interpretation of WHY. So it is serialized for continuity but is NOT part of the simulation hash
+ * and is read by no NPC decision or RNG draw — choosing one cannot affect determinism. Fulfilment
+ * emits no shared event in v1 (the constituent deeds already entered history).
+ */
+export interface PlayerAmbition {
+  id: string; // a pack ambition id (content/ambitions.ts)
+  target?: EntityId;
+  chosenTick: number;
+  completedTick?: number;
+  outcome?: 'fulfilled' | 'thwarted';
+}
+
+/**
+ * PACK DATA contract: a KIND of life-ambition this universe offers a player. The engine
+ * (engine/ambition.ts) owns only the mechanism (offer, commit, review, surface the next step); the
+ * SET of ambitions is universe-specific, like the aspiration ladder and decision set. Every method
+ * is a PURE READ over world state — an ambition never mutates the world. The `nextStep` must be
+ * GAP-DERIVED (what current state lacks vs `fulfilled`), never a scripted stage chain: obstacles
+ * come from the simulation.
+ */
+export interface AmbitionDef {
+  id: string;
+  /** Worth OFFERING to this player right now, given their real situation? (with a target if any). */
+  offerable(world: World, playerId: EntityId): { target?: EntityId } | undefined;
+  label(world: World, playerId: EntityId, target?: EntityId): string;
+  hint(world: World, playerId: EntityId, target?: EntityId): string;
+  /** The current emergent step, framed as a decision (undefined = nothing to do but let time pass). */
+  nextStep(world: World, playerId: EntityId, target?: EntityId): DecisionView | undefined;
+  /** A one-line progress note ("Elara is fond of you; her father is not"). */
+  note(world: World, playerId: EntityId, target?: EntityId): string;
+  fulfilled(world: World, playerId: EntityId, target?: EntityId): boolean;
+  /** Became permanently unreachable (target dead/wed elsewhere) → thwarted, not stuck. */
+  impossible?(world: World, playerId: EntityId, target?: EntityId): boolean;
+}
+
 export interface Vec2 {
   x: number;
   y: number;
@@ -991,6 +1030,10 @@ export interface World {
    *  The world is f(seed, playerInputs): re-feeding this log reproduces the world
    *  exactly — the basis of save/replay (and, later, multiplayer). */
   playerInputs: { tick: number; intent: Intent }[];
+  /** The player's committed long-horizon ambition, if any. Player-facing STEERING state: serialized
+   *  for save/load continuity but excluded from the simulation hash and read by no NPC/RNG — see
+   *  PlayerAmbition. Undefined = the player has chosen no ambition (or is just living). */
+  playerAmbition?: PlayerAmbition;
 }
 
 export interface DirectorState {
@@ -1309,6 +1352,59 @@ export interface CastMember {
   note: string;
 }
 
+/** One choice within a Decision — a labelled option mapped to the Intent it enacts. Picking it
+ *  flows through the ordinary player-turn input log (no special code path), so the whole decision
+ *  layer adds ZERO world state and cannot affect determinism. */
+export interface DecisionOptionView {
+  label: string;
+  hint?: string;
+  intent: Intent;
+  tone?: string; // 'good' | 'bad' | 'neutral' — colour only
+}
+
+/** A framed choice the world is presenting the player RIGHT NOW — a turning point, not a standing
+ *  menu. Derived purely from world state at snapshot time (like tensions and aspirations), never
+ *  stored: a reactive decision keys off events of the past week and ages out on its own; a standing
+ *  one persists only while its state holds. */
+export interface DecisionView {
+  id: string;       // stable per situation, e.g. `insult:${otherId}` (React key; not persisted)
+  urgency: number;  // higher = more pressing; sorts the list and drives visual emphasis
+  prompt: EventPart[];
+  options: DecisionOptionView[];
+}
+
+/**
+ * PACK DATA contract: a KIND of situation the world can present to the player as a framed choice.
+ * The engine (engine/decision.ts) evaluates every def and surfaces the most pressing few; the SET
+ * of situations is universe-specific (content/decisions.ts), exactly like the aspiration ladder and
+ * the action vocabulary. `evaluate` is a PURE READ — it must not emit or mutate.
+ */
+export interface DecisionDef {
+  id: string;
+  /** Zero or more choices this situation currently presents to `playerId` (empty if inapplicable). */
+  evaluate(world: World, playerId: EntityId): DecisionView[];
+}
+
+/** The player's committed ambition as the UI sees it: its label, a live progress note, and its
+ *  current emergent STEP (a decision). Once resolved, `outcome` is set for a closing beat. */
+export interface ActiveAmbitionView {
+  id: string;
+  label: string;
+  targetName?: string;
+  note: string;
+  step?: DecisionView;
+  outcome?: 'fulfilled' | 'thwarted';
+}
+
+/** An ambition the world is OFFERING the player to commit to, derived from their situation. */
+export interface AmbitionOffer {
+  id: string;
+  label: string;
+  hint: string;
+  target?: EntityId;
+  targetName?: string;
+}
+
 export interface PlayerView {
   id: EntityId;
   name: string;
@@ -1340,6 +1436,14 @@ export interface PlayerView {
   belief: Tension[];
   /** the small cast of people who matter to the player right now. */
   cast: CastMember[];
+  /** DECISIONS — framed choices the world is putting to the player this week (a turning point,
+   *  most-pressing first). Interactive: each option is an Intent taken through the normal turn. */
+  decisions: DecisionView[];
+  /** The player's committed AMBITION (long-horizon, self-chosen) + its current step, if any. */
+  ambition?: ActiveAmbitionView;
+  /** Ambitions the world offers the player to commit to (shown when none active, or after one
+   *  resolves). Derived from the actor's situation — the player is never handed a fixed menu. */
+  offeredAmbitions: AmbitionOffer[];
 }
 
 export interface Snapshot {

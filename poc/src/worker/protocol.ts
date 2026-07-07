@@ -24,6 +24,8 @@ export type SimRequest =
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
   | { kind: 'playerTurn'; intent: Intent }
+  | { kind: 'chooseAmbition'; ambitionId: string; target?: number }
+  | { kind: 'abandonAmbition' }
   // --- persistence (save/load) ---
   | { kind: 'save'; name: string }
   | { kind: 'load'; name: string }

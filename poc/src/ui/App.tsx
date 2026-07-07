@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -142,6 +142,92 @@ function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef
         ),
       )}
     </>
+  );
+}
+
+/** A framed choice with option buttons — shared by the world's decisions and an ambition's next
+ *  step. Each option is an Intent taken through the normal player turn. */
+function DecisionCard({ d, onAct, onRef, busy }: { d: DecisionView; onAct: (i: Intent) => void; onRef: (r: EventRef) => void; busy: boolean }) {
+  return (
+    <div className="decision-card">
+      <p className="decision-prompt">
+        <EventText parts={d.prompt} onRef={onRef} />
+      </p>
+      <div className="decision-options">
+        {d.options.map((o, i) => (
+          <button
+            key={i}
+            className={`decision-opt tone-${o.tone ?? 'neutral'}`}
+            onClick={() => onAct(o.intent)}
+            disabled={busy}
+            title={o.hint}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The player's self-chosen through-line: the committed ambition with its live step (or closing
+ *  outcome), and — when none is active or one has just resolved — the ambitions on offer. */
+function AmbitionBanner({
+  ambition,
+  offered,
+  onAct,
+  onRef,
+  onChoose,
+  onAbandon,
+  busy,
+}: {
+  ambition?: ActiveAmbitionView;
+  offered: AmbitionOffer[];
+  onAct: (i: Intent) => void;
+  onRef: (r: EventRef) => void;
+  onChoose: (id: string, target?: number) => void;
+  onAbandon: () => void;
+  busy: boolean;
+}) {
+  const resolved = ambition?.outcome !== undefined;
+  return (
+    <div className="ambition">
+      {ambition && (
+        <div className={`ambition-active${resolved ? ` amb-${ambition.outcome}` : ''}`}>
+          <div className="ambition-head">
+            <span className="amb-tag">⚑ Ambition</span>
+            <span className="amb-label">{ambition.label}</span>
+            {!resolved && (
+              <button className="link amb-abandon" onClick={onAbandon} disabled={busy} title="let this ambition go">
+                give up
+              </button>
+            )}
+          </div>
+          {resolved ? (
+            <p className="amb-outcome">
+              {ambition.outcome === 'fulfilled' ? '✓ You achieved it.' : '✗ It slipped beyond your reach.'} {ambition.note}
+            </p>
+          ) : (
+            <>
+              <p className="amb-note muted">{ambition.note}</p>
+              {ambition.step && <DecisionCard d={ambition.step} onAct={onAct} onRef={onRef} busy={busy} />}
+            </>
+          )}
+        </div>
+      )}
+      {offered.length > 0 && (
+        <div className="ambition-choose">
+          <span className="amb-tag">⚑ {ambition ? 'Set your next ambition' : 'What will you make of this life?'}</span>
+          <div className="amb-offers">
+            {offered.map((o) => (
+              <button key={o.id} className="amb-offer" onClick={() => onChoose(o.id, o.target)} disabled={busy} title={o.hint}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -290,6 +376,8 @@ export default function App() {
               onRelease={() => sim.release()}
               onInspect={(id) => sim.inspectActor(id)}
               onRef={inspectRef}
+              onChooseAmbition={(id, target) => sim.chooseAmbition(id, target)}
+              onAbandonAmbition={() => sim.abandonAmbition()}
               busy={sim.busy}
             />
           ) : onboardDismissed ? null : (
@@ -813,6 +901,8 @@ function PlayerPanel({
   onRelease,
   onInspect,
   onRef,
+  onChooseAmbition,
+  onAbandonAmbition,
   busy,
 }: {
   player: PlayerView;
@@ -820,6 +910,8 @@ function PlayerPanel({
   onRelease: () => void;
   onInspect: (id: number) => void;
   onRef: (ref: EventRef) => void;
+  onChooseAmbition: (id: string, target?: number) => void;
+  onAbandonAmbition: () => void;
   busy: boolean;
 }) {
   const [actionKind, setActionKind] = useState<PlayerView['actions'][number]['kind']>('work');
@@ -861,6 +953,22 @@ function PlayerPanel({
         </p>
       ) : (
         <>
+          <AmbitionBanner
+            ambition={player.ambition}
+            offered={player.offeredAmbitions}
+            onAct={onAct}
+            onRef={onRef}
+            onChoose={onChooseAmbition}
+            onAbandon={onAbandonAmbition}
+            busy={busy}
+          />
+          {player.decisions.length > 0 && (
+            <div className="decisions" aria-label="the world asks">
+              {player.decisions.map((d) => (
+                <DecisionCard key={d.id} d={d} onAct={onAct} onRef={onRef} busy={busy} />
+              ))}
+            </div>
+          )}
           {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
           <div className="goal">
             <span className="goal-tag">🎯 Goal</span>{' '}

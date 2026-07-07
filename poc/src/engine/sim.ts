@@ -30,6 +30,7 @@ import {
 import { type Intent } from './intent';
 import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
+export { chooseAmbition, abandonAmbition, reviewPlayerAmbition } from './ambition';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
@@ -49,6 +50,8 @@ import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, de
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
+import { evaluateDecisions } from './decision';
+import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
@@ -752,6 +755,9 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     }
   }
 
+  // the player's self-chosen ambition (its live step + progress) and the ambitions on offer.
+  const ambView = lc.alive ? buildAmbitionView(world, id) : { ambition: undefined, offered: [] };
+
   // a one-click pursue intent, only when the goal is directly actionable
   let suggested: Intent | undefined;
   if (asp.action === 'work') suggested = { kind: 'work' };
@@ -784,6 +790,10 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     threats: buildPlayerThreats(world, id),
     belief: buildPlayerBeliefs(world, id),
     cast: buildPlayerCast(world, id),
+    // framed turning points for a living player; the dead make no decisions.
+    decisions: lc.alive ? evaluateDecisions(world, id) : [],
+    ambition: ambView.ambition,
+    offeredAmbitions: ambView.offered,
   };
 }
 
