@@ -921,6 +921,20 @@ function PlayerPanel({
   const needsTarget = action.needsTarget;
   const canAct = player.alive && !busy && (!needsTarget || targetId !== '');
 
+  // one ambient "what's happening" strand — the old Opportunities / Threats / tensions panels were
+  // three dim lists of the same shape that now overlap with the interactive Decisions above; fold
+  // them into a single deduped strand (belief stays separate — it's the unique epistemic view).
+  const ambient = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Tension[] = [];
+    for (const t of [...player.tensions, ...player.threats, ...player.opportunities]) {
+      if (seen.has(t.text)) continue;
+      seen.add(t.text);
+      out.push(t);
+    }
+    return out.slice(0, 6);
+  }, [player.tensions, player.threats, player.opportunities]);
+
   const submit = () => {
     if (!canAct) return;
     const intent: Intent = needsTarget
@@ -970,20 +984,24 @@ function PlayerPanel({
             </div>
           )}
           {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
-          <div className="goal">
-            <span className="goal-tag">🎯 Goal</span>{' '}
-            <span className="goal-label">{player.aspiration.label}</span>
-            {player.aspiration.suggested && (
-              <button
-                className="act-btn goal-pursue"
-                onClick={() => onAct(player.aspiration.suggested!)}
-                disabled={busy}
-                title="take the action your character is driven toward"
-              >
-                Pursue ▸
-              </button>
-            )}
-          </div>
+          {/* the derived aspiration shows only as a fallback when no ambition is committed —
+              otherwise the ⚑ ambition IS the player's goal (no two competing goal panels). */}
+          {!player.ambition && (
+            <div className="goal">
+              <span className="goal-tag">🎯 For now</span>{' '}
+              <span className="goal-label">{player.aspiration.label}</span>
+              {player.aspiration.suggested && (
+                <button
+                  className="act-btn goal-pursue"
+                  onClick={() => onAct(player.aspiration.suggested!)}
+                  disabled={busy}
+                  title="take the action your character is drawn toward"
+                >
+                  Pursue ▸
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="needs">
             {NEED_BARS.map((k) => {
@@ -1020,11 +1038,10 @@ function PlayerPanel({
             </div>
           )}
 
-          <Threads head="What's happening" items={player.tensions} onRef={onRef} />
+          <Threads head="What's happening" items={ambient} onRef={onRef} />
           <Threads head="What you believe" items={player.belief} onRef={onRef} />
-          <Threads head="Opportunities" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
-          <Threads head="Things to worry about" items={player.threats} onRef={onRef} />
 
+          <h4 className="wh-head act-lead">Or — do something else</h4>
           <div className="action-bar">
             <select
               value={actionKind}

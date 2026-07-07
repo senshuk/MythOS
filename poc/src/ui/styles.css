@@ -493,6 +493,7 @@ button { font-family: inherit; }
 .needs .need-label { font-size: 0.72em; }
 .needs .need-bar { height: 5px; }
 
+.act-lead { margin-top: var(--space-4); margin-bottom: var(--space-1); }
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
   background: linear-gradient(180deg, #9cc4ff, var(--cyan)); color: #0b1220; border: none; font-weight: 600;
