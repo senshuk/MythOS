@@ -454,14 +454,33 @@ button { font-family: inherit; }
 .link.strong { font-weight: 600; font-size: 16px; font-family: var(--serif); color: var(--ink); }
 .player-dead { color: var(--rose); }
 
-.needs { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
-.need { display: flex; align-items: center; gap: 8px; min-width: 150px; flex: 1; }
-.need-label { color: var(--muted); width: 64px; text-align: right; font-size: 12px; text-transform: capitalize; }
-.need-bar { flex: 1; height: 9px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
-.need-fill { height: 100%; border-radius: 5px; }
-.need-good { background: var(--jade); }
-.need-warn { background: var(--neutral); }
-.need-bad { background: var(--rose); }
+/* The cockpit rhythm — give the eye places to rest between the few always-on blocks (design/21 §6). */
+.situation-body { margin: 0 0 10px; font-style: italic; color: var(--ink-dim); font-size: 0.98em; }
+.cast { margin-top: 16px; }
+.action-bar { border-top: 1px solid var(--line-soft); padding-top: 16px; margin-top: 16px; }
+
+/* WHAT DESERVES YOUR ATTENTION — one merged feed, notification-style (design/21 §7). */
+.attention { margin: 18px 0; }
+.att-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.att-item {
+  display: flex; align-items: baseline; gap: 9px; padding: 9px 4px;
+  border-bottom: 1px solid var(--line-soft); font-size: 0.98em; line-height: 1.4;
+}
+.att-item:last-child { border-bottom: none; }
+.att-item .att-icon { flex: none; font-size: 1.05em; }
+
+/* THE JOURNAL — one click, collapsed by default. Reflective, not actionable: reads like a button. */
+.journal { margin-top: 18px; }
+.journal-head {
+  display: inline-block; color: var(--gold-dim); font-size: 0.85em; letter-spacing: 0.04em;
+  cursor: pointer; list-style: none; padding: 7px 14px; user-select: none;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-2);
+}
+.journal-head:hover { border-color: var(--gold-dim); color: var(--gold); }
+.journal-head::before { content: '▸'; display: inline-block; margin-right: 8px; transition: transform 0.15s; }
+.journal[open] > .journal-head::before { transform: rotate(90deg); }
+.journal-head::-webkit-details-marker { display: none; }
+.journal-body { margin-top: 14px; }
 
 /* People who matter — tiny status cards: a name that reads as a character */
 .cast { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
@@ -487,11 +506,21 @@ button { font-family: inherit; }
 .story-beats { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .story-beats .beat-icon { margin-right: 3px; }
 
-/* compress the needs — mechanically important, but not why you're here: give the journal the room */
-.needs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; opacity: 0.88; }
-.needs .need { min-width: 88px; }
-.needs .need-label { font-size: 0.72em; }
-.needs .need-bar { height: 5px; }
+/* YOUR VIEW OF THE WORLD — the thesis panel, given real weight (design/21 §3). A framed block,
+   set apart from the ordinary journal threads. */
+.worldview {
+  margin: 4px 0 16px; padding: 12px 14px; border: 1px solid var(--gold-dim);
+  border-radius: var(--radius-sm); background: linear-gradient(180deg, rgba(198,160,74,0.06), transparent);
+}
+.wv-head { margin: 0 0 9px; color: var(--gold); font-size: 0.82em; letter-spacing: 0.09em; text-transform: uppercase; }
+.wv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.wv-item { font-size: 1.02em; padding-left: 12px; border-left: 2px solid var(--line); line-height: 1.4; }
+.wv-item .wv-icon { margin-right: 4px; }
+/* certainty set apart from absence of knowledge (design/21 §4) */
+.wv-item.c-known { border-left-color: var(--gold); }
+.wv-item.c-unknown { border-left-style: dashed; border-left-color: var(--muted); color: var(--ink-dim); font-style: italic; }
+.wv-item.c-contested { border-left-color: var(--rose); }
+.wv-item.c-rumor { border-left-color: var(--muted); color: var(--ink-dim); }
 
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
@@ -520,14 +549,21 @@ button { font-family: inherit; }
   font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
 }
 .onboard-x:hover { color: var(--ink); }
-.goal {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-bottom: 12px; padding: 10px 12px;
+/* CURRENT SITUATION — the dominant block: the one reason to press Advance (design/21 §1–2).
+   Given the most visual weight of anything in the panel. */
+.situation {
+  margin-bottom: 16px; padding: 14px 16px;
   background: var(--panel-2); border-radius: var(--radius-sm); border-left: 3px solid var(--gold);
 }
-.goal-tag { color: var(--gold); font-weight: 600; }
-.goal-label { font-weight: 600; font-family: var(--serif); }
-.goal-pursue { padding: 6px 12px; }
+.situation-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.situation-tag { color: var(--gold); font-weight: 600; font-size: 0.8em; letter-spacing: 0.09em; text-transform: uppercase; }
+.situation-head .goal-pursue { padding: 6px 12px; margin-left: auto; }
+.situation-aim { margin: 0 0 8px; font-family: var(--serif); font-size: 1.28em; font-weight: 600; color: var(--gold); line-height: 1.25; }
+.situation-read { margin: 0 0 10px; font-size: 1.05em; line-height: 1.5; color: var(--ink); }
+.goal-progress { height: 6px; background: var(--panel-3); border-radius: 3px; overflow: hidden; max-width: 300px; margin-bottom: 10px; }
+.goal-progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); }
+.situation-step { margin: 0; font-size: 0.96em; color: var(--ink-dim); }
+.situation-step .step-label { color: var(--gold-dim); text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.07em; margin-right: 8px; }
 .achieved {
   margin-bottom: 12px; padding: 10px 14px; border-radius: var(--radius-sm);
   background: rgba(95, 208, 138, 0.13); border: 1px solid var(--jade); color: var(--jade); font-weight: 600;
@@ -630,6 +666,5 @@ button { font-family: inherit; }
 }
 
 @media (max-width: 420px) {
-  .needs { gap: 8px; }
-  .need { min-width: 100%; }
+  .situation-aim { font-size: 1.15em; }
 }

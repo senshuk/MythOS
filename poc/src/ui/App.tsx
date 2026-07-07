@@ -7,9 +7,8 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, NeedKey, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, Tension } from '../engine/model';
 import type { Intent } from '../engine/intent';
-import { NEEDS } from '../content/fixture';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield } from './terrain';
@@ -765,8 +764,6 @@ function Dashboard({
   );
 }
 
-const NEED_BARS: NeedKey[] = NEEDS; // the pack's need vector (content/fixture)
-
 const STORY_ICON: Record<string, string> = {
   married: '💍', friendship: '🤝', feud: '⚔', rivalry: '⚔', born: '👶', died: '⚰',
   ascension: '👑', dynasty: '👑', goal_met: '✓', brawl: '⚔', widowed: '🖤', exile: '🚪',
@@ -804,6 +801,98 @@ function Threads({ head, items, onRef, emptyText }: { head: string; items: Tensi
       </ul>
       )}
     </div>
+  );
+}
+
+/** YOUR VIEW OF THE WORLD — the player's own subjective reality, elevated as the thesis it is.
+ *  Certainty (what you KNOW) is set visually apart from absence of knowledge (news not yet
+ *  arrived) and, later, contested claims and rumor (design/21 §3–4). */
+function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="worldview">
+      <h4 className="wv-head">Your world</h4>
+      <ul className="wv-list">
+        {items.map((t, i) => (
+          <li key={i} className={`wv-item c-${t.certainty ?? 'known'}`}>
+            <span className="wv-icon" aria-hidden="true">{t.icon}</span>{' '}
+            {t.ref ? (
+              <span
+                className="ev-inspect"
+                role="button"
+                tabIndex={0}
+                onClick={() => onRef(t.ref!)}
+                onKeyDown={(e) => onActivate(e, () => onRef(t.ref!))}
+              >
+                {t.text}
+              </span>
+            ) : (
+              <span>{t.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** WHAT DESERVES MY ATTENTION — one feed, sorted by importance, notification-style. People, changes,
+ *  openings and worries merged (design/21 §7). Replaces four sections and the cast row. */
+function Attention({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="attention">
+      <h4 className="wh-head">What deserves your attention</h4>
+      <ul className="att-list">
+        {items.map((t, i) => (
+          <li key={i} className="att-item">
+            <span className="att-icon" aria-hidden="true">{t.icon}</span>
+            {t.ref ? (
+              <span
+                className="ev-inspect"
+                role="button"
+                tabIndex={0}
+                onClick={() => onRef(t.ref!)}
+                onKeyDown={(e) => onActivate(e, () => onRef(t.ref!))}
+              >
+                {t.text}
+              </span>
+            ) : (
+              <span>{t.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** THE JOURNAL — reflective, not actionable: the full categorized streams and your life so far.
+ *  Behind one click so the cockpit stays a cockpit (design/21 §6). Story lives here — nobody
+ *  deciding what to do this week needs their wedding from 40 years ago. */
+function Journal({ player, onRef }: { player: PlayerView; onRef: (ref: EventRef) => void }) {
+  return (
+    <details className="journal">
+      <summary className="journal-head">Open the journal</summary>
+      <div className="journal-body">
+        <Threads head="What's changing around you" items={player.tensions} onRef={onRef} />
+        <Threads head="What could change your life" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
+        <Threads head="What might go wrong" items={player.threats} onRef={onRef} />
+        {player.story.length > 0 && (
+          <div className="whats-happening">
+            <h4 className="wh-head">Your story so far</h4>
+            <ul className="story-beats">
+              {player.story.slice(-12).reverse().map((b, i) => (
+                <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
+                  <span className="beat-icon" aria-hidden="true">{STORY_ICON[b.tone] ?? '•'}</span> <EventText parts={b.parts} onRef={onRef} />
+                  {b.note && <span className="muted"> — {b.note}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -862,97 +951,81 @@ function PlayerPanel({
       ) : (
         <>
           {player.lastAchieved && <div className="achieved">✓ {player.lastAchieved}</div>}
-          <div className="goal">
-            <span className="goal-tag">🎯 Goal</span>{' '}
-            <span className="goal-label">{player.aspiration.label}</span>
-            {player.aspiration.suggested && (
-              <button
-                className="act-btn goal-pursue"
-                onClick={() => onAct(player.aspiration.suggested!)}
-                disabled={busy}
-                title="take the action your character is driven toward"
-              >
-                Pursue ▸
-              </button>
-            )}
-          </div>
 
-          <div className="needs">
-            {NEED_BARS.map((k) => {
-              const v = player.needs[k];
-              const pct = Math.round((v / 1000) * 100);
-              const tone = v < 250 ? 'need-bad' : v < 450 ? 'need-warn' : 'need-good';
-              return (
-                <div className="need" key={k} title={`${k}: ${v}/1000`}>
-                  <span className="need-label">{k}</span>
-                  <div className="need-bar">
-                    <div className={`need-fill ${tone}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {player.cast.length > 0 && (
-            <div className="cast" aria-label="who matters">
-              {player.cast.map((c) => (
+          {/* THE DOMINANT QUESTION — the one thing that should make you press Advance.
+              A narrator's reading of where you stand, not a quest tracker (design/21 §1–2). */}
+          <div className="situation">
+            <div className="situation-head">
+              <span className="situation-tag">Current situation</span>
+              {player.aspiration.suggested && (
                 <button
-                  key={`${c.kind}${c.id}`}
-                  className="cast-card"
-                  title={c.note}
-                  onClick={() => onRef({ kind: c.kind, id: c.id })}
+                  className="act-btn goal-pursue"
+                  onClick={() => onAct(player.aspiration.suggested!)}
+                  disabled={busy}
+                  title="take the action your character is driven toward"
                 >
-                  <span className="cc-icon" aria-hidden="true">{c.icon}</span>
-                  <span className="cc-body">
-                    <span className="cc-name">{c.name}</span>
-                    <span className="cc-status muted">{c.role} · {c.status}</span>
-                  </span>
+                  Pursue ▸
                 </button>
-              ))}
+              )}
             </div>
-          )}
+            <p className="situation-aim">{player.aspiration.label}</p>
+            {player.aspiration.obstacle && <p className="situation-read">{player.aspiration.obstacle}</p>}
+            {player.bodyNote && <p className="situation-body">{player.bodyNote}</p>}
+            {player.aspiration.progress !== undefined && (
+              <div className="goal-progress" title={`${Math.round(player.aspiration.progress * 100)}% of the way`}>
+                <div className="goal-progress-fill" style={{ width: `${Math.round(player.aspiration.progress * 100)}%` }} />
+              </div>
+            )}
+            {player.aspiration.nextStep && (
+              <p className="situation-step"><span className="step-label">Best next step</span> {player.aspiration.nextStep}</p>
+            )}
 
-          <Threads head="What's happening" items={player.tensions} onRef={onRef} />
-          <Threads head="What you believe" items={player.belief} onRef={onRef} />
-          <Threads head="Opportunities" items={player.opportunities} onRef={onRef} emptyText="Nothing obvious right now." />
-          <Threads head="Things to worry about" items={player.threats} onRef={onRef} />
-
-          <div className="action-bar">
-            <select
-              value={actionKind}
-              onChange={(e) => setActionKind(e.target.value as typeof actionKind)}
-              disabled={busy}
-            >
-              {player.actions.map((a) => (
-                <option key={a.kind} value={a.kind}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-            {needsTarget && (
+            {/* the action belongs right here — the page should read top-to-bottom like a thought:
+                here's where I stand, so here's what I'll do (design/21 §7). */}
+            <div className="action-bar">
               <select
-                value={targetId}
-                onChange={(e) => setTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                value={actionKind}
+                onChange={(e) => setActionKind(e.target.value as typeof actionKind)}
                 disabled={busy}
               >
-                <option value="">— choose someone —</option>
-                {player.targets.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.relation}
-                    {t.relation !== 'stranger' ? ` ${t.valence >= 0 ? '+' : ''}${t.valence}` : ''})
+                {player.actions.map((a) => (
+                  <option key={a.kind} value={a.kind}>
+                    {a.label}
                   </option>
                 ))}
               </select>
-            )}
-            <button className="act-btn" onClick={submit} disabled={!canAct}>
-              {action.label} ▸ (1 week)
-            </button>
-            <span className="muted action-hint">{action.hint}</span>
+              {needsTarget && (
+                <select
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                  disabled={busy}
+                >
+                  <option value="">— choose someone —</option>
+                  {player.targets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.relation}
+                      {t.relation !== 'stranger' ? ` ${t.valence >= 0 ? '+' : ''}${t.valence}` : ''})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button className="act-btn" onClick={submit} disabled={!canAct}>
+                {action.label} ▸ (1 week)
+              </button>
+              <span className="muted action-hint">{action.hint}</span>
+            </div>
           </div>
+
+          {/* QUESTION 2 — one feed, people and events merged, sorted by importance. */}
+          <Attention items={player.attention} onRef={onRef} />
+
+          {/* QUESTION 3 — what you currently believe to be true. Everything else is one click away. */}
+          <WorldView items={player.belief} onRef={onRef} />
+          <Journal player={player} onRef={onRef} />
         </>
       )}
 
-      {player.story.length > 0 && (
+      {!player.alive && player.story.length > 0 && (
         <details className="player-story" open>
           <summary className="story-head">Your story so far</summary>
           <ul className="story-beats">

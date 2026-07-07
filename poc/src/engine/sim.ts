@@ -23,6 +23,7 @@ import {
   type StoryBeat,
   type Tension,
   type CastMember,
+  type NeedFeel,
   type OrgId,
   type OrgIntentView,
   DAYS_PER_YEAR,
@@ -34,7 +35,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
-import { computeStanding, standingReasons, emptyReputation } from './reputation';
+import { computeStanding, standingReasons, emptyReputation, standingOf } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById } from './figures';
@@ -45,7 +46,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -679,27 +680,129 @@ function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
     const sb = computeStatusBelief(world, id, coronationSlot(home));
     const rulerId = sb.occupant ?? world.settlements[home]?.currentRulerId;
     const name = rulerId !== undefined ? getFigure(world, rulerId)?.name ?? fullName(world, rulerId) : undefined;
-    if (name) b.push({ icon: '👑', text: `You believe ${name} rules ${world.settlements[home]?.name ?? 'your home'}.` });
+    // stated as the character's own truth, not "you believe" — this is "what you KNOW" (design/21)
+    if (name) b.push({ icon: '👑', text: `${name} rules ${world.settlements[home]?.name ?? 'your home'}.`, certainty: 'known' });
   }
 
   // losses you have come to know
   for (const bel of world.beliefs.get(id) ?? []) {
     if (bel.assertion !== 'dead' || computeBelief(bel, world.tick).stance !== 'true') continue;
-    b.push({ icon: '⚰', text: `You believe ${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject } });
+    b.push({ icon: '⚰', text: `${fullName(world, bel.subject)} is dead.`, ref: { kind: 'actor', id: bel.subject }, certainty: 'known' });
     if (b.length >= 4) break;
   }
 
-  // what you do NOT know — news still on the road (subjective absence: you are out of the loop)
+  // what you do NOT know — news still on the road (subjective absence: you are out of the loop).
+  // this is the sentence that carries the thesis: the world holds information independent of you.
   if (home !== undefined) {
     let soonest: { subj: number; arrival: number } | undefined;
     for (const [key, val] of world.newsFront) {
       if (!key.startsWith(`${home}:ruler:`) || val.arrival <= world.tick) continue;
       if (!soonest || val.arrival < soonest.arrival) soonest = { subj: Number(key.split(':')[2]), arrival: val.arrival };
     }
-    if (soonest) b.push({ icon: '📨', text: `No word has yet reached you from ${world.settlements[soonest.subj]?.name ?? 'afar'}.` });
+    if (soonest) b.push({ icon: '…', text: `No word has reached you from ${world.settlements[soonest.subj]?.name ?? 'afar'}.`, certainty: 'unknown' });
   }
 
   return b.slice(0, 6);
+}
+
+/**
+ * NEEDS AS LIVED EXPERIENCE (design/21 §5) — translate each raw drive into how it FEELS from the
+ * inside ("Lonely", "Comfortable"), with a coarse tone. The words are pack flavour (NEED_FEELS);
+ * the engine stays a number-store. A need with no pack words falls back to a generic band.
+ */
+function buildNeedFeels(world: World, id: EntityId): NeedFeel[] {
+  const needs = world.needs.get(id);
+  if (!needs) return [];
+  const band = (v: number) => (v < 200 ? 0 : v < 400 ? 1 : v < 600 ? 2 : v < 800 ? 3 : 4);
+  return NEEDS.map((k) => {
+    const value = needs[k] ?? 0;
+    const words = NEED_FEELS[k] ?? NEED_FEELS_GENERIC;
+    const tone: NeedFeel['tone'] = value < 250 ? 'bad' : value < 450 ? 'warn' : 'good';
+    return { key: k, feel: words[band(value)], tone, value };
+  });
+}
+
+/** The single most pressing drive as a narrative beat, folded into the situation (design/21 §5).
+ *  A starving need speaks first; else an earned high note; else silence. */
+function buildBodyNote(world: World, id: EntityId): string | undefined {
+  const needs = world.needs.get(id);
+  if (!needs) return undefined;
+  let worst: { k: string; v: number } | undefined;
+  let best: { k: string; v: number } | undefined;
+  for (const k of NEEDS) {
+    const v = needs[k] ?? 0;
+    if (!worst || v < worst.v) worst = { k, v };
+    if (!best || v > best.v) best = { k, v };
+  }
+  if (worst && worst.v < 300 && NEED_BEAT_LOW[worst.k]) return NEED_BEAT_LOW[worst.k];
+  if (best && best.v >= 820 && NEED_BEAT_HIGH[best.k]) return NEED_BEAT_HIGH[best.k];
+  return undefined;
+}
+
+/**
+ * GOAL AS DIAGNOSIS — not a quest tracker. The engine already knows why the player is failing;
+ * this tells them, from inside their own head: what stands in the way, the best thing to do about
+ * it, and a rough sense of how close they are. Derived from the aspiration ladder (aspirations.ts).
+ */
+function buildGoalDiagnosis(
+  world: World,
+  id: EntityId,
+  asp: ReturnType<typeof currentAspiration>,
+): { obstacle?: string; nextStep?: string; progress?: number } {
+  const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const targetName = asp.target !== undefined ? fullName(world, asp.target) : undefined;
+  const home = world.homeSettlement.get(id);
+
+  // the best thing to do about it, from the goal's own action
+  let nextStep: string | undefined =
+    asp.action === 'court' && targetName ? `Court ${targetName} — win their heart.`
+    : asp.action === 'socialize' && targetName ? `Spend time with ${targetName}.`
+    : asp.action === 'socialize' ? 'Seek out others and make yourself known.'
+    : asp.action === 'work' ? 'Work at your trade — it builds your name.'
+    : undefined;
+
+  let obstacle: string | undefined;
+  let progress: number | undefined;
+  switch (asp.kind) {
+    case 'rule': {
+      const rulerId = home !== undefined ? world.settlements[home]?.currentRulerId : undefined;
+      const rname = rulerId !== undefined ? getFigure(world, rulerId)?.name : undefined;
+      const std = standingOf(world, id);
+      // narrator reading of your renown, then the person in the way — legible from your standing
+      const reading =
+        std < 60 ? 'Few beyond your own door know your name.'
+        : std < 150 ? 'People know your name, but it has not spread far enough.'
+        : 'Your name carries real weight now — the seat is nearly within reach.';
+      obstacle = rname ? `${reading} ${rname} still holds the seat.` : reading;
+      progress = clamp01(std / 300);
+      nextStep = 'Raise your standing — a village follows the renowned.';
+      break;
+    }
+    case 'wed': {
+      if (asp.target === undefined) obstacle = 'There is no one you have set your heart on yet.';
+      else {
+        const edge = world.rels.get(id)?.get(asp.target);
+        const op = edge ? computeOpinion(edge, world.tick) : 0;
+        progress = clamp01(op / 650);
+        obstacle =
+          op < 200 ? `${targetName} scarcely knows you yet.`
+          : op < 400 ? `You and ${targetName} are growing closer, but it is not yet love.`
+          : `${targetName}'s heart is nearly yours.`;
+      }
+      break;
+    }
+    case 'reconcile':
+      obstacle = targetName ? `The bad blood with ${targetName} still festers.` : undefined;
+      break;
+    case 'family':
+      obstacle = 'You have no children yet.';
+      break;
+    case 'belonging':
+      obstacle = 'You feel apart from those around you.';
+      break;
+  }
+
+  return { obstacle, nextStep, progress };
 }
 
 function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefined {
@@ -759,6 +862,12 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     suggested = { kind: asp.action, target: asp.target };
   }
 
+  // the four "active" streams + cast, built once — the attention feed merges them (design/21 §7)
+  const tensions = buildPlayerTensions(world, id);
+  const opportunities = buildPlayerOpportunities(world, id, actors);
+  const threats = buildPlayerThreats(world, id);
+  const cast = buildPlayerCast(world, id);
+
   return {
     id,
     name: fullName(world, id),
@@ -769,22 +878,54 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
+    needFeels: buildNeedFeels(world, id),
+    bodyNote: buildBodyNote(world, id),
     aspiration: {
       kind: asp.kind,
       label: aspirationLabel(world, id, asp),
       targetName: asp.target !== undefined ? fullName(world, asp.target) : undefined,
       suggested,
+      ...buildGoalDiagnosis(world, id, asp),
     },
     lastAchieved,
     actions: PLAYER_ACTIONS,
     targets: targets.slice(0, 40),
     story: buildPlayerStory(world, id),
-    tensions: buildPlayerTensions(world, id),
-    opportunities: buildPlayerOpportunities(world, id, actors),
-    threats: buildPlayerThreats(world, id),
+    attention: buildAttention(tensions, opportunities, threats, cast),
+    tensions,
+    opportunities,
+    threats,
     belief: buildPlayerBeliefs(world, id),
-    cast: buildPlayerCast(world, id),
+    cast,
   };
+}
+
+/**
+ * WHAT DESERVES MY ATTENTION (design/21 §7) — the four "active" streams and the cast are one
+ * category, not five: people, changes, openings, worries. Merge them into a single feed sorted by
+ * importance, like notifications. The categorized lists remain (as the journal's drill-down); this
+ * is the digest the cockpit shows.
+ */
+function buildAttention(
+  tensions: Tension[],
+  opportunities: Tension[],
+  threats: Tension[],
+  cast: CastMember[],
+): Tension[] {
+  const items: { t: Tension; w: number; i: number }[] = [];
+  let i = 0;
+  // people you care about become attention lines — "Spouse — devoted", clickable to the person
+  for (const c of cast) {
+    const roleCap = c.role.charAt(0).toUpperCase() + c.role.slice(1);
+    const hot = /rival|feud|enemy/.test(c.role) || c.role === 'spouse' || c.role === 'child' || c.role === 'parent';
+    items.push({ t: { icon: c.icon, text: `${roleCap} — ${c.status}`, ref: { kind: c.kind, id: c.id } }, w: hot ? 5 : 3, i: i++ });
+  }
+  for (const t of threats) items.push({ t, w: 4, i: i++ }); // worries deserve attention
+  for (const t of tensions) items.push({ t, w: 3, i: i++ }); // what's changing
+  for (const t of opportunities) items.push({ t, w: 2, i: i++ }); // openings
+  // importance first, original order as a deterministic tiebreak
+  items.sort((a, b) => b.w - a.w || a.i - b.i);
+  return items.slice(0, 7).map((x) => x.t);
 }
 
 export function buildSnapshot(world: World, feedSize = 400): Snapshot {
