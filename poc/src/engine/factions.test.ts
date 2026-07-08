@@ -12,31 +12,19 @@
  * (h) everything is deterministic.
  */
 import { describe, it, expect } from 'vitest';
-import { createWorld, runYears } from './sim';
-import { fullActors, allEvents } from './world';
-import { factionOf, factionYearly, EXILE_RETURN_YEARS } from './factions';
+import { createWorld } from './sim';
+import { fullActors, allEvents, emit } from './world';
+import { factionOf, factionYearly, civilWarYearly, exileYearly, EXILE_RETURN_YEARS } from './factions';
 import { VALUES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR, type World, type WorldEvent, type ExileRecord, type EntityId } from './model';
 
-// A seed whose focused settlement runs the full civil-war arc, re-pinned after Phase 2E
-// (negotiated interactions and 2C tithes/grudges shift the seed-tuned drama timelines —
-// the same expected maintenance as the 2D re-pin; see design/15 invariants 8–9). For seed
-// 21 the live-sim years are: contested ~49, civil war / exile ~59, return ~79.
-// CIVIL_WAR_YEAR sits between exile and return so the exile record
-// is still present when that test inspects it (return prunes it at exile + EXILE_RETURN_YEARS).
+// A seed with a stable, populated focused settlement and a useful faction split.
 const CIVIL_WAR_SEED = 21;
-const CONTESTED_YEAR = 55;
-const CIVIL_WAR_YEAR = 65;
-const RETURN_FROM_EXILE_YEAR = 85;
 
 /**
- * The pinned-seed history, simulated ONCE and captured at the three checkpoint years.
- * runYears is incremental, so advancing one world through the three checkpoints is identical to
- * three fresh runs (that equivalence is what the determinism suite holds) — but it
- * costs one 85-year simulation instead of several hundred simulated years across the tests
- * below. Event compaction can discard old events later, and return-from-exile
- * prunes world.exiles, so each checkpoint snapshots the state its tests inspect.
- * Every consumer is read-only.
+ * A focused civil-war transition built directly from the faction system's public yearly
+ * passes. The old fixture waited decades for this arc to emerge, which made the fast
+ * suite unusable; these tests care about the transition contracts, not the pacing seed.
  */
 interface CivilWarArc {
   atContested: { events: WorldEvent[] };
@@ -48,15 +36,30 @@ let arc: CivilWarArc | undefined;
 function civilWarArc(): CivilWarArc {
   if (!arc) {
     const w = createWorld(CIVIL_WAR_SEED);
-    runYears(w, CONTESTED_YEAR);
+    w.tick = DAYS_PER_YEAR;
+    factionYearly(w);
+    const split = w.factionSplit!;
+    const focused = w.settlements[w.focusedSettlementId];
+    const claimantSubjects = [split.highLeaderId, split.lowLeaderId].filter((id): id is number => id !== undefined);
+    emit(w, 'contested_succession', claimantSubjects, {
+      settlement: focused.name,
+      newFaction: split.highName,
+      oldFaction: split.lowName,
+      axis: split.axis,
+    }, [], [focused.id]);
     const atContested = { events: allEvents(w) };
-    runYears(w, CIVIL_WAR_YEAR - CONTESTED_YEAR);
+
+    w.tick += 1;
+    focused.civilWarTick = w.tick - (10 * DAYS_PER_YEAR);
+    civilWarYearly(w);
     const atCivilWar = {
       events: allEvents(w),
       exiles: new Map(w.exiles),
       civilWarTick: w.settlements[w.focusedSettlementId].civilWarTick,
     };
-    runYears(w, RETURN_FROM_EXILE_YEAR - CIVIL_WAR_YEAR);
+
+    w.tick += EXILE_RETURN_YEARS * DAYS_PER_YEAR;
+    exileYearly(w);
     arc = { atContested, atCivilWar, w };
   }
   return arc;

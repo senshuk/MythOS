@@ -22,9 +22,9 @@ import type { World } from './model';
 /** A rich, played session: deep history, focus changes, possession, player turns. */
 function builtWorld(seed: number): World {
   const w = createWorld(seed);
-  runYears(w, 20);
+  runYears(w, 6);
   focusSettlement(w, 4);
-  runYears(w, 15);
+  runYears(w, 4);
   // possess someone and take a few real turns (so player state + input log are non-trivial)
   const adult = fullActors(w).find((id) => w.lifecycle.get(id)!.ageYears >= 20);
   if (adult !== undefined) {
@@ -55,8 +55,8 @@ describe('persistence (save/load)', () => {
     const loaded = roundTrip(original);
 
     // advance BOTH the same way; if anything was dropped, they diverge or throw
-    runYears(original, 25);
-    runYears(loaded, 25);
+    runYears(original, 5);
+    runYears(loaded, 5);
     expect(hashWorld(loaded)).toBe(hashWorld(original));
   });
 

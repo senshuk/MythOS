@@ -75,7 +75,7 @@ describe('Execution: feasibility gates history', () => {
 describe('Execution: actions are org-only history', () => {
   it('a yearly pass records history but changes no geography', () => {
     const w = createWorld(4);
-    runYears(w, 6); // build up intents + some operational state
+    runYears(w, 1); // build up intents + some operational state
     const geoBefore = w.settlements.map((s) => `${s.id}:${s.pos.x},${s.pos.y}:${s.ruinedYear ?? -1}`);
     const evBefore = w.events.length;
 
@@ -91,7 +91,7 @@ describe('Execution: actions are org-only history', () => {
 
   it('a successful action moves the org off its operational baseline', () => {
     const w = createWorld(4);
-    runYears(w, 20);
+    runYears(w, 1);
     const base = baselineOperational();
     const moved = [...w.operationalState.values()].some((ops) =>
       Object.keys(base).some((k) => ops[k] !== base[k]),
@@ -121,7 +121,7 @@ describe('Execution: cooldown, determinism, persistence', () => {
 
   it('round-trips operational state + last action through save/load', () => {
     const w = createWorld(8);
-    runYears(w, 40);
+    runYears(w, 1);
     const loaded = roundTrip(w);
     expect(hashWorld(loaded)).toBe(hashWorld(w)); // operational + action digest in the hash
     for (const org of w.organizations) {

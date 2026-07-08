@@ -1338,6 +1338,19 @@ export interface Tension {
   icon: string;
   text: string;
   ref?: EventRef;
+  /** the epistemic weight of the line, when it is a piece of the player's knowledge: something
+   *  KNOWN for certain, an absence of knowledge (news not yet arrived), a CONTESTED claim, or a
+   *  RUMOR. Lets presentation separate certainty from uncertainty (design/21 §4). */
+  certainty?: 'known' | 'unknown' | 'contested' | 'rumor';
+}
+
+/** How one need FEELS right now — the lived word ("Lonely", "Comfortable") plus a coarse tone,
+ *  translated from the engine's raw value in the snapshot. Presentation, not simulation. */
+export interface NeedFeel {
+  key: string;
+  feel: string;
+  tone: 'bad' | 'warn' | 'good';
+  value: number; // 0..1000, kept for the title/tooltip
 }
 
 /** A person who matters to the player — an anchor, so when the world says "Rowan heard first"
@@ -1415,9 +1428,26 @@ export interface PlayerView {
   deathYear?: number;
   settlement: string;
   needs: Needs;
+  /** each need as a lived word + tone (design/21 §5) — presentation of `needs`, shown in the journal. */
+  needFeels: NeedFeel[];
+  /** the single most pressing drive, phrased as a narrative beat ("Hunger is beginning to gnaw at
+   *  you.") and folded into the Current Situation instead of a row of meters. Omitted when nothing
+   *  is notable. */
+  bodyNote?: string;
   // the actor's current drive (a goal). `suggested` is the one-click action that
   // pursues it, when the goal points at a concrete action/target.
-  aspiration: { kind: string; label: string; targetName?: string; suggested?: Intent };
+  aspiration: {
+    kind: string;
+    label: string;
+    targetName?: string;
+    suggested?: Intent;
+    /** goal-as-diagnosis: the situation read as a narrator would ("People know your name, but it
+     *  has not spread far enough. Aeriril still holds the seat."), the best thing to do about it,
+     *  and a rough sense of how far along — written from inside the player's head, never a quest. */
+    obstacle?: string;
+    nextStep?: string;
+    progress?: number; // 0..1, coarse; omitted when not meaningfully measurable
+  };
   /** rendered text of a recently-fulfilled goal, for a transient celebration. */
   lastAchieved?: string;
   actions: PlayerActionView[];
@@ -1425,6 +1455,10 @@ export interface PlayerView {
   /** the player's life told as a linked, chronological story (life events + losses they've come
    *  to know of, annotated with how the news reached them). */
   story: StoryBeat[];
+  /** ONE feed — WHAT DESERVES MY ATTENTION. People, changes, openings and worries merged and
+   *  sorted by importance, notification-style (design/21 §7). The cockpit's second question; the
+   *  categorized lists below are its full-detail drill-down, kept for the journal. */
+  attention: Tension[];
   /** live unresolved threads — WHAT'S HAPPENING (present, changing every tick). */
   tensions: Tension[];
   /** openings the world is presenting — OPPORTUNITIES (what could I do?). */
