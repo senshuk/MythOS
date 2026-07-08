@@ -522,7 +522,7 @@ button { font-family: inherit; }
 .wv-item.c-contested { border-left-color: var(--rose); }
 .wv-item.c-rumor { border-left-color: var(--muted); color: var(--ink-dim); }
 
-.act-lead { margin-top: var(--space-4); margin-bottom: var(--space-1); }
+.act-lead { display: block; margin-top: var(--space-4); margin-bottom: var(--space-1); color: var(--muted); }
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
   background: linear-gradient(180deg, #9cc4ff, var(--cyan)); color: #0b1220; border: none; font-weight: 600;
