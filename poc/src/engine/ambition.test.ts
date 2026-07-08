@@ -18,7 +18,6 @@ import {
 import { offerableAmbitions, buildAmbitionView } from './ambition';
 import { serializeWorld, deserializeWorld } from './persistence';
 import { fullActors, getRel } from './world';
-import { bestSuitor } from './social';
 import { addThought } from './opinion';
 
 /** A world with a possessed player who holds an open feud with a living neighbour. */
@@ -84,23 +83,14 @@ describe('ambitions', () => {
   });
 
   it('resolves as THWARTED (not stuck) when an ambition becomes impossible', () => {
-    // find an unwed adult with a genuine marriage prospect (bestSuitor gates eligibility)
-    const w = createWorld(11);
-    runYears(w, 30);
-    let scenario: { player: number; target: number } | undefined;
-    for (const i of fullActors(w)) {
-      if ((w.ties.get(i)?.spouses.length ?? 0) > 0) continue;
-      const t = bestSuitor(w, i);
-      if (t !== undefined) { scenario = { player: i, target: t }; break; }
-    }
-    if (!scenario) return; // no eligible pairing this seed — nothing to assert
-    const { player, target } = scenario;
-    possess(w, player);
-    expect(chooseAmbition(w, player, 'marry', target)).toBe(true);
+    // testing reviewPlayerAmbition's thwart path directly (chooseAmbition's offer-gating is covered
+    // above) — install a 'marry' ambition, then let the prospect wed someone else. Cheap + stable:
+    // no 30-year sim + prospect-search (that was flaky against the default test timeout).
+    const { w, player, foe: prospect } = feuding(11);
+    w.playerAmbition = { id: 'marry', target: prospect, chosenTick: w.tick };
 
-    // the prospect weds someone else — the ambition can no longer be reached
-    const third = fullActors(w).find((a) => a !== player && a !== target)!;
-    w.ties.get(target)!.spouses.push(third);
+    const third = fullActors(w).find((a) => a !== player && a !== prospect)!;
+    w.ties.get(prospect)!.spouses.push(third); // the prospect weds another — no longer reachable
     reviewPlayerAmbition(w);
     expect(w.playerAmbition?.outcome).toBe('thwarted');
   });
