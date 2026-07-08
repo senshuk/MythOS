@@ -14,14 +14,17 @@
 import { type World, type EntityId } from './model';
 import { type Intent } from './intent';
 
-/** Take control of an actor. The actor keeps obeying every normal rule. */
+/** Take control of an actor. The actor keeps obeying every normal rule. A new life carries no
+ *  inherited ambition — the committed goal (if any) belonged to the previous actor. */
 export function possess(world: World, actorId: EntityId): void {
   world.playerId = actorId;
+  world.playerAmbition = undefined;
 }
 
 /** Relinquish control; the actor reverts to NPC decision-making. */
 export function release(world: World): void {
   world.playerId = undefined;
+  world.playerAmbition = undefined;
 }
 
 /** Schedule the player's intent for a given tick (appends to the replay log). */

@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -41,6 +41,8 @@ export interface SaveFile {
   playerRngState: number;
   playerId: number | null;
   playerGoal: { kind: string; target?: number } | null;
+  /** The player's committed ambition (steering state). Optional for saves predating v20. */
+  playerAmbition?: { id: string; target?: number; chosenTick: number; completedTick?: number; outcome?: 'fulfilled' | 'thwarted' };
 
   // plain arrays / objects (already JSON-safe)
   settlements: World['settlements'];
@@ -149,6 +151,7 @@ export function serializeWorld(world: World): SaveFile {
     playerRngState: world.playerRngState,
     playerId: world.playerId ?? null,
     playerGoal: world.playerGoal ?? null,
+    playerAmbition: world.playerAmbition,
 
     settlements: world.settlements,
     // store only the generic locations; settlements re-enter the registry by reference on load.
@@ -441,6 +444,7 @@ export function deserializeWorld(s: SaveFile): World {
     playerId: s.playerId ?? undefined,
     playerRngState: s.playerRngState,
     playerGoal: s.playerGoal ?? undefined,
+    playerAmbition: s.playerAmbition ?? undefined,
     playerInputs: s.playerInputs,
   };
 }

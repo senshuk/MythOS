@@ -19,6 +19,9 @@ import {
   release,
   playerTurn,
   checkPlayerGoal,
+  reviewPlayerAmbition,
+  chooseAmbition,
+  abandonAmbition,
 } from '../engine/sim';
 import { serializeWorld, deserializeWorld } from '../engine/persistence';
 import { putSave, getSave, listSaves } from '../engine/idb';
@@ -55,6 +58,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       if (!world) reset(0);
       runYears(world!, msg.years);
       checkPlayerGoal(world!); // a goal may have been fulfilled while time passed
+      reviewPlayerAmbition(world!); // …as may the player's committed ambition
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -86,6 +90,17 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       if (!world) reset(0);
       playerTurn(world!, msg.intent);
       checkPlayerGoal(world!); // the turn may have fulfilled the goal
+      reviewPlayerAmbition(world!); // …or the player's committed ambition
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'chooseAmbition': {
+      if (world && world.playerId !== undefined) chooseAmbition(world, world.playerId, msg.ambitionId, msg.target);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'abandonAmbition': {
+      if (world) abandonAmbition(world);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }

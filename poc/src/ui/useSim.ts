@@ -128,6 +128,16 @@ export function useSim(initialSeed: number) {
     send({ kind: 'playerTurn', intent });
   }, [send]);
 
+  const chooseAmbition = useCallback((ambitionId: string, target?: number) => {
+    setBusy(true);
+    send({ kind: 'chooseAmbition', ambitionId, target });
+  }, [send]);
+
+  const abandonAmbition = useCallback(() => {
+    setBusy(true);
+    send({ kind: 'abandonAmbition' });
+  }, [send]);
+
   const save = useCallback((name: string) => {
     send({ kind: 'save', name });
   }, [send]);
@@ -160,6 +170,8 @@ export function useSim(initialSeed: number) {
     possess,
     release,
     playerAct,
+    chooseAmbition,
+    abandonAmbition,
     save,
     load,
   };
