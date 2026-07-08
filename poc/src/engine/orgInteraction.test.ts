@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, forgeWorld, hashWorld, runDays } from './sim';
 import { resolveProposal, interactionById, activeAgreement, sealAgreement, pruneAgreements, neighbourPolities } from './orgInteraction';
+import { emit } from './world';
 import { getOrganization, treasuryOf, orgOpinionOf } from './organization';
 import { serializeWorld, deserializeWorld } from './persistence';
 import { ORG_INTERACTION } from '../content/fixture';
@@ -29,9 +30,10 @@ describe('the pipeline — proposal → evaluation → outcome, never mutation',
     const [a, b] = twoPolities(w);
     const def = interactionById('non_aggression')!;
 
-    // make acceptance certain: a battered, non-militaristic recipient welcomes peace —
-    // simulate raids on its border via its perception inputs (events are enough: none
-    // needed, the war-weariness baseline + neutral stance already carries a calm seat).
+    // make acceptance certain: a battered recipient welcomes peace. Raids on its seat
+    // enter its PERCEPTION (border_raids counts recent raid events), and battered
+    // borders outweigh even a proud, militaristic court's reluctance.
+    for (let i = 0; i < 4; i++) emit(w, 'raid', [], { raider: 'the wilds', victim: w.settlements[b.seatId!].name }, [], [b.seatId!]);
     const accepted = resolveProposal(w, def, a, b, { years: 20 });
     expect(accepted).toBe(true);
 

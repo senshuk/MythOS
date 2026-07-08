@@ -11,6 +11,8 @@ import { computeStanding } from './reputation';
 import { computeOpinion, addThought } from './opinion';
 import { fullActors, getRel, emit } from './world';
 import { actWeekly } from '../systems/social';
+import { isAdult } from '../systems/decide';
+import { resolveIntent } from '../systems/resolve';
 
 describe('perception: a witnessed wrongdoing', () => {
   it('is remembered by bystanders, dents the culprit’s standing, and is felt as dread', () => {
@@ -106,7 +108,10 @@ describe('perception through the real resolver (the live weekly loop)', () => {
   // the weekly social pass runs, so it's fast and not a 100-year simulation.
   const build = () => {
     const w = createWorld(99);
-    const [a, b] = fullActors(w);
+    // two ADULTS by their own species' maturity (children skip the weekly act loop,
+    // so a not-yet-mature pair would never brawl)
+    const adults = fullActors(w).filter((id) => isAdult(w, id));
+    const [a, b] = adults;
     // force a bitter feud so the brawl→perception path is actually exercised
     const edge = getRel(w, a, b);
     for (let i = 0; i < 8; i++) addThought(edge, 'slighted', w.tick);
@@ -114,7 +119,19 @@ describe('perception through the real resolver (the live weekly loop)', () => {
     edge.flags.rival = true;
     for (let week = 0; week < 400; week++) {
       w.tick += 7;
+      // keep the feud FED (a live feud is renewed by fresh wounds) — otherwise the
+      // slights age out mid-run and a warm pair can reconcile before any brawl fires
+      if (week % 40 === 0 && w.lifecycle.get(a)!.alive && w.lifecycle.get(b)!.alive) {
+        addThought(edge, 'slighted', w.tick);
+      }
       actWeekly(w, fullActors(w));
+      // the feuding pair CROSS PATHS weekly, through the real resolver (their own
+      // aspirations would otherwise point them at courtships across the village and
+      // the pair might never meet — this pins the brawl→perception wiring, which is
+      // what the test is for, while the loop above keeps the whole village live)
+      if (w.lifecycle.get(a)!.alive && w.lifecycle.get(b)!.alive) {
+        resolveIntent(w, a, { kind: 'socialize', target: b }, w.rng);
+      }
     }
     return w;
   };

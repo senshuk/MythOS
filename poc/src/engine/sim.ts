@@ -36,6 +36,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
+import { computeMood, moodWord, moodReasons, pruneSelfThoughts } from './mood';
 import { computeStanding, standingReasons, emptyReputation, standingOf } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
@@ -107,6 +108,7 @@ export function createWorld(seed: number, focus = true): World {
     names: new Map(),
     lifecycle: new Map(),
     needs: new Map(),
+    selfThoughts: new Map(),
     traits: new Map(),
     personality: new Map(),
     profession: new Map(),
@@ -198,6 +200,7 @@ export function stepTick(world: World): void {
     orgInteractionYearly(world); // ...address proposals to their neighbours (Proposal→Evaluation→Outcome)
     orgActionYearly(world); // ...and execute a bounded domestic action (Intent→Action→Outcome→History)
     if (hasFocus) pruneRelationshipGraph(world); // drop expired, non-milestone acquaintances
+    if (hasFocus) for (const id of actors) pruneSelfThoughts(world, id); // bound mood memory
     chronicleYearly(world); // remember the year's most notable events (incl. director's)
     compactEvents(world); // prune unreferenced old events; archive referenced ones
   }
@@ -380,6 +383,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       id: s.id,
       name: s.name,
       nameMeaning: s.nameMeaning,
+      landmark: s.landmark,
       detailed: s.detailed,
       population: pop,
       foundedYear: s.foundedYear,
@@ -708,6 +712,12 @@ function buildPlayerBeliefs(world: World, id: EntityId): Tension[] {
   return b.slice(0, 6);
 }
 
+/** MOOD as the UI sees it: the number, the lived word, and every reason behind it. */
+function buildMoodView(world: World, id: EntityId): { value: number; word: string; reasons: { label: string; value: number }[] } {
+  const value = Math.round(computeMood(world, id));
+  return { value, word: moodWord(value), reasons: moodReasons(world, id) };
+}
+
 /**
  * NEEDS AS LIVED EXPERIENCE (design/21 §5) — translate each raw drive into how it FEELS from the
  * inside ("Lonely", "Comfortable"), with a coarse tone. The words are pack flavour (NEED_FEELS);
@@ -885,6 +895,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
     needFeels: buildNeedFeels(world, id),
+    mood: buildMoodView(world, id),
     bodyNote: buildBodyNote(world, id),
     aspiration: {
       kind: asp.kind,
@@ -1143,7 +1154,11 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
     reasons: standingReasons(rep, world.tick),
   };
 
-  return { actor: actorView(world, id), relationships, lifeEvents, reputation };
+  // mood, for actors simulated at full fidelity (any actor, not just the player —
+  // every soul's inner weather is inspectable, per Legibility)
+  const mood = world.selfThoughts.has(id) ? buildMoodView(world, id) : undefined;
+
+  return { actor: actorView(world, id), relationships, lifeEvents, reputation, mood };
 }
 
 /** Walk the causal ancestry of an event (breadth-first, de-duplicated).
@@ -1267,11 +1282,17 @@ export function canonicalize(world: World): string {
     for (const [, e] of world.rels.get(id)!) relSum += computeOpinion(e, world.tick);
     relSum = Math.round(relSum);
     const standing = Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick));
+    // mood memory digest: count + summed value of stored self-thoughts (mood steers
+    // NPC behaviour via mental breaks, so it belongs in the determinism hash)
+    const st = world.selfThoughts.get(id) ?? [];
+    let stSum = 0;
+    for (const t of st) stSum += t.value;
     parts.push(
       `#${id}:${idn.given}.${idn.family}.${idn.speciesId}.${idn.sex}.` +
         `age${lc.ageYears}.alive${lc.alive ? 1 : 0}.death${lc.deathTick ?? -1}.` +
         `fid${world.fidelity.get(id) ?? '-'}.home${world.homeSettlement.get(id) ?? -1}.` +
-        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}.faith${world.faith.get(id) ?? ''}`,
+        `sp${ties.spouses.join('-') || -1}.ch${ties.children.length}.rels${world.rels.get(id)!.size}.rsum${relSum}.rep${standing}.faith${world.faith.get(id) ?? ''}.` +
+        `st${st.length}.stv${Math.round(stSum)}`,
     );
   };
   for (const id of world.entities) serializeEntity(id);

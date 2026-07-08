@@ -35,9 +35,18 @@ function bilinear(arr: Float32Array, N: number, gx: number, gy: number): number 
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
 }
 
+/** A named geographic feature to letter onto the map (name from the pack's tongue). */
+export interface TerrainLabel {
+  x: number; // world coords
+  y: number;
+  text: string;
+  kind: 'sea' | 'lake' | 'range' | 'river';
+}
+
 /** Paint the engine's geography, coloured by the pack theme. `vb` matches the overlay
- *  SVG viewBox so settlements land exactly on the terrain that bred them. */
-export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme): void {
+ *  SVG viewBox so settlements land exactly on the terrain that bred them. `labels`
+ *  (optional) letters the named features — seas, ranges, great rivers — onto the map. */
+export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[]): void {
   const W = canvas.width;
   const H = canvas.height;
   const ctx = canvas.getContext('2d');
@@ -104,6 +113,26 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   grd.addColorStop(1, `rgba(${v[0]},${v[1]},${v[2]},0.5)`);
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
+
+  // letter the named features onto the land — an atlas, not a heatmap. Seas get the
+  // largest hand; ranges and great rivers a smaller one. Skips labels outside the view.
+  if (labels && labels.length) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const l of labels) {
+      const px = ((l.x - vb.x) / vb.w) * W;
+      const py = ((l.y - vb.y) / vb.h) * H;
+      if (px < 24 || py < 10 || px > W - 24 || py > H - 10) continue;
+      const size = l.kind === 'sea' ? 15 : l.kind === 'range' ? 12 : 11;
+      ctx.font = `italic ${size}px Spectral, Georgia, serif`;
+      const ink = l.kind === 'sea' || l.kind === 'lake' ? 'rgba(214, 228, 240, 0.72)' : 'rgba(240, 232, 214, 0.78)';
+      ctx.strokeStyle = 'rgba(10, 14, 20, 0.55)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(l.text, px, py);
+      ctx.fillStyle = ink;
+      ctx.fillText(l.text, px, py);
+    }
+  }
 }
 
 // --- starfield (space setting) — its own noise for nebulae + stars ----------

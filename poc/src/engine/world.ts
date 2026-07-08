@@ -19,6 +19,9 @@ import {
 import { NEEDS, monogamousOf, valueProfile, temperamentProfile, patronDeityOf, faithProbability } from '../content/fixture';
 import { Rng, mixSeed } from './rng';
 import { pruneThoughts } from './opinion';
+// addSelfThought is a pure mark op (no personality read); the module cycle through
+// mood.ts→social.ts→world.ts is function-only and hoisted, so it is init-safe.
+import { addSelfThought } from './mood';
 
 export interface ActorProps {
   given: string;
@@ -84,6 +87,7 @@ export function createActor(world: World, p: ActorProps): EntityId {
     alive: true,
   });
   world.needs.set(id, midNeeds());
+  world.selfThoughts.set(id, []); // mood state — begins unburdened
   world.traits.set(id, [...p.traits]);
   world.profession.set(id, p.profession);
   world.ties.set(id, { spouses: [], parents: p.parents ? [...p.parents] : [], children: [] });
@@ -281,6 +285,14 @@ export function killActor(
     const e = world.rels.get(id)!.get(spouse);
     if (e) e.flags.spouse = false;
     emit(world, 'widowed', [spouse], {}, [deathId]);
+    addSelfThought(world, spouse, 'grief_spouse', { cause: deathId });
+  }
+
+  // the bereaved mourn: surviving parents and children carry the loss (mood.ts) —
+  // a no-op for kin not simulated at full fidelity (the addSelfThought LOD gate).
+  const kinTies = world.ties.get(id)!;
+  for (const kin of [...kinTies.parents, ...kinTies.children]) {
+    if (world.lifecycle.get(kin)?.alive) addSelfThought(world, kin, 'grief_kin', { cause: deathId });
   }
 
   // sever relationships from the LIVING graph: the dead no longer count as anyone's
@@ -324,6 +336,7 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   world.identity.delete(id);
   world.lifecycle.delete(id);
   world.needs.delete(id);
+  world.selfThoughts.delete(id);
   world.traits.delete(id);
   world.personality.delete(id);
   world.profession.delete(id);

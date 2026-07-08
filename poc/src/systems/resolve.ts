@@ -22,7 +22,8 @@ import { witnessDeed, perceiveEvent } from '../engine/perception';
 import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
-import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from '../content/fixture';
+import { addSelfThought, computeMood, MOOD_NEUTRAL } from '../engine/mood';
+import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, BINGE_COST } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
@@ -61,6 +62,8 @@ export function resolveIntent(world: World, a: EntityId, intent: Intent, rng: Rn
     case 'provoke':
       if (t !== undefined) resolveProvoke(world, a, t, rng);
       return;
+    case 'break':
+      return resolveBreak(world, a, intent, rng);
     default:
       // a verb the engine doesn't know — a pack-specific action (content/actions.ts).
       return resolveExtraAction(world, a, intent, rng);
@@ -116,8 +119,11 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   // with how the town REGARDS the other: a renowned soul gets a warm welcome, a
   // notorious one the cold shoulder (REPUTATION_EFFECTS.reception, pack-tunable). This
   // is "who befriends/avoids you" — public standing colouring everyday encounters.
+  // MOOD also colours it: a miserable soul sours company, a bright one lifts it — so a
+  // run of grief bleeds into quarrels (RimWorld's social-fight spiral, gently).
   const pPos = clamp(
-    0.56 + bias + affinity * 0.1 + opinion * 0.00025 + standingOf(world, b) * REPUTATION_EFFECTS.reception,
+    0.56 + bias + affinity * 0.1 + opinion * 0.00025 + standingOf(world, b) * REPUTATION_EFFECTS.reception
+      + (computeMood(world, a) - MOOD_NEUTRAL) * 0.00012,
     0.05,
     0.95,
   );
@@ -142,9 +148,15 @@ function resolveInteract(world: World, a: EntityId, b: EntityId, bias: number, r
   const settled = edge.flags.friend || edge.flags.spouse || edge.flags.feud;
   if (!settled && magnitude > 95) {
     if (positive && rng.chance(0.12)) {
-      addThought(edge, 'kindness', world.tick, { cause: emit(world, 'kindness', [a, b]) });
+      const kid = emit(world, 'kindness', [a, b]);
+      addThought(edge, 'kindness', world.tick, { cause: kid });
+      addSelfThought(world, a, 'heartened', { cause: kid });
+      addSelfThought(world, b, 'heartened', { cause: kid });
     } else if (!positive && rng.chance(0.18)) {
-      addThought(edge, 'slighted', world.tick, { cause: emit(world, 'dispute', [a, b]) });
+      const did = emit(world, 'dispute', [a, b]);
+      addThought(edge, 'slighted', world.tick, { cause: did });
+      addSelfThought(world, a, 'insulted', { cause: did });
+      addSelfThought(world, b, 'insulted', { cause: did });
     }
   }
 
@@ -163,6 +175,7 @@ function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   const edge = getRel(world, a, b);
   const giftId = emit(world, 'kindness', [a, b]);
   addThought(edge, 'kindness', world.tick, { cause: giftId });
+  addSelfThought(world, b, 'heartened', { cause: giftId });
   bumpBelonging(world, a, 30);
   bumpBelonging(world, b, 30);
   witnessDeed(world, giftId, a, b, 'generosity'); // public generosity builds standing
@@ -173,7 +186,9 @@ function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
 function resolveProvoke(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
-  addThought(edge, 'slighted', world.tick, { cause: emit(world, 'dispute', [a, b]) });
+  const slightId = emit(world, 'dispute', [a, b]);
+  addThought(edge, 'slighted', world.tick, { cause: slightId });
+  addSelfThought(world, b, 'insulted', { cause: slightId });
   bumpBelonging(world, a, -16);
   bumpBelonging(world, b, -16);
   promote(world, a, b, edge, rng);
@@ -242,11 +257,17 @@ function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
   edge.flags.feud = false;
   edge.flags.rival = false;
   addThought(edge, 'wed', world.tick); // permanent, strong positive
-  emit(world, 'married', [a, b], {}, thoughtCauses(edge, true));
+  const wedId = emit(world, 'married', [a, b], {}, thoughtCauses(edge, true));
+  addSelfThought(world, a, 'newly_wed', { cause: wedId });
+  addSelfThought(world, b, 'newly_wed', { cause: wedId });
 }
 
 function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng): void {
   const brawlId = emit(world, 'brawl', [a, b], {}, thoughtCauses(edge, false));
+
+  // violence shakes everyone it touches — survivor moods carry the mark (mood.ts)
+  addSelfThought(world, a, 'brawl_shock', { cause: brawlId });
+  addSelfThought(world, b, 'brawl_shock', { cause: brawlId });
 
   // someone may die; most brawls are non-lethal
   if (!rng.chance(0.45)) {
@@ -262,4 +283,38 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   const deathId = killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
   witnessDeed(world, deathId, killer, victim, 'bloodshed');
   if (deathId >= 0) perceiveEvent(world, deathId); // witnesses come to know the death, not just fear the killer
+}
+
+/**
+ * A MENTAL BREAK resolving — the mind forces the act, then buys back a little peace
+ * (catharsis, the RimWorld release valve that stops a broken soul breaking weekly).
+ * The break is a PUBLIC event (subjects: the actor, plus the target if it lashed out),
+ * so history and the chronicle can remember the year a neighbour lost their grip.
+ */
+function resolveBreak(world: World, a: EntityId, intent: Intent, rng: Rng): void {
+  const mode = intent.mode ?? 'withdraw';
+  const t = intent.target;
+  const subjects = mode === 'lash_out' && t !== undefined ? [a, t] : [a];
+  const breakId = emit(world, 'mental_break', subjects, { mode });
+  addSelfThought(world, a, 'catharsis', { cause: breakId });
+
+  if (mode === 'lash_out' && t !== undefined && isAlive(world, t)) {
+    // an uncontrolled public outburst: a guaranteed slight through the normal
+    // opinion/escalation machinery — a break can seed a real rivalry.
+    const edge = getRel(world, a, t);
+    addThought(edge, 'slighted', world.tick, { cause: breakId });
+    addSelfThought(world, t, 'insulted', { cause: breakId });
+    bumpBelonging(world, a, -16);
+    bumpBelonging(world, t, -16);
+    promote(world, a, t, edge, rng);
+    return;
+  }
+  if (mode === 'binge') {
+    // drowning sorrows: the purse pays for the mind's relief
+    const n = world.needs.get(a);
+    if (n) n[WEALTH_NEED] = clamp(n[WEALTH_NEED] - BINGE_COST, 0, 1000);
+    return;
+  }
+  // withdraw: the world recedes; companionship starves a little
+  bumpBelonging(world, a, -60);
 }

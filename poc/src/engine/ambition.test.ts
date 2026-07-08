@@ -29,7 +29,10 @@ function feuding(seed: number, years = 8): { w: ReturnType<typeof createWorld>; 
   const foe = actors.find((a) => a !== player && w.lifecycle.get(a)!.alive)!;
   possess(w, player);
   const edge = getRel(w, player, foe);
-  for (let i = 0; i < 4; i++) addThought(edge, 'slighted', w.tick); // sour it well below zero
+  // sour it DECISIVELY below zero — this forced feud must out-bitter any feud the
+  // player picked up organically, so strongestFeud (the 'rival' offer) points here
+  for (let i = 0; i < 10; i++) addThought(edge, 'slighted', w.tick);
+  for (let i = 0; i < 3; i++) addThought(edge, 'feared', w.tick);
   edge.flags.feud = true;
   return { w, player, foe };
 }

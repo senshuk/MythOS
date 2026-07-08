@@ -1253,6 +1253,87 @@ export function thoughtSpec(kind: string): ThoughtSpec {
   return THOUGHT_SPECS[kind] ?? NEUTRAL_THOUGHT;
 }
 
+// ---- mood: how an actor's OWN life feels (engine/mood.ts reads these) ----
+// SELF-THOUGHTS reuse the exact Mark+ThoughtSpec machinery of opinion-thoughts, but are
+// held about one's OWN life rather than about another person: grief, joy, humiliation.
+// Their diminishing sum (plus the needs of the moment and the actor's temperament) is
+// MOOD. PACK DATA like THOUGHT_SPECS: a stoic universe mourns briefly, a haunted one
+// never stops.
+export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
+  grief_spouse: { base: -180, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.7, label: 'mourning a spouse' },
+  grief_kin: { base: -110, durationTicks: Math.round(1.5 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.7, label: 'mourning kin' },
+  insulted: { base: -35, durationTicks: 90, stackLimit: 5, mult: 0.75, label: 'was slighted' },
+  heartened: { base: 30, durationTicks: 90, stackLimit: 5, mult: 0.75, label: 'a kindness received' },
+  newly_wed: { base: 120, durationTicks: DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'newly wed' },
+  child_born: { base: 80, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.8, label: 'a child born' },
+  brawl_shock: { base: -60, durationTicks: 150, stackLimit: 3, mult: 0.75, label: 'shaken by a brawl' },
+  fearful_times: { base: -70, durationTicks: DAYS_PER_YEAR, stackLimit: 2, mult: 0.7, label: 'living through fearful times' },
+  good_times: { base: 55, durationTicks: DAYS_PER_YEAR, stackLimit: 2, mult: 0.7, label: 'living through good times' },
+  // the strange peace after a mental break — RimWorld's catharsis. It is what stops a
+  // broken soul breaking again every week: the break itself buys back some mood.
+  catharsis: { base: 90, durationTicks: 60, stackLimit: 1, mult: 1, label: 'a weight lifted' },
+};
+
+export function selfThoughtSpec(kind: string): ThoughtSpec {
+  return SELF_THOUGHT_SPECS[kind] ?? NEUTRAL_THOUGHT;
+}
+
+// How much each NEED colours mood, as a situational (derived, never stored) thought.
+// The band factors map the five NEED_FEELS bands onto a share of the weight: an empty
+// need weighs on the soul far more than a full one lifts it (loss aversion).
+export const MOOD_NEED_WEIGHTS: Record<string, number> = {
+  food: 90,
+  wealth: 40,
+  safety: 60,
+  esteem: 50,
+  belonging: 70,
+};
+export const MOOD_NEED_BAND_FACTOR: [number, number, number, number, number] = [-1, -0.45, 0, 0.15, 0.3];
+
+/** The dispositional mood baseline — some souls simply run brighter. Warm people carry
+ *  more cheer, the hot-tempered simmer, the bold shrug more off. (Temperament axes are
+ *  roughly −100..100, so the baseline lands in about ±60.) */
+export function moodBaseline(temperament: Record<string, number>): number {
+  return (temperament.warmth ?? 0) * 0.45 - (temperament.temper ?? 0) * 0.35 + (temperament.boldness ?? 0) * 0.1;
+}
+
+/** Mood as a lived word, same five-band pattern as NEED_FEELS (0=empty … 4=full). */
+export const MOOD_FEELS: [string, string, string, string, string] = [
+  'At breaking point',
+  'Miserable',
+  'Steady',
+  'Content',
+  'Bright',
+];
+
+// ---- mental breaks: what a mind does when mood collapses ----
+// When mood falls below the actor's threshold, each week risks a BREAK: the mind
+// forces an action the actor would not choose. Which break is temperament-weighted
+// data — the hot-tempered lash out, the shy withdraw, the aimless drown their sorrows.
+export interface BreakSpec {
+  id: string; // becomes Intent kind 'break' mode + event flavour
+  label: string; // rendered in prose ("lashed out at …")
+  weight: number; // base likelihood weight
+  /** additive weight per temperament axis (weight + Σ axis*factor, floored at 0). */
+  temperament?: Partial<Record<TemperamentAxis, number>>;
+}
+export const BREAKS: BreakSpec[] = [
+  { id: 'lash_out', label: 'lashed out', weight: 10, temperament: { temper: 0.28, warmth: -0.08 } },
+  { id: 'withdraw', label: 'withdrew from the world', weight: 10, temperament: { sociability: -0.16, boldness: -0.08 } },
+  { id: 'binge', label: 'drowned their sorrows', weight: 8, temperament: { drive: -0.1 } },
+];
+
+/** Mood below this risks a weekly break — shifted by temperament: the volcanic snap
+ *  while merely weary, the serene endure the depths. Clamped so no one is unbreakable. */
+export function breakThreshold(temperament: Record<string, number>): number {
+  const t = 250 + (temperament.temper ?? 0) * 0.5 - (temperament.warmth ?? 0) * 0.2;
+  return t < 120 ? 120 : t > 380 ? 380 : t;
+}
+/** Weekly break chance scales from 0 (at the threshold) to this (at mood 0). */
+export const BREAK_CHANCE_MAX = 0.35;
+/** How the mind pays for a binge (wealth drained per episode). */
+export const BINGE_COST = 90;
+
 // ---- reputation: what each kind of deed does to public standing ----
 // How a deed marks an actor's standing with the whole community (value, decay, and
 // any opinion it sows in each witness). PACK DATA, like THOUGHT_SPECS: a harsher

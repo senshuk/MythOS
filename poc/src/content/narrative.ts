@@ -75,6 +75,12 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   dispute: (n) => `${n(0)} and ${n(1)} quarrelled.`,
   kindness: (n) => `${n(0)} did ${n(1)} a kindness.`,
   brawl: (n) => `${n(0)} and ${n(1)} came to blows.`,
+  mental_break: (n, d, c) =>
+    d.mode === 'lash_out' && c >= 2
+      ? `${n(0)} broke under the weight of their sorrows and turned on ${n(1)}.`
+      : d.mode === 'binge'
+        ? `${n(0)} broke under the weight of their sorrows and drowned them for days.`
+        : `${n(0)} broke under the weight of their sorrows and withdrew from the world.`,
   condemned: (n, d) => `${n(0)} was condemned by ${d.deity ?? 'the gods'} for their deed.`,
   apostasy: (n, d) => `${n(0)} renounced their faith in ${d.deity ?? 'the gods'}.`,
   converted: (n, d) => `${n(0)} found faith in ${d.deity ?? 'the gods'}.`,
@@ -126,6 +132,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 10; // finding faith is quiet — visible in the recent feed, not the annals
     case 'died_brawl':
       return 72;
+    case 'mental_break':
+      return 22; // a neighbour losing their grip is village-memorable, below a death
     case 'conquest':
       return 64; // one settlement razing another — a landmark of war
     case 'ruined':

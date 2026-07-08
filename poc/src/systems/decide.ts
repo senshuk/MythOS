@@ -16,6 +16,7 @@ import { type World, type EntityId } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { currentAspiration } from '../engine/aspiration';
 import { isAlive } from '../engine/world';
+import { maybeBreak } from '../engine/mood';
 import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED } from '../content/fixture';
 
 export function isAdult(world: World, id: EntityId): boolean {
@@ -42,6 +43,11 @@ export function choosePartner(world: World, a: EntityId, adults: EntityId[]): En
 /** Produce this NPC's intent for the turn. `adults` is the live adult pool (passed
  *  in so partner selection draws RNG identically to the original loop). */
 export function decideActor(world: World, a: EntityId, adults: EntityId[]): Intent {
+  // a collapsed mood preempts free will: the mind may force this week's act (mood.ts).
+  // Drawn from the settlement stream — the same stream this producer's other choices use.
+  const broke = maybeBreak(world, a, world.rng);
+  if (broke) return broke;
+
   // subsistence first: hunger (or poverty) motivates plying your profession.
   const needs = world.needs.get(a)!;
   if (needs[SUBSISTENCE_NEED] < 300 || needs[WEALTH_NEED] < 250) return { kind: 'work' };

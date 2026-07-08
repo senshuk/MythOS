@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type SocialTies, type RelEdge, type Reputation, type Belief, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type Thought, type SocialTies, type RelEdge, type Reputation, type Belief, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
 
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -91,6 +91,8 @@ export interface SaveFile {
   names: [number, string][];
   lifecycle: [number, Lifecycle][];
   needs: [number, Needs][];
+  /** per-actor self-thoughts (mood memory). Optional for saves predating v21. */
+  selfThoughts?: [number, Thought[]][];
   traits: [number, string[]][];
   personality: [number, { values: Record<string, number>; temperament: Record<string, number> }][];
   profession: [number, string][];
@@ -190,6 +192,7 @@ export function serializeWorld(world: World): SaveFile {
     names: [...world.names],
     lifecycle: [...world.lifecycle],
     needs: [...world.needs],
+    selfThoughts: [...world.selfThoughts],
     traits: [...world.traits],
     personality: [...world.personality],
     profession: [...world.profession],
@@ -367,6 +370,9 @@ export function deserializeWorld(s: SaveFile): World {
     names: new Map(s.names),
     lifecycle: new Map(s.lifecycle),
     needs: new Map(s.needs),
+    // pre-v21 saves carry no mood memory: every living actor starts unburdened, but the
+    // MAP ENTRY must exist for full actors (it is the addSelfThought LOD gate).
+    selfThoughts: new Map(s.selfThoughts ?? s.needs.map(([id]) => [id, []] as [number, Thought[]])),
     traits: new Map(s.traits),
     personality: new Map(s.personality ?? []), // innate value profiles, fixed at birth
     profession: new Map(s.profession),

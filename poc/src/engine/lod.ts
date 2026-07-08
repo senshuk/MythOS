@@ -75,8 +75,29 @@ import {
   SETTLEMENT_LOCATION_TYPE,
 } from '../content/fixture';
 import { biomeOf } from '../content/biomes';
-import { tongueFor, placeName } from '../content/languages';
+import { tongueFor, placeName, featureName } from '../content/languages';
+import { SurfaceSubstrate } from './substrate';
+import { nearestFeatureAt, type GeoFeature } from './geography';
 import { deathProbability } from '../systems/lifecycle';
+
+// how a settlement relates to the kind of landmark it sits beside (pack-neutral prose —
+// purely geographic, no universe assumptions). Chosen by the feature's kind.
+const LANDMARK_RELATION: Record<GeoFeature['kind'], string> = {
+  sea: 'on the shores of',
+  lake: 'beside',
+  range: 'in the shadow of',
+  river: 'on the banks of',
+};
+
+/** The named landmark a site sits beside, resolved through the pack's tongue — a
+ *  settlement's sense of place. Surface worlds only (a galaxy has no shoreline). */
+function landmarkFor(world: World, pos: { x: number; y: number }): Settlement['landmark'] {
+  const sub = world.substrate;
+  if (!(sub instanceof SurfaceSubstrate)) return undefined;
+  const near = nearestFeatureAt(sub.geography, pos.x, pos.y);
+  if (!near) return undefined;
+  return { name: featureName(world.seed, near.feature).name, kind: near.feature.kind, relation: LANDMARK_RELATION[near.feature.kind] };
+}
 
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;
 /** The humanlike lifespan the aggregate mortality baselines were tuned against;
@@ -238,6 +259,7 @@ export function createSettlements(world: World): void {
       governmentId: d.people.government,
       cultureId: d.people.culture,
       capacity: d.site.capacity,
+      landmark: landmarkFor(world, d.site.pos),
       macro,
       econ: initEconomy(gen, pop, d.site),
     };

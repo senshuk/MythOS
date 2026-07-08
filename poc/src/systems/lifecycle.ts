@@ -9,6 +9,7 @@ import { type World, type EntityId, DAYS_PER_YEAR } from '../engine/model';
 import { createActor, emit, primarySpouse } from '../engine/world';
 import { killActor } from '../engine/world';
 import { perceiveEvent } from '../engine/perception';
+import { addSelfThought } from '../engine/mood';
 import {
   speciesById,
   generateGiven,
@@ -101,7 +102,10 @@ function bear(world: World, bearer: EntityId): void {
   world.ties.get(bearer)!.children.push(childId);
   if (mate !== undefined) world.ties.get(mate)!.children.push(childId);
 
-  emit(world, 'born', mate !== undefined ? [childId, bearer, mate] : [childId, bearer], {});
+  const birthId = emit(world, 'born', mate !== undefined ? [childId, bearer, mate] : [childId, bearer], {});
+  // a child is a joy the parents carry for a while (mood.ts)
+  addSelfThought(world, bearer, 'child_born', { cause: birthId });
+  if (mate !== undefined) addSelfThought(world, mate, 'child_born', { cause: birthId });
 }
 
 export const LIFECYCLE_CADENCE_DAYS = DAYS_PER_YEAR;

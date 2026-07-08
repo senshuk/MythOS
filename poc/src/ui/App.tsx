@@ -11,7 +11,8 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraVie
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
-import { paintTerrain, paintStarfield } from './terrain';
+import { paintTerrain, paintStarfield, type TerrainLabel } from './terrain';
+import { featureName } from '../content/languages';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -499,7 +500,16 @@ function RegionMap({
     if (sub instanceof StarfieldSubstrate) {
       if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
     } else if (sub instanceof SurfaceSubstrate) {
-      if (SURF_THEME) paintTerrain(c, sub.geography, MAP_VB, SURF_THEME);
+      if (SURF_THEME) {
+        // the atlas layer: the generator's named features, each in the world's old tongue
+        const labels: TerrainLabel[] = sub.geography.features.map((f) => ({
+          x: f.center.x,
+          y: f.center.y,
+          text: featureName(seed, f).name,
+          kind: f.kind,
+        }));
+        paintTerrain(c, sub.geography, MAP_VB, SURF_THEME, labels);
+      }
     }
   }, [seed, sub]);
 
@@ -1084,6 +1094,13 @@ function PlayerPanel({
                 {player.aspiration.obstacle && <p className="situation-read">{player.aspiration.obstacle}</p>}
               </>
             )}
+            {/* MOOD — how this life feels, with every reason on hover (mood.ts) */}
+            <p
+              className={`situation-mood ${player.mood.value < 250 ? 'mood-bad' : player.mood.value < 400 ? 'mood-warn' : player.mood.value < 600 ? '' : 'mood-good'}`}
+              title={player.mood.reasons.map((r) => `${r.value >= 0 ? '+' : ''}${r.value} ${r.label}`).join('\n')}
+            >
+              Spirits: {player.mood.word.toLowerCase()}
+            </p>
             {player.bodyNote && <p className="situation-body">{player.bodyNote}</p>}
             {!player.ambition && player.aspiration.progress !== undefined && (
               <div className="goal-progress" title={`${Math.round(player.aspiration.progress * 100)}% of the way`}>
@@ -1447,6 +1464,24 @@ function Inspector({
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}{actorDetail.actor.exiledFrom ? <span className="exile-status"> · exile from {actorDetail.actor.exiledFrom}</span> : null}</p>
 
+          {actorDetail.mood && (
+            <>
+              <h4>
+                Mood: {actorDetail.mood.word} <span className="muted">({actorDetail.mood.value})</span>
+              </h4>
+              {actorDetail.mood.reasons.length > 0 && (
+                <div className="reasons">
+                  {actorDetail.mood.reasons.map((why, i) => (
+                    <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
+                      {why.value >= 0 ? '+' : ''}
+                      {why.value} {why.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           {actorDetail.reputation.reasons.length > 0 && (
             <>
               <h4>
@@ -1521,6 +1556,7 @@ function Inspector({
         <div>
           <h3>{settV?.name ?? 'Settlement'}</h3>
           {settV?.nameMeaning && <p className="name-gloss">“{settV.nameMeaning}”, in the founders’ tongue</p>}
+          {settV?.landmark && <p className="name-gloss">{settV.landmark.relation} {settV.landmark.name}</p>}
           {settV && (
             <p className="muted">
               {settV.ruinedYear !== undefined

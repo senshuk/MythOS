@@ -16,6 +16,7 @@ import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PE
 import { Rng } from './rng';
 import { fullActors, emit, clamp } from './world';
 import { killActor } from './world';
+import { addSelfThought } from './mood';
 import { standAgainst } from './perception';
 import { expand } from './grammar';
 import { WONDER_GRAMMAR, BEAST_GRAMMAR, OMEN_GRAMMAR, BOONS } from '../content/narrative';
@@ -141,7 +142,10 @@ function beast(world: World, def: DirectorDef, rng: Rng): void {
   const beastId = emit(world, 'beast', [], { name: s.name, beast: expand(BEAST_GRAMMAR, 'beast', rng, {}), toll }, [], [s.id]);
   // if the beast fell on the FOCUSED town, its bravest soul stands against it and earns
   // valour (perception is off the shared stream, so this doesn't perturb the director RNG).
-  if (s.detailed && s.id === world.focusedSettlementId) standAgainst(world, beastId, s.id);
+  if (s.detailed && s.id === world.focusedSettlementId) {
+    standAgainst(world, beastId, s.id);
+    markTimes(world, 'fearful_times', beastId); // terror settles on every villager's mood
+  }
 }
 
 /** A strange portent — flavor, no mechanical effect. */
@@ -159,8 +163,15 @@ function goodYear(world: World, def: DirectorDef, rng: Rng): void {
   const where = representativeSettlement(world);
   if (where) {
     where.econ.wealth += 180 * def.intensity;
-    emit(world, 'boon', [], { kind: BOONS[rng.int(BOONS.length)], name: where.name }, [], [where.id]);
+    const boonId = emit(world, 'boon', [], { kind: BOONS[rng.int(BOONS.length)], name: where.name }, [], [where.id]);
+    if (where.id === world.focusedSettlementId) markTimes(world, 'good_times', boonId); // a good year lifts every mood
   }
+}
+
+/** An incident that touches the FOCUSED settlement colours every villager's mood —
+ *  the times themselves become a self-thought (mood.ts; LOD-gated per actor). */
+function markTimes(world: World, kind: 'fearful_times' | 'good_times', cause: number): void {
+  for (const id of fullActors(world)) addSelfThought(world, id, kind, { cause });
 }
 
 /** The settlement a world-level boon is named after: the focused one if there is
@@ -195,7 +206,8 @@ function plague(world: World, def: DirectorDef, rng: Rng): void {
       const victim = live[rng.int(live.length)];
       if (world.lifecycle.get(victim)!.alive) killActor(world, victim, world.tick, 'died', [], []);
     }
-    emit(world, 'plague', [], { name: world.settlements[world.focusedSettlementId].name, toll }, [], [world.focusedSettlementId]);
+    const plagueId = emit(world, 'plague', [], { name: world.settlements[world.focusedSettlementId].name, toll }, [], [world.focusedSettlementId]);
+    markTimes(world, 'fearful_times', plagueId); // the survivors live in dread of it
     return;
   }
   const aggs = world.settlements.filter((s) => !s.detailed && s.macro.population > 40);

@@ -768,6 +768,10 @@ export interface Settlement extends Location {
   id: SettlementId;
   /** cached name of the founding figure — set at founding, avoids O(figures) scan per snapshot. */
   founderName?: string;
+  /** the named geographic feature this settlement sits beside (its sense of place —
+   *  "on the shores of the Skarnald"), resolved at founding from the substrate. Absent
+   *  for inland sites near nothing notable, and for non-surface worlds. */
+  landmark?: { name: string; kind: string; relation: string };
   /** a settlement always has a concrete map position (narrows Location.pos). */
   pos: WorldPosition;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
@@ -895,6 +899,12 @@ export interface World {
   names: Map<EntityId, string>;
   lifecycle: Map<EntityId, Lifecycle>;
   needs: Map<EntityId, Needs>;
+  /** per-actor SELF-THOUGHTS: sourced, decaying marks about one's OWN life (grief, joy,
+   *  humiliation) — the same Thought machinery as relationship opinions, held on the self.
+   *  Their diminishing sum + situational need-feelings + temperament = MOOD (mood.ts).
+   *  Full-fidelity actors only (the LOD gate is addSelfThought). Serialized & hashed —
+   *  mood steers NPC behaviour (mental breaks), unlike playerAmbition. */
+  selfThoughts: Map<EntityId, Thought[]>;
   traits: Map<EntityId, string[]>;
   /** per-actor INNATE personality: cultural VALUES (what they care about) + individual
    *  TEMPERAMENT (how they behave), fixed at birth from culture + traits + id-seeded
@@ -1185,6 +1195,8 @@ export interface SettlementView {
   id: SettlementId;
   name: string;
   nameMeaning?: string; // "the iron hold" — the name's sense in the founders' tongue
+  /** the named landmark it sits beside ("on the shores of the Skarnald") — sense of place. */
+  landmark?: { name: string; kind: string; relation: string };
   detailed: boolean;
   population: number;
   foundedYear: number;
@@ -1430,6 +1442,9 @@ export interface PlayerView {
   needs: Needs;
   /** each need as a lived word + tone (design/21 §5) — presentation of `needs`, shown in the journal. */
   needFeels: NeedFeel[];
+  /** MOOD — how this life feels overall (0..1000, 500 neutral), as a number, a lived
+   *  word ("Weary"), and the legible reasons behind it (mood.ts). The RimWorld pillar. */
+  mood: { value: number; word: string; reasons: { label: string; value: number }[] };
   /** the single most pressing drive, phrased as a narrative beat ("Hunger is beginning to gnaw at
    *  you.") and folded into the Current Situation instead of a row of meters. Omitted when nothing
    *  is notable. */
@@ -1514,6 +1529,8 @@ export interface ActorDetail {
   actor: ActorView;
   relationships: RelationView[];
   lifeEvents: EventView[];
+  /** this actor's mood + the reasons behind it (mood.ts); absent below full fidelity. */
+  mood?: { value: number; word: string; reasons: { label: string; value: number }[] };
   /** how the community regards this actor: a standing score plus the witnessed deeds
    *  behind it ("shed blood", "a public kindness") — reputation made legible. */
   reputation: { standing: number; reasons: { label: string; value: number }[] };

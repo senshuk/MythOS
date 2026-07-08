@@ -13,6 +13,8 @@
 import { type World, type EntityId } from '../engine/model';
 import { isAlive } from '../engine/world';
 import { takePlayerIntent } from '../engine/player';
+import { maybeBreak } from '../engine/mood';
+import { Rng } from '../engine/rng';
 import { isAdult, decideActor } from './decide';
 import { resolveIntent, resolvePlayerIntent } from './resolve';
 
@@ -26,8 +28,13 @@ export function actWeekly(world: World, actors: EntityId[]): void {
   for (const a of adults) {
     if (!isAlive(world, a)) continue; // may have died in a brawl earlier this pass
     if (a === world.playerId) {
-      // intent producer #2: the player. Resolved on the dedicated player stream.
-      resolvePlayerIntent(world, a, takePlayerIntent(world));
+      // intent producer #2: the player. The SAME break rule preempts their chosen
+      // intent (a broken mind takes the turn from anyone — no player exemption),
+      // drawn from the player's own stream so NPC randomness is untouched.
+      const prng = new Rng(world.playerRngState);
+      const broke = maybeBreak(world, a, prng);
+      world.playerRngState = prng.state;
+      resolvePlayerIntent(world, a, broke ?? takePlayerIntent(world));
     } else {
       // intent producer #1: the NPC decider, resolved on the settlement stream.
       resolveIntent(world, a, decideActor(world, a, adults), world.rng);

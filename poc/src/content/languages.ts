@@ -6,6 +6,7 @@
  * stops, hard codas), a Dovahzul kit — the engine is unchanged.
  */
 import { type PhonologyKit, type Language, languageFor, coinWord } from '../engine/language';
+import { type GeoFeature } from '../engine/geography';
 import { Rng, mixSeed } from '../engine/rng';
 import { biomeOf } from './biomes';
 
@@ -145,6 +146,31 @@ function hashConcept(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+// ----------------------------------------------------- geographic features ----
+// The land was named before any of this world's living cultures arose: seas, ranges and
+// great rivers carry names in the OLD TONGUE — one dead language per world, sampled from
+// the temperate kit under its own key. (RimWorld names its world features; MythOS names
+// them philologically.) Deterministic per (world seed, feature index) — no world RNG.
+const FEATURE_KINDS: Record<GeoFeature['kind'], Concept[]> = {
+  sea: [{ id: 'sea', gloss: 'sea' }, { id: 'deep', gloss: 'deep' }, { id: 'gulf', gloss: 'gulf' }],
+  lake: [{ id: 'mere', gloss: 'mere' }, { id: 'tarn', gloss: 'tarn' }, { id: 'lake', gloss: 'lake' }],
+  range: [{ id: 'spine', gloss: 'spine' }, { id: 'peaks', gloss: 'peaks' }, { id: 'teeth', gloss: 'teeth' }],
+  river: [{ id: 'run', gloss: 'run' }, { id: 'river', gloss: 'river' }, { id: 'flow', gloss: 'flow' }],
+};
+const OLD_TONGUE = '@old-tongue'; // a culture-id that no culture uses (its own stable voice)
+
+/** Name a geographic feature in the world's dead OLD TONGUE, with its meaning
+ *  ("Skarnald — the cold deep"). Stable for the world's lifetime. */
+export function featureName(seed: number, feature: GeoFeature): { name: string; meaning: string } {
+  const rng = new Rng(mixSeed(seed, 0xfea7 + feature.index * 131));
+  const desc = rng.pick(DESCRIPTORS);
+  const kind = rng.pick(FEATURE_KINDS[feature.kind]);
+  const joined = (lexeme(OLD_TONGUE, seed, desc.id) + lexeme(OLD_TONGUE, seed, kind.id))
+    .replace(/(.)\1{2,}/g, '$1$1');
+  const name = joined.charAt(0).toUpperCase() + joined.slice(1);
+  return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }
 
 /** Coin a settlement's name AND its meaning, in the founding people's tongue: a descriptor +

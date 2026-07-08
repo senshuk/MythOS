@@ -17,4 +17,7 @@ import { type EntityId } from './model';
 export interface Intent {
   kind: string;
   target?: EntityId;
+  /** a sub-flavour of the verb, for kinds that come in modes (e.g. a mental `break`
+   *  is 'lash_out' | 'withdraw' | 'binge'). Plain data, replay-safe like the rest. */
+  mode?: string;
 }

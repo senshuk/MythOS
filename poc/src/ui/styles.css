@@ -456,6 +456,11 @@ button { font-family: inherit; }
 
 /* The cockpit rhythm — give the eye places to rest between the few always-on blocks (design/21 §6). */
 .situation-body { margin: 0 0 10px; font-style: italic; color: var(--ink-dim); font-size: 0.98em; }
+/* MOOD — how this life feels; hover reveals every reason (mood.ts). */
+.situation-mood { margin: 0 0 8px; font-size: 0.94em; letter-spacing: 0.02em; cursor: help; }
+.situation-mood.mood-good { color: var(--ink-dim); }
+.situation-mood.mood-warn { color: var(--gold); }
+.situation-mood.mood-bad { color: var(--rose); }
 .cast { margin-top: 16px; }
 .action-bar { border-top: 1px solid var(--line-soft); padding-top: 16px; margin-top: 16px; }
 

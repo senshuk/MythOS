@@ -91,11 +91,16 @@ describe('Execution: actions are org-only history', () => {
 
   it('a successful action moves the org off its operational baseline', () => {
     const w = createWorld(4);
-    runYears(w, 1);
     const base = baselineOperational();
-    const moved = [...w.operationalState.values()].some((ops) =>
-      Object.keys(base).some((k) => ops[k] !== base[k]),
-    );
+    // run until SOME org succeeds at an action (feasibility depends on each seat's
+    // wealth/food, so the first feasible year varies by world) — bounded, not seed-lucky
+    let moved = false;
+    for (let y = 0; y < 10 && !moved; y++) {
+      runYears(w, 1);
+      moved = [...w.operationalState.values()].some((ops) =>
+        Object.keys(base).some((k) => ops[k] !== base[k]),
+      );
+    }
     expect(moved).toBe(true);
   });
 });
