@@ -492,28 +492,62 @@ function RegionMap({
   const sub = useMemo(() => createSubstrate(seed), [seed]);
   const isStarfield = sub instanceof StarfieldSubstrate;
 
+  // the atlas layer: the generator's named features, each in the world's old tongue
+  const mapLabels = useMemo<TerrainLabel[]>(
+    () =>
+      sub instanceof SurfaceSubstrate
+        ? sub.geography.features.map((f) => ({ x: f.center.x, y: f.center.y, text: featureName(seed, f).name, kind: f.kind }))
+        : [],
+    [seed, sub],
+  );
+
+  // a STARFIELD is painted once (it rides the CSS zoom transform — space has no per-zoom detail).
   useEffect(() => {
     const c = canvasRef.current;
-    if (!c) return;
-    // render at a higher internal resolution than the display box (~1.5×) so the map stays
-    // crisp when the explorer zooms in — the paint runs once per world, so the cost is cheap.
-    c.width = 810;
-    c.height = 823;
-    if (sub instanceof StarfieldSubstrate) {
-      if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
-    } else if (sub instanceof SurfaceSubstrate) {
-      if (SURF_THEME) {
-        // the atlas layer: the generator's named features, each in the world's old tongue
-        const labels: TerrainLabel[] = sub.geography.features.map((f) => ({
-          x: f.center.x,
-          y: f.center.y,
-          text: featureName(seed, f).name,
-          kind: f.kind,
-        }));
-        paintTerrain(c, sub.geography, MAP_VB, SURF_THEME, labels);
-      }
-    }
+    const wrap = wrapRef.current;
+    if (!c || !wrap || !(sub instanceof StarfieldSubstrate)) return;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.max(2, Math.round(rect.width * dpr));
+    c.height = Math.max(2, Math.round(rect.height * dpr));
+    if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
   }, [seed, sub]);
+
+  // a SURFACE world re-paints the VISIBLE region at native resolution whenever the view
+  // changes — so zooming reveals real detail instead of upscaling a fixed bitmap (no blur).
+  useEffect(() => {
+    if (!(sub instanceof SurfaceSubstrate) || !SURF_THEME) return;
+    const paint = () => {
+      const c = canvasRef.current;
+      const wrap = wrapRef.current;
+      if (!c || !wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      if (rect.width < 2) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.width = Math.min(1100, Math.round(rect.width * dpr));
+      c.height = Math.min(1100, Math.round(rect.height * dpr));
+      // the world rectangle currently visible through the zoom/pan transform
+      const s = view.s;
+      const vb = {
+        x: MAP_VB.x + (-view.x / s) * (MAP_VB.w / rect.width),
+        y: MAP_VB.y + (-view.y / s) * (MAP_VB.h / rect.height),
+        w: MAP_VB.w / s,
+        h: MAP_VB.h / s,
+      };
+      paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
+    };
+    const id = requestAnimationFrame(paint);
+    window.addEventListener('resize', paint); // keep the bitmap at the box's native size
+    // repaint when the tab returns to the foreground (rAF is paused while hidden, which
+    // would otherwise leave a stale/blank terrain until the next view change)
+    const onVisible = () => document.visibilityState === 'visible' && paint();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener('resize', paint);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [seed, sub, view, mapLabels]);
 
   // reset the explored view when the world or skin changes
   useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed]);
@@ -606,8 +640,16 @@ function RegionMap({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
+      {/* The terrain canvas is DECOUPLED from the zoom transform: instead of stretching a
+          fixed bitmap (which blurred when zoomed), it re-paints the VISIBLE region at native
+          resolution as the view changes (see the paint effect). A starfield has no per-zoom
+          detail to gain, so it keeps the cheap CSS-transform path. */}
+      <canvas
+        ref={canvasRef}
+        className="map-terrain"
+        style={isStarfield ? { transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' } : undefined}
+      />
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
-        <canvas ref={canvasRef} className="map-terrain" />
         <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
           {/* ROADS: the physical links between peaceful settlements — overland roads hug
               the valleys, sea lanes cross the water (design: RimWorld draws world roads). */}
