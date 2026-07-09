@@ -18,7 +18,10 @@ export const WATER_LAKE = 2;
 export const WATER_RIVER = 3;
 export type WaterKind = 0 | 1 | 2 | 3;
 
-export const GEO_SIZE = 208; // grid resolution across the (now much larger) world extent
+export const GEO_SIZE = 300; // grid resolution across the world extent (v3: finer coasts/rivers)
+/** the resolution the flux thresholds were tuned at — drainage flux scales with cell area,
+ *  so river thresholds scale by (N/REF_N)² to keep the same river density at any resolution. */
+const REF_N = 208;
 
 /** Default fraction of terrain below which a cell holds water. It is a PARAMETER, not
  *  a law: a dry/desert world passes a low value (few or no seas — just basins), a water
@@ -119,10 +122,12 @@ const FREQ = 0.05; // world-units → noise scale (smaller = larger landmasses)
 // the 8 compass steps, used for wind, flow and relief (declared once, deterministic order)
 const NEI8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
 
-/** How much accumulated drainage makes a cell a river (tuned to GEO_SIZE catchments). */
-export const RIVER_FLUX = 60;
-/** Drainage above this reads as a GREAT river (a nameable feature, drawn wider). */
-export const GREAT_RIVER_FLUX = 300;
+/** Accumulated drainage (at the REF_N reference resolution) that makes a cell a river; the
+ *  generator scales it by (N/REF_N)². Tuned so a visible dendritic network runs to the seas
+ *  (erosion, applied before routing, concentrates the trunks further). */
+export const RIVER_FLUX = 24;
+/** Drainage above this (REF_N ref) reads as a GREAT river — a nameable feature, drawn wider. */
+export const GREAT_RIVER_FLUX = 55;
 
 /**
  * Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
@@ -232,11 +237,15 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
 
   // 4) RIVERS from drainage. Fill depressions so every land cell has a way down,
   //    give each cell its rainfall (moisture), and route it downhill; where enough
-  //    catchment gathers, a river runs — growing wider as tributaries join.
-  const filled = fillDepressions(elevation, water, N, seaLevel);
-  const flux = accumulateFlow(filled, water, moisture, N);
+  //    catchment gathers, a river runs — growing wider as tributaries join. The flux
+  //    thresholds scale with cell area so river density is the same at any resolution.
+  const fluxScale = (N * N) / (REF_N * REF_N);
+  const riverFlux = RIVER_FLUX * fluxScale;
+  const greatFlux = GREAT_RIVER_FLUX * fluxScale;
+  const { filled, flowTo } = fillDepressions(elevation, water, N);
+  const flux = accumulateFlow(filled, flowTo, water, moisture, N);
   for (let k = 0; k < NN; k++) {
-    if (water[k] === WATER_NONE && flux[k] >= RIVER_FLUX) water[k] = WATER_RIVER;
+    if (water[k] === WATER_NONE && flux[k] >= riverFlux) water[k] = WATER_RIVER;
   }
 
   // 5) HILLINESS: relief class from local elevation contrast (flat valley floors,
@@ -276,7 +285,7 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
   }
 
   // 8) FEATURES: the seas, lakes, ranges and great rivers worth a name on the map.
-  const { features, featureOf } = findFeatures(bodies, elevation, water, flux, hilliness, N);
+  const { features, featureOf } = findFeatures(bodies, elevation, water, flux, hilliness, N, greatFlux);
 
   return { size: N, seaLevel, elevation, moisture, temperature, fertility, water, flux, hilliness, wind: { dx: wind[0], dy: wind[1] }, features, featureOf, freshDist, seaDist };
 }
@@ -326,57 +335,98 @@ function advectMoisture(
 }
 
 /**
- * Planchon–Darboux depression filling: raise every land cell to the level of its
- * lowest escape route (+ε), so steepest-descent flow always reaches water or the map
- * edge instead of pooling in noise pits. Water cells and border cells are the outlets.
+ * Priority-flood depression filling (Barnes et al. 2014) + DRAINAGE TREE: flood inward from
+ * the outlets (water cells + map border), lowest spill first, raising every land cell to its
+ * lowest escape route (+ε). Crucially it also records each cell's DOWNSTREAM (`flowTo`) — the
+ * cell it was flooded FROM — giving a drainage tree rooted at the outlets in which every cell
+ * flows to the sea/edge even across flats. Accumulating along THIS tree (not local
+ * steepest-descent) concentrates flow into proper dendritic trunk rivers. O(N² log N²).
  */
-function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number, seaLevel: number): Float32Array {
+function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number): { filled: Float32Array; flowTo: Int32Array } {
   const NN = N * N;
-  const EPS = 1e-4;
+  const EPS = 1e-5;
   const filled = new Float32Array(NN);
+  const flowTo = new Int32Array(NN).fill(-1); // downstream cell (-1 = an outlet: sea or edge)
+  const closed = new Uint8Array(NN);
+  // a binary min-heap over (cell, spill-level)
+  const hc: number[] = [];
+  const hp: number[] = [];
+  const push = (cell: number, p: number) => {
+    hc.push(cell);
+    hp.push(p);
+    let i = hc.length - 1;
+    while (i > 0) {
+      const par = (i - 1) >> 1;
+      if (hp[par] <= hp[i]) break;
+      [hp[par], hp[i]] = [hp[i], hp[par]];
+      [hc[par], hc[i]] = [hc[i], hc[par]];
+      i = par;
+    }
+  };
+  const pop = (): number => {
+    const top = hc[0];
+    const lc = hc.pop() as number;
+    const lp = hp.pop() as number;
+    if (hc.length) {
+      hc[0] = lc;
+      hp[0] = lp;
+      let i = 0;
+      const n = hc.length;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = 2 * i + 2;
+        let m = i;
+        if (l < n && hp[l] < hp[m]) m = l;
+        if (r < n && hp[r] < hp[m]) m = r;
+        if (m === i) break;
+        [hp[m], hp[i]] = [hp[i], hp[m]];
+        [hc[m], hc[i]] = [hc[i], hc[m]];
+        i = m;
+      }
+    }
+    return top;
+  };
+
+  // seed the outlets: water bodies drain at their own level; the border is an escape edge.
   for (let k = 0; k < NN; k++) {
     const x = k % N;
     const y = (k / N) | 0;
-    const isOutlet = water[k] !== WATER_NONE || x === 0 || y === 0 || x === N - 1 || y === N - 1;
-    filled[k] = isOutlet ? elevation[k] : Math.max(elevation[k], seaLevel) + 2; // start "flooded"
-  }
-  // iterative relaxation (converges fast at this grid size; order is deterministic)
-  let changed = true;
-  let guard = 0;
-  while (changed && guard++ < 4 * N) {
-    changed = false;
-    // forward then backward sweeps to halve the iteration count
-    for (const dir of [1, -1] as const) {
-      const start = dir === 1 ? 0 : NN - 1;
-      const end = dir === 1 ? NN : -1;
-      for (let k = start; k !== end; k += dir) {
-        if (water[k] !== WATER_NONE) continue;
-        const x = k % N;
-        const y = (k / N) | 0;
-        const base = Math.max(elevation[k], seaLevel);
-        if (filled[k] <= base + EPS) continue; // already settled
-        for (const [dx, dy] of NEI8) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-          const cand = Math.max(base, filled[ny * N + nx] + EPS);
-          if (cand < filled[k]) {
-            filled[k] = cand;
-            changed = true;
-          }
-        }
-      }
+    if (water[k] !== WATER_NONE || x === 0 || y === 0 || x === N - 1 || y === N - 1) {
+      filled[k] = elevation[k];
+      closed[k] = 1;
+      push(k, filled[k]);
     }
   }
-  return filled;
+  while (hc.length) {
+    const c = pop();
+    const cx = c % N;
+    const cy = (c / N) | 0;
+    const lvl = filled[c];
+    for (const [dx, dy] of NEI8) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+      const nk = ny * N + nx;
+      if (closed[nk]) continue;
+      closed[nk] = 1;
+      // raise the neighbour to at least the current spill level (+ε) so it drains outward,
+      // and route it DOWNSTREAM toward `c` (the lower cell it spilled from).
+      filled[nk] = elevation[nk] >= lvl + EPS ? elevation[nk] : lvl + EPS;
+      flowTo[nk] = c;
+      push(nk, filled[nk]);
+    }
+  }
+  return { filled, flowTo };
 }
 
 /**
- * Route each land cell's rainfall down the filled surface (steepest descent, ties by
- * neighbour order — deterministic) and accumulate: a cell's flux is everything that
- * drains through it. Processing in descending elevation order makes it single-pass.
+ * Accumulate drainage along the priority-flood DRAINAGE TREE (`flowTo`): each land cell
+ * starts with its own rainfall, then — processing high ground first so a cell is finalised
+ * before its (lower) downstream — passes its total to the cell it drains to. Because every
+ * cell flows down a single tree toward the sea, flux CONCENTRATES into dendritic trunk
+ * rivers (steepest-descent on the near-flat filled surface merely dispersed it).
  */
-function accumulateFlow(filled: Float32Array, water: Uint8Array, moisture: Float32Array, N: number): Float32Array {
+function accumulateFlow(filled: Float32Array, flowTo: Int32Array, water: Uint8Array, moisture: Float32Array, N: number): Float32Array {
   const NN = N * N;
   const flux = new Float32Array(NN);
   const order: number[] = [];
@@ -388,23 +438,9 @@ function accumulateFlow(filled: Float32Array, water: Uint8Array, moisture: Float
   }
   order.sort((a, b) => filled[b] - filled[a] || a - b); // high ground first (stable ties)
   for (const k of order) {
-    const x = k % N;
-    const y = (k / N) | 0;
-    let best = -1;
-    let bestE = filled[k];
-    for (const [dx, dy] of NEI8) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-      const nk = ny * N + nx;
-      const e = water[nk] !== WATER_NONE ? -1 : filled[nk]; // water always accepts
-      if (e < bestE) {
-        bestE = e;
-        best = nk;
-      }
-    }
-    if (best >= 0 && water[best] === WATER_NONE) flux[best] += flux[k];
-    // draining into water (or off the map edge) ends the routing — the sea takes it
+    const d = flowTo[k];
+    if (d >= 0 && water[d] === WATER_NONE) flux[d] += flux[k];
+    // draining into water (or off the map edge, flowTo = -1) ends the routing — the sea takes it
   }
   return flux;
 }
@@ -425,6 +461,7 @@ function findFeatures(
   flux: Float32Array,
   hilliness: Uint8Array,
   N: number,
+  greatFlux: number,
 ): { features: GeoFeature[]; featureOf: Int16Array } {
   const NN = N * N;
   // collected raw (index assigned at the end, after culling to the notable few); each
@@ -491,7 +528,7 @@ function findFeatures(
   // great rivers: connected river cells whose drainage crosses the GREAT threshold
   seen.fill(0);
   for (let start = 0; start < NN; start++) {
-    if (seen[start] || water[start] !== WATER_RIVER || flux[start] < GREAT_RIVER_FLUX) continue;
+    if (seen[start] || water[start] !== WATER_RIVER || flux[start] < greatFlux) continue;
     const comp: number[] = [];
     seen[start] = 1;
     stack.length = 0;

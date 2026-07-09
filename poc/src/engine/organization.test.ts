@@ -6,7 +6,7 @@
  * place it occupies. The "first make things exist" milestone for the social spine.
  */
 import { describe, it, expect } from 'vitest';
-import { createWorld, runYears, hashWorld, buildSnapshot } from './sim';
+import { createWorld, runYears, hashWorld, buildSnapshot, focusSettlement } from './sim';
 import { serializeWorld, deserializeWorld } from './persistence';
 import {
   getOrganization,
@@ -50,6 +50,11 @@ let fixture: OrgFixture | undefined;
 function orgFixture(): OrgFixture {
   if (!fixture) {
     const w = createWorld(ORG_FIXTURE_SEED);
+    // the default focused settlement may be leaderless (no polity) in some worlds — focus a
+    // governed one that hosts a polity, so the snapshot's focused polity view is populated.
+    if (w.settlements[w.focusedSettlementId].polityId === undefined) {
+      focusSettlement(w, w.settlements.find((s) => s.polityId !== undefined)!.id);
+    }
     const orgId = w.settlements[w.focusedSettlementId].polityId!;
     const org = getOrganization(w, orgId)!;
     fixture = { w, orgId, id0: org.id, seat0: org.seatId, leader0: org.leaderId };
