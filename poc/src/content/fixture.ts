@@ -13,9 +13,9 @@ import { biomeOf } from './biomes';
 // ------------------------------------------------------------ identity -------
 /** This universe's identity — stamped into every save, so a world is only ever loaded
  *  under the pack that built it (a Tolkien save must not open under a sci-fi pack). */
-export const PACK_ID = 'fantasy';
+export const PACK_ID: string = 'fantasy'; // typed wide — every pack supplies its OWN id
 /** Bumped when this pack's DATA changes shape enough that old saves need care. */
-export const PACK_VERSION = 1;
+export const PACK_VERSION: number = 1;
 /** Which OPTIONAL engine systems this universe runs (CLAUDE.md: packs choose modules).
  *  Core systems — lifecycle, economy, organizations, the director — always run; these
  *  gate the genre-flavoured layers a universe may not want (a secular sci-fi pack turns
