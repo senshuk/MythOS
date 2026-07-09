@@ -172,3 +172,21 @@ re-anchored). geography is still pure-from-seed and never serialized, so no save
 12 geography tests (added: climate-band span, road classification); 260 total green.
 Browser-verified: snow-capped northern band, roads threading between settlements, varied
 coastlines, named features — a recognisably RimWorld-like world map.
+
+### Part 4b — roads + fidelity (after "still janky" feedback)
+
+The first roads (perpendicular per-point nudges + straight segments) came out sawtoothed,
+and the 208-grid read blocky when zoomed. Both are render-only fixes — no generation change,
+so no determinism/seed impact:
+
+- **Roads are now a least-cost A\* path** over a terrain cost field (open water near-impassable,
+  high/steep ground dear, gentle low land cheap), so a road threads the passes, hugs the
+  valleys and runs the coast; the cell path is downsampled and drawn as a **Catmull-Rom
+  cubic-bezier** — a flowing curve, not a zigzag. A water-separated pair is a gently-bowed
+  `sea` lane instead. A* uses generation-stamped scratch buffers (no per-search N² clear);
+  computed once per snapshot in a `useMemo`.
+- **Terrain is bilinear-blended.** The painter precomputes a base colour per cell (biome or
+  water, with coast shallows + snow) once, then **bilinear-blends the four surrounding cells
+  per pixel** — smooth coasts and biome transitions instead of blocky squares — with hillshade
+  applied per-pixel on top and rivers pulled back crisp (a one-cell river would otherwise blur
+  away). Canvas renders at ~1.5× the display box so it stays sharp when zoomed.

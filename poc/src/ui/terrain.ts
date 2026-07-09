@@ -8,7 +8,7 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand, elevationAt } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -40,56 +40,200 @@ interface RoadEdge {
   tradeVolume: number;
 }
 
+interface Pt {
+  x: number;
+  y: number;
+}
+
+// world coord ↔ grid cell (the geography's native resolution)
+function cellOfWorld(geo: Geography, x: number, y: number): number {
+  const N = geo.size;
+  const gx = Math.max(0, Math.min(N - 1, Math.round(((x - GEO_MIN) / GEO_SPAN) * (N - 1))));
+  const gy = Math.max(0, Math.min(N - 1, Math.round(((y - GEO_MIN) / GEO_SPAN) * (N - 1))));
+  return gy * N + gx;
+}
+function worldOfCell(geo: Geography, ci: number): Pt {
+  const N = geo.size;
+  return { x: GEO_MIN + ((ci % N) / (N - 1)) * GEO_SPAN, y: GEO_MIN + (((ci / N) | 0) / (N - 1)) * GEO_SPAN };
+}
+
+/** Cost of routing a road through a cell: open water is near-impassable (a road detours
+ *  around it or the link becomes a sea lane), high and steep ground is dear, and gentle
+ *  low land is cheap — so A* finds the natural pass/valley/coast route. */
+function cellRoadCost(geo: Geography, ci: number): number {
+  const w = geo.water[ci];
+  if (w === WATER_SEA) return 60;
+  if (w === WATER_LAKE) return 45;
+  const base = w === WATER_RIVER ? 3.5 : 1; // a ford costs a little
+  return base + geo.elevation[ci] * 3 + geo.hilliness[ci] * 1.6;
+}
+
+// A* scratch buffers, reused across searches (generation-stamped so we never clear N²).
+let _bufN = 0;
+let _g!: Float32Array;
+let _stamp!: Int32Array;
+let _from!: Int32Array;
+let _gen = 0;
+const NEI8_R = [[-1, -1, 1.414], [0, -1, 1], [1, -1, 1.414], [-1, 0, 1], [1, 0, 1], [-1, 1, 1.414], [0, 1, 1], [1, 1, 1.414]] as const;
+
+/** Least-cost path (cell indices) from `start` to `goal` over the terrain cost field, or
+ *  null if unreachable within the explore budget. 8-connected A* with a Euclidean heuristic. */
+function aStarRoad(geo: Geography, start: number, goal: number): number[] | null {
+  const N = geo.size;
+  const NN = N * N;
+  if (_bufN !== NN) {
+    _g = new Float32Array(NN);
+    _stamp = new Int32Array(NN);
+    _from = new Int32Array(NN);
+    _bufN = NN;
+  }
+  const gen = ++_gen;
+  const gx1 = goal % N;
+  const gy1 = (goal / N) | 0;
+  const heur = (c: number) => Math.hypot((c % N) - gx1, ((c / N) | 0) - gy1);
+  // a compact binary min-heap over (cell, f-score)
+  const hc: number[] = [];
+  const hp: number[] = [];
+  const push = (cell: number, p: number) => {
+    hc.push(cell);
+    hp.push(p);
+    let i = hc.length - 1;
+    while (i > 0) {
+      const par = (i - 1) >> 1;
+      if (hp[par] <= hp[i]) break;
+      [hp[par], hp[i]] = [hp[i], hp[par]];
+      [hc[par], hc[i]] = [hc[i], hc[par]];
+      i = par;
+    }
+  };
+  const pop = (): number => {
+    const top = hc[0];
+    const lc = hc.pop() as number;
+    const lp = hp.pop() as number;
+    if (hc.length) {
+      hc[0] = lc;
+      hp[0] = lp;
+      let i = 0;
+      const n = hc.length;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = 2 * i + 2;
+        let m = i;
+        if (l < n && hp[l] < hp[m]) m = l;
+        if (r < n && hp[r] < hp[m]) m = r;
+        if (m === i) break;
+        [hp[m], hp[i]] = [hp[i], hp[m]];
+        [hc[m], hc[i]] = [hc[i], hc[m]];
+        i = m;
+      }
+    }
+    return top;
+  };
+
+  _g[start] = 0;
+  _stamp[start] = gen;
+  _from[start] = -1;
+  push(start, heur(start));
+  let explored = 0;
+  const CAP = 26000;
+  while (hc.length && explored++ < CAP) {
+    const cur = pop();
+    if (cur === goal) break;
+    const cx = cur % N;
+    const cy = (cur / N) | 0;
+    const gcur = _g[cur];
+    for (const [dx, dy, w] of NEI8_R) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+      const nk = ny * N + nx;
+      const ng = gcur + cellRoadCost(geo, nk) * w;
+      if (_stamp[nk] !== gen || ng < _g[nk]) {
+        _g[nk] = ng;
+        _stamp[nk] = gen;
+        _from[nk] = cur;
+        push(nk, ng + heur(nk));
+      }
+    }
+  }
+  if (_stamp[goal] !== gen) return null;
+  const path: number[] = [];
+  for (let c = goal; c !== -1; c = _from[c]) path.push(c);
+  path.reverse();
+  return path;
+}
+
+/** A Catmull-Rom spline through `pts` as an SVG cubic-bezier path — a flowing curve, not a
+ *  jagged polyline. */
+function smoothPath(pts: Pt[]): string {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} L ${pts[1].x.toFixed(1)} ${pts[1].y.toFixed(1)}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 /**
  * Route roads along the region graph (design: RimWorld draws roads between world
- * settlements). For each peaceful edge, sample the straight line and, at interior
- * points, nudge perpendicular toward lower LAND elevation — so a road hugs the valleys
- * and bends around hills instead of climbing straight over them. If the pair is mostly
- * separated by water it becomes a `sea` lane. Pure function of geography + node
+ * settlements). Each peaceful edge is a least-cost A* path over the terrain — so the road
+ * threads the passes, hugs the valleys and runs along the coast rather than climbing
+ * straight over ridges — then smoothed to a flowing curve. A pair mostly separated by
+ * water becomes a gently-curved `sea` lane instead. Pure function of geography + node
  * positions (deterministic), computed once per snapshot, never stored.
  */
 export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[]): MapRoad[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const roads: MapRoad[] = [];
-  const SAMPLES = 14;
   for (const e of edges) {
     if (e.relation <= -20) continue; // a hostile border is not a road
     const a = byId.get(e.a);
     const b = byId.get(e.b);
     if (!a || !b || a.ruined || b.ruined) continue;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const px = -dy / len; // perpendicular unit (for the valley-hugging nudge)
-    const py = dx / len;
-    const pts: { x: number; y: number }[] = [];
+    const width = 0.4 + Math.min(1.4, e.tradeVolume / 7);
+
+    // is the pair mostly separated by open water? then it's a sea lane, not a road.
     let water = 0;
-    for (let s = 0; s <= SAMPLES; s++) {
-      const t = s / SAMPLES;
-      let x = a.x + dx * t;
-      let y = a.y + dy * t;
-      if (!isLand(geo, x, y)) water++;
-      if (s > 0 && s < SAMPLES) {
-        let bestE = elevationAt(geo, x, y);
-        for (const off of [-3, -1.5, 1.5, 3]) {
-          const nx = x + px * off;
-          const ny = y + py * off;
-          if (isLand(geo, nx, ny)) {
-            const el = elevationAt(geo, nx, ny);
-            if (el < bestE) {
-              bestE = el;
-              x = nx;
-              y = ny;
-            }
-          }
-        }
-      }
-      pts.push({ x, y });
+    const SEA_SAMPLES = 12;
+    for (let s = 0; s <= SEA_SAMPLES; s++) {
+      const t = s / SEA_SAMPLES;
+      if (!isLand(geo, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) water++;
     }
-    const kind: MapRoad['kind'] = water / (SAMPLES + 1) > 0.4 ? 'sea' : 'road';
-    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-    for (let i = 1; i < pts.length; i++) d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
-    roads.push({ d, kind, width: kind === 'sea' ? 0.3 : 0.4 + Math.min(1.4, e.tradeVolume / 7) });
+    if (water / (SEA_SAMPLES + 1) > 0.42) {
+      // a gently-bowed shipping lane (perpendicular midpoint offset), dashed when drawn
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const bow = Math.min(6, len * 0.12);
+      const cx = mx + (-dy / len) * bow;
+      const cy = my + (dx / len) * bow;
+      roads.push({ d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`, kind: 'sea', width: 0.3 });
+      continue;
+    }
+
+    // an overland road: least-cost path through the terrain, downsampled and smoothed.
+    const path = aStarRoad(geo, cellOfWorld(geo, a.x, a.y), cellOfWorld(geo, b.x, b.y));
+    let pts: Pt[];
+    if (path && path.length >= 2) {
+      const step = Math.max(2, Math.floor(path.length / 14)); // ~14 control points max
+      pts = [];
+      for (let i = 0; i < path.length; i += step) pts.push(worldOfCell(geo, path[i]));
+      pts[pts.length - 1] = worldOfCell(geo, path[path.length - 1]); // always land exactly on b
+    } else {
+      pts = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }]; // unreachable → a straight fallback
+    }
+    roads.push({ d: smoothPath(pts), kind: 'road', width });
   }
   return roads;
 }
@@ -145,54 +289,81 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
   const gOf = (w: number) => Math.max(0, Math.min(N - 1, ((w - GEO_MIN) / GEO_SPAN) * (N - 1)));
 
+  // 1) BASE COLOUR per cell (biome or water, with coast shallows + snow), computed once so
+  //    the pixel loop can BILINEAR-BLEND cell colours — smooth coasts and biome transitions
+  //    instead of the blocky nearest-neighbour squares of a low-res grid.
+  const NN = N * N;
+  const cellR = new Float32Array(NN);
+  const cellG = new Float32Array(NN);
+  const cellB = new Float32Array(NN);
+  for (let ci = 0; ci < NN; ci++) {
+    const w = WTR[ci];
+    let c: RGB;
+    if (w === WATER_SEA) {
+      const depth = Math.max(0, Math.min(1, E[ci] / sea));
+      const coast = Math.max(0, 1 - SD[ci] / 4);
+      c = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
+      if (coast > 0) c = lerp3(c, shore, coast * coast * 0.5);
+    } else if (w === WATER_LAKE) {
+      c = lerp3(water.deep, water.shallow, 0.7);
+    } else if (w === WATER_RIVER) {
+      c = river;
+    } else {
+      const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
+      c = [col[0], col[1], col[2]];
+      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
+      const e = E[ci];
+      const temp = T[ci];
+      if (e > 0.72 && temp < 0.4) {
+        const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
+        c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
+      }
+    }
+    cellR[ci] = c[0];
+    cellG[ci] = c[1];
+    cellB[ci] = c[2];
+  }
+
+  // 2) pixel loop: bilinear-blend the cell colours, apply relief hillshade, keep rivers crisp.
   const img = ctx.createImageData(W, H);
   const data = img.data;
   for (let py = 0; py < H; py++) {
     const gy = gOf(vb.y + (py / H) * vb.h);
+    const y0 = Math.floor(gy);
+    const y1 = Math.min(N - 1, y0 + 1);
+    const fy = gy - y0;
     for (let px = 0; px < W; px++) {
       const gx = gOf(vb.x + (px / W) * vb.w);
-      const ci = Math.round(gy) * N + Math.round(gx);
-      const w = WTR[ci];
-      let r: number;
-      let g: number;
-      let b: number;
-      if (w === WATER_SEA) {
-        const e = bilinear(E, N, gx, gy);
-        // depth by elevation, brightened toward the shore (seaDist small) so coasts read
-        // as shallows shelving into deep ocean — then a turquoise kiss on the shallowest.
-        const depth = Math.max(0, Math.min(1, e / sea));
-        const coast = Math.max(0, 1 - SD[ci] / 4);
-        [r, g, b] = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
-        if (coast > 0) [r, g, b] = lerp3([r, g, b], shore, coast * coast * 0.5);
-      } else if (w === WATER_LAKE) {
-        [r, g, b] = lerp3(water.deep, water.shallow, 0.7);
-      } else if (w === WATER_RIVER) {
-        [r, g, b] = river;
-      } else {
-        const e = bilinear(E, N, gx, gy);
-        // colour by BIOME (the pack's climate taxonomy), not an elevation band
-        const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
-        r = col[0];
-        g = col[1];
-        b = col[2];
-        // hillshade for relief — mountainous ground (higher `hilliness`) casts a stronger
-        // shadow, so ranges read as real ridges rather than a faint gradient.
-        const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
-        const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
-        let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[ci] * 4);
-        s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
-        r *= s;
-        g *= s;
-        b *= s;
-        // SNOW on cold high ground — the white-capped peaks a RimWorld planet shows near
-        // its poles and on its tallest ranges.
-        const temp = T[ci];
-        if (e > 0.72 && temp < 0.4) {
-          const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
-          r = lerp(r, 236, snow);
-          g = lerp(g, 240, snow);
-          b = lerp(b, 245, snow);
-        }
+      const x0 = Math.floor(gx);
+      const x1 = Math.min(N - 1, x0 + 1);
+      const fx = gx - x0;
+      const i00 = y0 * N + x0;
+      const i10 = y0 * N + x1;
+      const i01 = y1 * N + x0;
+      const i11 = y1 * N + x1;
+      const w00 = (1 - fx) * (1 - fy);
+      const w10 = fx * (1 - fy);
+      const w01 = (1 - fx) * fy;
+      const w11 = fx * fy;
+      let r = cellR[i00] * w00 + cellR[i10] * w10 + cellR[i01] * w01 + cellR[i11] * w11;
+      let g = cellG[i00] * w00 + cellG[i10] * w10 + cellG[i01] * w01 + cellG[i11] * w11;
+      let b = cellB[i00] * w00 + cellB[i10] * w10 + cellB[i01] * w01 + cellB[i11] * w11;
+      // hillshade from the interpolated slope — mountainous ground casts a stronger shadow
+      const nci = Math.round(gy) * N + Math.round(gx);
+      const e = bilinear(E, N, gx, gy);
+      const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
+      const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
+      let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
+      s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
+      r *= s;
+      g *= s;
+      b *= s;
+      // keep RIVERS crisp — the bilinear blend would wash a one-cell river away, so where the
+      // nearest cell is a river, pull the pixel back toward the river colour.
+      if (WTR[nci] === WATER_RIVER) {
+        r = lerp(r, river[0], 0.6);
+        g = lerp(g, river[1], 0.6);
+        b = lerp(b, river[2], 0.6);
       }
       const i = (py * W + px) * 4;
       data[i] = r;

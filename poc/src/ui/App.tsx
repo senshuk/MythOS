@@ -495,8 +495,10 @@ function RegionMap({
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    c.width = 540;
-    c.height = 549;
+    // render at a higher internal resolution than the display box (~1.5×) so the map stays
+    // crisp when the explorer zooms in — the paint runs once per world, so the cost is cheap.
+    c.width = 810;
+    c.height = 823;
     if (sub instanceof StarfieldSubstrate) {
       if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
     } else if (sub instanceof SurfaceSubstrate) {
