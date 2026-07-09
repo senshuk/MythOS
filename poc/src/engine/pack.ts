@@ -42,6 +42,9 @@ export const FANTASY_PACK: UniversePack = { ...fixture, ...languages, ...biomes,
 // ---- live bindings: the ACTIVE pack, one export per member -----------------
 // ES module exports are LIVE — setPack reassigns these and every engine importer
 // sees the new universe. Engine code imports from HERE, never from content/ directly.
+export let PACK_ID = FANTASY_PACK.PACK_ID;
+export let PACK_VERSION = FANTASY_PACK.PACK_VERSION;
+export let MODULES = FANTASY_PACK.MODULES;
 export let SPECIES = FANTASY_PACK.SPECIES;
 export let maturityOf = FANTASY_PACK.maturityOf;
 export let elderhoodOf = FANTASY_PACK.elderhoodOf;
@@ -183,6 +186,9 @@ export let DECISIONS = FANTASY_PACK.DECISIONS;
 /** Bind a universe: every engine import re-resolves to this pack from now on.
  * Called at world creation; the default (no call) is the fantasy pack. */
 export function setPack(p: UniversePack): void {
+  PACK_ID = p.PACK_ID;
+  PACK_VERSION = p.PACK_VERSION;
+  MODULES = p.MODULES;
   SPECIES = p.SPECIES;
   maturityOf = p.maturityOf;
   elderhoodOf = p.elderhoodOf;

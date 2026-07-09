@@ -49,7 +49,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, setPack, type UniversePack } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest } from './pack';
 import { PLAYER_ACTIONS } from './pack';
@@ -173,7 +173,9 @@ export function stepTick(world: World): void {
   world.tick += 1;
   // resolve in-flight journeys first, every tick and regardless of focus (vehicles travel
   // world-wide). A no-op when nothing is in transit — the default world founds no vehicles.
-  travelTick(world);
+  // MODULES gates the genre-flavoured layers per the active pack (CLAUDE.md: packs choose
+  // modules); core systems below always run.
+  if (MODULES.travel) travelTick(world);
   const hasFocus = world.focusedSettlementId >= 0;
   // Full-fidelity systems only run when a settlement is focused. In headless /
   // worldgen mode there are no live actors, so the world advances purely by the
@@ -189,9 +191,9 @@ export function stepTick(world: World): void {
   }
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity
-    if (hasFocus) religionYearly(world); // faith bonds, friction, conversion & apostasy
-    if (hasFocus) statePreceptsYearly(world); // the creed judges how each soul LIVES (mood)
-    if (hasFocus) factionYearly(world); // faction split recomputed before succession check
+    if (hasFocus && MODULES.religion) religionYearly(world); // faith bonds, friction, conversion & apostasy
+    if (hasFocus && MODULES.religion) statePreceptsYearly(world); // the creed judges how each soul LIVES (mood)
+    if (hasFocus && MODULES.factions) factionYearly(world); // faction split recomputed before succession check
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
     economyYearly(world); // production, prices & goods trade along the routes
@@ -200,8 +202,8 @@ export function stepTick(world: World): void {
     migrationYearly(world); // people move between settlements (geography-weighted)
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
-    if (hasFocus) civilWarYearly(world); // resolve civil wars after the grace period
-    if (hasFocus) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
+    if (hasFocus && MODULES.factions) civilWarYearly(world); // resolve civil wars after the grace period
+    if (hasFocus && MODULES.factions) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
     orgIntentYearly(world); // organizations form their collective intent (Perception→Worldview→Intent)
     orgInteractionYearly(world); // ...address proposals to their neighbours (Proposal→Evaluation→Outcome)
     orgActionYearly(world); // ...and execute a bounded domestic action (Intent→Action→Outcome→History)

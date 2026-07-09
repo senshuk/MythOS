@@ -18,13 +18,18 @@ import { type World, type Identity, type Lifecycle, type Needs, type Thought, ty
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from './pack';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
 
 export const SAVE_VERSION = 21;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
   version: number;
+  /** the UNIVERSE that built this world (see engine/pack). A save only loads under its own
+   *  pack — a fantasy world must not be reconstructed with sci-fi species/cultures. Absent
+   *  on saves predating the pack boundary (all of which were fantasy). */
+  packId?: string;
+  packVersion?: number;
 
   // scalars + RNG cursors
   seed: number;
@@ -140,6 +145,8 @@ export function serializeWorld(world: World): SaveFile {
 
   return {
     version: SAVE_VERSION,
+    packId: PACK_ID,
+    packVersion: PACK_VERSION,
     seed: world.seed,
     tick: world.tick,
     rngState: world.rng.state,
@@ -212,10 +219,17 @@ export function serializeWorld(world: World): SaveFile {
   };
 }
 
-/** Rebuild a live World from a SaveFile. Throws on an unsupported version. */
+/** Rebuild a live World from a SaveFile. Throws on an unsupported version, or when the
+ *  save was built by a DIFFERENT universe pack than the one currently bound. */
 export function deserializeWorld(s: SaveFile): World {
   if (s.version < 5 || s.version > SAVE_VERSION) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
+  }
+  // the save file IS the world — but only under the universe that built it. Saves predating
+  // the pack boundary carry no stamp; they were all fantasy worlds.
+  const savedPack = s.packId ?? 'fantasy';
+  if (savedPack !== PACK_ID) {
+    throw new Error(`this save belongs to the '${savedPack}' universe (the '${PACK_ID}' pack is bound) — load it under its own pack`);
   }
 
   // v5 → v6: dead actors were stored in entities; split them out by alive status.

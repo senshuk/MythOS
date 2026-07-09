@@ -10,6 +10,22 @@ import { DAYS_PER_YEAR } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
 
+// ------------------------------------------------------------ identity -------
+/** This universe's identity — stamped into every save, so a world is only ever loaded
+ *  under the pack that built it (a Tolkien save must not open under a sci-fi pack). */
+export const PACK_ID = 'fantasy';
+/** Bumped when this pack's DATA changes shape enough that old saves need care. */
+export const PACK_VERSION = 1;
+/** Which OPTIONAL engine systems this universe runs (CLAUDE.md: packs choose modules).
+ *  Core systems — lifecycle, economy, organizations, the director — always run; these
+ *  gate the genre-flavoured layers a universe may not want (a secular sci-fi pack turns
+ *  religion off; a static-world pack turns vehicle travel off). */
+export const MODULES = {
+  religion: true, // faith bonds & friction, conversion/apostasy, state precepts
+  factions: true, // creed factionalism: splits, civil wars, exile & return
+  travel: true, // vehicle transit (mobile locations move with duration)
+};
+
 /**
  * How a species reproduces — SPECIES DATA the engine dispatches on, so the sim does
  * not bake in one humanoid-mammalian model. Three modes the PoC exercises:
