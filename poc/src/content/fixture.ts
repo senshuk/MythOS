@@ -392,6 +392,35 @@ export interface Precept {
   commitSelf?: string;
 }
 
+/**
+ * A snapshot of how an actor is LIVING — the pure primitives a state precept judges. The
+ * engine gathers it (importing the standing reducer etc.); the pack's `holds` predicate is
+ * pure over these, so pack data never imports an engine module (the INTENT_DEFS pattern).
+ */
+export interface ActorLifeState {
+  wealth: number; // WEALTH_NEED satisfaction (0 destitute … 1000 wealthy)
+  standing: number; // public renown (− notorious … + renowned)
+  ageYears: number;
+  children: number;
+  wed: boolean;
+  isElder: boolean;
+}
+
+/**
+ * A STATE PRECEPT — the creed's judgement on a way of LIVING (design/23 Stage 3), as
+ * opposed to a single deed. Evaluated yearly; while `holds`, it lays an ongoing self-thought
+ * (`self`) on the actor's mood. `sacred` ones weigh only on the faithful. This is how a
+ * warrior takes quiet pride in their renown, or a childless devout elder carries a disquiet.
+ */
+export interface StatePrecept {
+  id: string;
+  self: string; // SELF_THOUGHT_SPECS kind emitted while the state holds (at_peace / disquiet)
+  sacred?: boolean;
+  /** a short noun phrase for the UI ('renown', 'hoarding', 'a broken line'). */
+  label: string;
+  holds: (s: ActorLifeState) => boolean;
+}
+
 export interface Culture {
   id: string;
   name: string;
@@ -402,6 +431,8 @@ export interface Culture {
   /** the creed's moral rules — what it abhors and reveres, and how those deeds land on
    *  a witness's and a doer's conscience. Subsumes the old `ethics` map (design/23). */
   precepts?: Precept[];
+  /** the creed's judgement on ways of LIVING (design/23 Stage 3) — evaluated yearly. */
+  statePrecepts?: StatePrecept[];
 }
 
 export const CULTURES: Culture[] = [
@@ -419,6 +450,13 @@ export const CULTURES: Culture[] = [
       { deed: 'generosity', socialWeight: 0.9 },
       { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
+    // a warrior's worth is their NAME: high renown is a quiet, sacred pride; to be scorned
+    // and nameless is a warrior's disquiet. (This is how the Iron Creed's spare conscience
+    // still touches its souls — through the standing they live and die by.)
+    statePrecepts: [
+      { id: 'renowned', self: 'at_peace', sacred: true, label: 'renown', holds: (s) => s.standing >= 220 },
+      { id: 'nameless', self: 'disquiet', label: 'obscurity', holds: (s) => s.standing <= -180 },
+    ],
   },
   {
     id: 'sylvan', name: 'the Green Way',
@@ -434,6 +472,9 @@ export const CULTURES: Culture[] = [
       { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
       { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' }, // civic — courage that shields life
     ],
+    // a communal creed: to sit on great personal wealth while the grove is shared is a
+    // sacred unease (hoarding offends the Green Way).
+    statePrecepts: [{ id: 'hoarding', self: 'disquiet', sacred: true, label: 'hoarding', holds: (s) => s.wealth >= 880 }],
   },
   {
     id: 'artisan', name: 'the Maker Folk',
@@ -448,6 +489,9 @@ export const CULTURES: Culture[] = [
       { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
       { deed: 'reconciliation', witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
+    // makers at peace with the fruits of their craft: an honest prosperity is a quiet
+    // contentment (civic — the well-built life the Maker Folk prize).
+    statePrecepts: [{ id: 'prosperous', self: 'at_peace', label: 'honest prosperity', holds: (s) => s.wealth >= 780 }],
   },
   {
     id: 'free', name: 'the Free Companies',
@@ -462,6 +506,9 @@ export const CULTURES: Culture[] = [
       { deed: 'generosity', socialWeight: 1.4, witnessSelf: 'edified', commitSelf: 'righteous' },
       { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
+    // free folk prize self-reliance: to be destitute is to have lost your independence —
+    // a quiet civic shame among the companies.
+    statePrecepts: [{ id: 'beholden', self: 'disquiet', label: 'destitution', holds: (s) => s.wealth <= 130 }],
   },
   {
     id: 'devout', name: 'the Old Faith',
@@ -478,6 +525,9 @@ export const CULTURES: Culture[] = [
       { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
       { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
+    // the unbroken line is a holy duty: an elder who leaves no children carries a sacred
+    // sorrow before the Ancestors.
+    statePrecepts: [{ id: 'childless_elder', self: 'disquiet', sacred: true, label: 'a broken line', holds: (s) => s.isElder && s.children === 0 }],
   },
 ];
 
@@ -1342,6 +1392,12 @@ export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   edified: { base: 30, durationTicks: 120, stackLimit: 4, mult: 0.7, label: 'saw your creed upheld' },
   guilt: { base: -85, durationTicks: Math.round(1.5 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.7, label: 'the weight of what you did' },
   righteous: { base: 45, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.75, label: 'lived by your creed' },
+  // STATE precepts (design/23 Stage 3): the ongoing mood of how you LIVE, not a single deed.
+  // Renewed each year while the life-state holds (stackLimit 1 ⇒ a steady background weight),
+  // fading within ~2 years once you leave it. `at_peace` = a life your creed blesses; `disquiet`
+  // = a life at odds with it.
+  at_peace: { base: 40, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'at peace with your creed' },
+  disquiet: { base: -50, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'a life at odds with your creed' },
 };
 
 export function selfThoughtSpec(kind: string): ThoughtSpec {
@@ -1479,6 +1535,29 @@ export function ethicsTaboos(cultureId: string): string[] {
   return (cultureById(cultureId).precepts ?? [])
     .filter((p) => (p.socialWeight ?? 0) >= 1.5)
     .map((p) => reputeSpec(p.deed).label);
+}
+
+/**
+ * The creed's MORAL CHARACTER made legible (design/23 Stage 3): the deeds and ways of
+ * living it holds virtuous (`reveres`) or sinful (`abhors`), for the settlement panel. A
+ * virtue is a precept that lays pride (righteous / at_peace); a sin, one that lays a
+ * burden (guilt / disquiet). Deed labels come from REPUTE_SPECS; life labels from the
+ * state precept. So each people reads as a distinct moral outlook, not a stat block.
+ */
+export function creedOf(cultureId: string): { reveres: string[]; abhors: string[] } {
+  const c = cultureById(cultureId);
+  const deeds = c.precepts ?? [];
+  const lives = c.statePrecepts ?? [];
+  return {
+    reveres: [
+      ...deeds.filter((p) => p.commitSelf === 'righteous').map((p) => reputeSpec(p.deed).label),
+      ...lives.filter((p) => p.self === 'at_peace').map((p) => p.label),
+    ],
+    abhors: [
+      ...deeds.filter((p) => p.commitSelf === 'guilt').map((p) => reputeSpec(p.deed).label),
+      ...lives.filter((p) => p.self === 'disquiet').map((p) => p.label),
+    ],
+  };
 }
 
 // ---- how public standing colours daily life (the consequences of reputation) ----

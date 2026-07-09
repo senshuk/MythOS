@@ -10,9 +10,11 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, hashWorld, runYears } from './sim';
 import { witnessDeed } from './perception';
+import { statePreceptsYearly } from './religion';
+import { standingOf } from './reputation';
 import { fullActors, emit } from './world';
 import { computeMood } from './mood';
-import { ethicsWeightFor, ethicsTaboos, patronDeityOf, giveInclination, CULTURES, SELF_THOUGHT_SPECS } from '../content/fixture';
+import { ethicsWeightFor, ethicsTaboos, patronDeityOf, giveInclination, creedOf, CULTURES, SELF_THOUGHT_SPECS } from '../content/fixture';
 
 /** Stage a public deed of `kind` (doer=actor[0], other=actor[1]) in a settlement of the
  *  given culture; optionally set the whole town's faith. Returns the cast. */
@@ -155,5 +157,71 @@ describe('precepts — virtues (belief produces PRIDE, each creed distinct)', ()
     runYears(w, 8);
     const gaveOpenly = [...w.reputation.values()].some((rep) => rep.marks.some((m) => m.kind === 'generosity'));
     expect(gaveOpenly).toBe(true);
+  });
+});
+
+describe('precepts — state precepts (the creed judges how you LIVE)', () => {
+  /** Put actor[0] into a life-state (mutate), run the yearly scan, return their self-thoughts. */
+  function stageLife(cultureId: string, faithful: boolean, mutate: (w: ReturnType<typeof createWorld>, id: number) => void) {
+    const w = createWorld(42);
+    w.settlements[w.focusedSettlementId].cultureId = cultureId;
+    const id = fullActors(w)[0];
+    w.faith.set(id, faithful ? patronDeityOf(cultureId).id : '');
+    mutate(w, id);
+    statePreceptsYearly(w);
+    return { w, id, thoughts: w.selfThoughts.get(id) ?? [] };
+  }
+
+  it('the Iron Creed blesses RENOWN — a renowned warrior lives at peace', () => {
+    const { w, id, thoughts } = stageLife('martial', true, (w, id) => {
+      for (let i = 0; i < 4; i++) w.reputation.get(id)!.marks.push({ kind: 'valor', value: 200, sinceTick: w.tick, witnesses: 8 });
+    });
+    expect(standingOf(w, id)).toBeGreaterThanOrEqual(220); // setup sanity
+    expect(has(thoughts, 'at_peace')).toBe(true);
+  });
+
+  it('the Green Way frets at HOARDING (sacred) — only the faithful feel it', () => {
+    const rich = (w: ReturnType<typeof createWorld>, id: number) => (w.needs.get(id)!.wealth = 950);
+    expect(has(stageLife('sylvan', true, rich).thoughts, 'disquiet')).toBe(true);
+    expect(has(stageLife('sylvan', false, rich).thoughts, 'disquiet')).toBe(false); // sacred → skips the faithless
+  });
+
+  it('the Maker Folk are at peace when PROSPEROUS (civic — felt even by the faithless)', () => {
+    const prosperous = (w: ReturnType<typeof createWorld>, id: number) => (w.needs.get(id)!.wealth = 850);
+    expect(has(stageLife('artisan', false, prosperous).thoughts, 'at_peace')).toBe(true);
+  });
+
+  it('the Old Faith grieves a CHILDLESS elder (sacred)', () => {
+    const childlessElder = (w: ReturnType<typeof createWorld>, id: number) => {
+      w.lifecycle.get(id)!.ageYears = 200;
+      w.ties.get(id)!.children = [];
+    };
+    expect(has(stageLife('devout', true, childlessElder).thoughts, 'disquiet')).toBe(true);
+  });
+
+  it('a state precept FADES once the life-state passes', () => {
+    const { w, id } = stageLife('artisan', false, (w, id) => (w.needs.get(id)!.wealth = 850));
+    expect(has(w.selfThoughts.get(id), 'at_peace')).toBe(true);
+    // leave the state and let the ongoing mood lapse (at_peace lasts 2 years)
+    w.needs.get(id)!.wealth = 400;
+    w.tick += 2 * 365 + 1;
+    statePreceptsYearly(w); // re-scan: no longer prosperous, and the old mark has expired
+    const active = (w.selfThoughts.get(id) ?? []).filter((t) => t.kind === 'at_peace' && (t.expiresTick === undefined || t.expiresTick > w.tick));
+    expect(active).toHaveLength(0);
+  });
+});
+
+describe('precepts — creedOf (moral character made legible)', () => {
+  it('each creed reads as a distinct outlook of what it reveres and abhors', () => {
+    const iron = creedOf('martial');
+    expect(iron.reveres).toContain('renown');
+    expect(iron.reveres).toContain('stood against the beast');
+    expect(iron.abhors).toContain('obscurity');
+    expect(iron.abhors).not.toContain('shed blood'); // the Iron Creed does not condemn killing
+
+    const green = creedOf('sylvan');
+    expect(green.abhors).toContain('shed blood');
+    expect(green.abhors).toContain('hoarding');
+    expect(green.reveres).toContain('made peace');
   });
 });

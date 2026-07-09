@@ -5,7 +5,7 @@ system that holds **precepts**, named moral rules that EMIT thoughts (approval, 
 guilt, pride) when an actor witnesses or commits a deed the creed cares about. It is the
 natural consumer of the mood system (design/22).
 
-**STATUS: Stages 1 & 2 SHIPPED (2026-07-09).**
+**STATUS: Stages 1, 2 & 3 SHIPPED (2026-07-09).**
 - **Stage 1** — precepts subsume the ethics map (one source of truth); a witnessed deed lays
   a self-thought on the doer (guilt) and witnesses (moral outrage) → mood. Over 40 grim years
   a Green Way town carried guilt/outrage while an Iron Creed one stayed at 0/0.
@@ -16,7 +16,14 @@ natural consumer of the mood system (design/22).
   everyday virtue), spending real wealth so it self-limits — which is what makes `edified`/
   `righteous` a regular felt thing (~800 gifts / 25y; the Old Faith carries edified/righteous
   from constant almsgiving; the Iron Creed feels no pride in giving — coherent). 250 tests
-  green; no determinism re-anchoring needed. Stage 3 below remains.
+  green; no determinism re-anchoring needed.
+- **Stage 3** — belief judges how you LIVE, not just what you do, and each creed's outlook is
+  legible. STATE PRECEPTS (a yearly RNG-free scan) lay an ongoing `at_peace`/`disquiet` on a
+  soul while a life-state holds: the Iron Creed blesses renown (its once-spare conscience now
+  touches every warrior), the Green Way frets at hoarding, the Maker Folk are at peace when
+  prosperous, the Old Faith grieves a childless elder, free folk chafe at destitution. And the
+  creed's moral character is surfaced (`creedOf` → the settlement panel's "reveres … · abhors …").
+  258 tests green; no save bump.
 
 ## Why now / what it adds
 
@@ -100,10 +107,13 @@ New `SELF_THOUGHT_SPECS` (mood table): **`moral_outrage`, `edified`, `guilt`, `r
   already delivered in Stage 1, so it needed no separate pass. Note: the Iron Creed is the
   deliberate morally-spare outlier — it reveres only valour (rare), so its souls are barely moved
   by belief; the other four feel everyday virtue via generosity.
-- **Stage 3 (later) — State precepts + surfacing.** Precepts about *states* not just deeds (hoarding
-  wealth, marrying out) — needs a state-scan. Plus UI: a settlement's creed and an actor's standing
-  with it. (Also open: the Iron Creed could use more everyday virtues so its conscience isn't nearly
-  inert; and richer deed coverage overall.)
+- **Stage 3 (SHIPPED) — State precepts + surfacing.** `StatePrecept` on Culture (a pure `holds`
+  over an `ActorLifeState` snapshot the engine gathers — pack data imports no engine module),
+  scanned yearly (`statePreceptsYearly` in religion.ts) to lay ongoing `at_peace`/`disquiet`
+  self-thoughts, sacred-gated, renewed while the state holds. `creedOf` surfaces each creed's
+  reveres/abhors in the settlement panel. The Iron Creed's inert-conscience note is resolved (it
+  now blesses renown). Still open for a future pass: richer deed coverage, marrying-out / other
+  state precepts, and an actor-level "living rightly with your creed" readout.
 
 ## Determinism / persistence / tests
 
