@@ -235,3 +235,39 @@ Result: snow-capped linear ranges dissected by river valleys, textured biome ban
 to jungle, smooth coasts with beaches, A*-routed roads, named features — crisp at every zoom.
 260 tests green. (Deferred, v3-D: river deltas + endorheic salt lakes — heavier generation for
 marginal payoff on the current arid-leaning worlds; left as future work.)
+
+- **v3-G — crisp per-pixel coastline.** The shore still read as both blocky and blurry because
+  `paintTerrain` bilinear-blended per-cell *colours*, ramping land→sea over many pixels. Now the
+  land/water boundary is decided **per pixel**: a land colour is precomputed for every cell (even
+  submerged), then each pixel picks water vs land by `bilinear(elevation) + fractal-noise < seaLevel`,
+  the noise gated to a thin band around the waterline → a fractally-detailed shoreline at any zoom,
+  no muddy ramp, no inland puddles. Render-only.
+
+## Part 6 — Mapgen v4 (drainage speed + rivers & lakes)
+
+Paired one performance slice and one fidelity slice, both around the drainage code.
+
+- **v4 perf — pop-order accumulation + typed heap.** Generation ran four priority-floods (3 in
+  erosion + 1 for rivers), and each `accumulateFlow` **sorted** ~200k cells by elevation. But the
+  flood already *visits* cells in ascending spill order — its reverse is a valid topological order
+  of the drainage tree, so `fillDepressions` now returns that `order` and accumulate iterates it
+  with **no sort**. The flood's min-heap also moved from `number[]` push/pop to **preallocated
+  typed arrays** (`Int32Array`/`Float32Array` + a length pointer; every cell is pushed once, so NN
+  slots suffice). Together: generation **~520ms → ~250–350ms** warm. (The tie-order shift reshapes
+  worlds slightly, like any drainage change; no tests broke this round.)
+- **v4 fidelity — highland lakes.** Every lake used to sit at the global sea level. But the flood
+  already computes each basin's spill level (`filled`); where `filled - elevation` exceeds a real
+  depth AND enough drainage gathers (`flux` gate, so dry desert pans don't flood), the basin holds
+  a **lake at its own — possibly upland — level**. Marked before the river pass (a filled basin is
+  standing water, not a channel) and before the distance fields (so lakeshores read as fresh water →
+  fertile). ~60–340 lake cells per world. The renderer paints them via the water classification
+  (they're above sea, so the `eP<sea` coastline test can't find them) with a crisp bilinear-fraction
+  shore.
+- **v4 fidelity — splined, flux-scaled rivers.** `geo.flowTo` (the drainage tree) is now kept on the
+  Geography so the renderer can trace each **great river** downstream from a headwater to its mouth as
+  one polyline, Catmull-Rom–smoothed and stroked in the SVG overlay (like roads) with **width ∝
+  √discharge** — a trunk reads broader than a headwater, and it meanders crisply at any zoom instead
+  of stair-stepping. Tributaries stop where they merge into an already-traced trunk, so the set is
+  dendritic with no overdraw. The fine tributary web stays in the canvas paint underneath.
+
+260 tests green; typecheck clean; browser-verified (rivers meander, lakes render, gen ~2× faster).

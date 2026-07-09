@@ -21,7 +21,7 @@ export type WaterKind = 0 | 1 | 2 | 3;
 export const GEO_SIZE = 450; // grid resolution across the world extent (v3: finer coasts/rivers)
 /** the resolution the flux thresholds were tuned at — drainage flux scales with cell area,
  *  so river thresholds scale by (N/REF_N)² to keep the same river density at any resolution. */
-const REF_N = 208;
+export const REF_N = 208;
 
 /** Default fraction of terrain below which a cell holds water. It is a PARAMETER, not
  *  a law: a dry/desert world passes a low value (few or no seas — just basins), a water
@@ -67,6 +67,10 @@ export interface Geography {
   /** accumulated drainage (rainfall routed downhill) per cell — a river's SIZE.
    *  0 off-river; grows downstream, so mouths read wider than springs. */
   flux: Float32Array;
+  /** each cell's DOWNSTREAM neighbour in the drainage tree (-1 = an outlet: sea or map edge).
+   *  Lets the renderer trace a river from source to mouth as one meandering polyline. Runtime
+   *  only — like all of geography, regenerated from the seed, never serialized. */
+  flowTo: Int32Array;
   /** relief class per cell (flat/rolling/hills/mountainous) from local contrast. */
   hilliness: Uint8Array;
   /** the prevailing wind, as one of 8 compass steps (dx,dy in cell space) — the
@@ -353,8 +357,18 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
   const fluxScale = (N * N) / (REF_N * REF_N);
   const riverFlux = RIVER_FLUX * fluxScale;
   const greatFlux = GREAT_RIVER_FLUX * fluxScale;
-  const { filled, flowTo } = fillDepressions(elevation, water, N);
-  const flux = accumulateFlow(filled, flowTo, water, moisture, N);
+  const { filled, flowTo, order } = fillDepressions(elevation, water, N);
+  const flux = accumulateFlow(flowTo, order, water, moisture, N);
+  // HIGHLAND LAKES: a basin the priority-flood had to raise well above its floor is a real
+  // depression, not just a flat. Where enough drainage gathers in one, standing water pools —
+  // at the basin's OWN (possibly upland) level, not the sea's. `filled - elevation` is the
+  // water depth the flood implies; the flux gate keeps dry desert pans from becoming lakes.
+  const LAKE_DEPTH = 0.012; // basin depth (elevation units) to hold a lake — resolution-independent
+  const lakeFlux = riverFlux * 0.6;
+  for (let k = 0; k < NN; k++) {
+    if (water[k] === WATER_NONE && filled[k] - elevation[k] > LAKE_DEPTH && flux[k] >= lakeFlux) water[k] = WATER_LAKE;
+  }
+  // rivers run the remaining land channels (a lake cell is standing water, not a river).
   for (let k = 0; k < NN; k++) {
     if (water[k] === WATER_NONE && flux[k] >= riverFlux) water[k] = WATER_RIVER;
   }
@@ -398,7 +412,7 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
   // 8) FEATURES: the seas, lakes, ranges and great rivers worth a name on the map.
   const { features, featureOf } = findFeatures(bodies, elevation, water, flux, hilliness, N, greatFlux);
 
-  return { size: N, seaLevel, elevation, moisture, temperature, fertility, water, flux, hilliness, wind: { dx: wind[0], dy: wind[1] }, features, featureOf, freshDist, seaDist };
+  return { size: N, seaLevel, elevation, moisture, temperature, fertility, water, flux, flowTo, hilliness, wind: { dx: wind[0], dy: wind[1] }, features, featureOf, freshDist, seaDist };
 }
 
 /**
@@ -461,8 +475,8 @@ function hydraulicErosion(elevation: Float32Array, seaLevel: number, N: number):
   const rain = new Float32Array(NN).fill(1); // uniform rainfall (moisture isn't computed yet)
   for (let pass = 0; pass < PASSES; pass++) {
     for (let k = 0; k < NN; k++) proto[k] = elevation[k] < seaLevel ? WATER_SEA : WATER_NONE;
-    const { filled, flowTo } = fillDepressions(elevation, proto, N);
-    const flux = accumulateFlow(filled, flowTo, proto, rain, N);
+    const { flowTo, order } = fillDepressions(elevation, proto, N);
+    const flux = accumulateFlow(flowTo, order, proto, rain, N);
     for (let k = 0; k < NN; k++) {
       if (proto[k] !== WATER_NONE) continue;
       const d = flowTo[k];
@@ -484,19 +498,27 @@ function hydraulicErosion(elevation: Float32Array, seaLevel: number, N: number):
  * flows to the sea/edge even across flats. Accumulating along THIS tree (not local
  * steepest-descent) concentrates flow into proper dendritic trunk rivers. O(N² log N²).
  */
-function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number): { filled: Float32Array; flowTo: Int32Array } {
+function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number): { filled: Float32Array; flowTo: Int32Array; order: Int32Array } {
   const NN = N * N;
   const EPS = 1e-5;
   const filled = new Float32Array(NN);
   const flowTo = new Int32Array(NN).fill(-1); // downstream cell (-1 = an outlet: sea or edge)
   const closed = new Uint8Array(NN);
-  // a binary min-heap over (cell, spill-level)
-  const hc: number[] = [];
-  const hp: number[] = [];
+  // the order LAND cells are finalised (popped), ascending by spill level — a free byproduct
+  // of the flood. Reversed, it is a valid topological order of the drainage tree (every cell
+  // before its downstream), so accumulateFlow needs no sort.
+  const order = new Int32Array(NN);
+  let on = 0;
+  // a binary min-heap over (cell, spill-level) in PREALLOCATED typed arrays — every cell is
+  // pushed exactly once, so NN slots suffice; typed storage + a length pointer beat number[]
+  // .push/.pop (no growth, no boxing) across the four floods a generation runs.
+  const hc = new Int32Array(NN);
+  const hp = new Float32Array(NN);
+  let hn = 0;
   const push = (cell: number, p: number) => {
-    hc.push(cell);
-    hp.push(p);
-    let i = hc.length - 1;
+    let i = hn++;
+    hc[i] = cell;
+    hp[i] = p;
     while (i > 0) {
       const par = (i - 1) >> 1;
       if (hp[par] <= hp[i]) break;
@@ -507,19 +529,17 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
   };
   const pop = (): number => {
     const top = hc[0];
-    const lc = hc.pop() as number;
-    const lp = hp.pop() as number;
-    if (hc.length) {
-      hc[0] = lc;
-      hp[0] = lp;
+    hn--;
+    if (hn > 0) {
+      hc[0] = hc[hn];
+      hp[0] = hp[hn];
       let i = 0;
-      const n = hc.length;
       for (;;) {
         const l = 2 * i + 1;
         const r = 2 * i + 2;
         let m = i;
-        if (l < n && hp[l] < hp[m]) m = l;
-        if (r < n && hp[r] < hp[m]) m = r;
+        if (l < hn && hp[l] < hp[m]) m = l;
+        if (r < hn && hp[r] < hp[m]) m = r;
         if (m === i) break;
         const tp = hp[m]; hp[m] = hp[i]; hp[i] = tp;
         const tc = hc[m]; hc[m] = hc[i]; hc[i] = tc;
@@ -539,8 +559,9 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
       push(k, filled[k]);
     }
   }
-  while (hc.length) {
+  while (hn) {
     const c = pop();
+    if (water[c] === WATER_NONE) order[on++] = c; // record land cells in ascending-level order
     const cx = c % N;
     const cy = (c / N) | 0;
     const lvl = filled[c];
@@ -558,7 +579,7 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
       push(nk, filled[nk]);
     }
   }
-  return { filled, flowTo };
+  return { filled, flowTo, order: order.subarray(0, on) };
 }
 
 /**
@@ -568,18 +589,15 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
  * cell flows down a single tree toward the sea, flux CONCENTRATES into dendritic trunk
  * rivers (steepest-descent on the near-flat filled surface merely dispersed it).
  */
-function accumulateFlow(filled: Float32Array, flowTo: Int32Array, water: Uint8Array, moisture: Float32Array, N: number): Float32Array {
+function accumulateFlow(flowTo: Int32Array, order: Int32Array, water: Uint8Array, moisture: Float32Array, N: number): Float32Array {
   const NN = N * N;
   const flux = new Float32Array(NN);
-  const order: number[] = [];
-  for (let k = 0; k < NN; k++) {
-    if (water[k] === WATER_NONE) {
-      order.push(k);
-      flux[k] = 0.12 + moisture[k]; // each cell contributes its rainfall
-    }
-  }
-  order.sort((a, b) => filled[b] - filled[a] || a - b); // high ground first (stable ties)
-  for (const k of order) {
+  for (let idx = 0; idx < order.length; idx++) flux[order[idx]] = 0.12 + moisture[order[idx]]; // each cell's own rainfall
+  // process HIGH ground first = the pop order reversed (descending spill level). This is a
+  // topological order of the drainage tree, so a cell has gathered all its upstream before it
+  // hands its total downstream — no sort needed (the flood already produced the order).
+  for (let idx = order.length - 1; idx >= 0; idx--) {
+    const k = order[idx];
     const d = flowTo[k];
     if (d >= 0 && water[d] === WATER_NONE) flux[d] += flux[k];
     // draining into water (or off the map edge, flowTo = -1) ends the routing — the sea takes it
