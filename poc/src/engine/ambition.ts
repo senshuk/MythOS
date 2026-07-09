@@ -16,7 +16,7 @@
  */
 import { type World, type EntityId, type AmbitionOffer, type ActiveAmbitionView } from './model';
 import { fullName } from './world';
-import { AMBITIONS } from '../content/ambitions';
+import { AMBITIONS } from './pack';
 
 /** The ambitions worth offering this player right now, each derived from their real situation. */
 export function offerableAmbitions(world: World, id: EntityId): AmbitionOffer[] {

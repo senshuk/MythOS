@@ -16,7 +16,7 @@
  * What each kind of mark is worth is PACK DATA (content/fixture REPUTE_SPECS).
  */
 import { type World, type EntityId, type Reputation, type EventId } from './model';
-import { reputeSpec } from '../content/fixture';
+import { reputeSpec } from './pack';
 import { activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Bound the marks kept on one actor (housekeeping; the deep past lives in events). */

@@ -25,7 +25,7 @@ import { recordDeed } from './reputation';
 import { witnessBelief, coronationSlot } from './belief';
 import { learnCoronation } from './statusBelief';
 import { escalateAnimosity, personalityOf } from './social';
-import { reputeSpec, ethicsWeightFor, preceptFor, patronDeityOf, deityById } from '../content/fixture';
+import { reputeSpec, ethicsWeightFor, preceptFor, patronDeityOf, deityById } from './pack';
 import { addSelfThought } from './mood';
 
 /** A co-resident's chance of having been present to see a public deed. */

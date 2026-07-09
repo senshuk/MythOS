@@ -17,7 +17,7 @@
  * without touching this file.
  */
 import { type World, type EntityId, type DecisionView } from './model';
-import { DECISIONS } from '../content/decisions';
+import { DECISIONS } from './pack';
 
 /** How many decisions to surface at once — bound the player's attention (CLAUDE.md legibility:
  *  "a living world is overwhelming; bound the player's attention so depth is felt, not drowned"). */

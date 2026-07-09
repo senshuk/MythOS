@@ -71,9 +71,9 @@ import {
   CONSUMPTION,
   BASE_PRICE,
   SETTLEMENT_LOCATION_TYPE,
-} from '../content/fixture';
-import { biomeOf } from '../content/biomes';
-import { placeName, featureName, givenName, houseName } from '../content/languages';
+} from './pack';
+import { biomeOf } from './pack';
+import { placeName, featureName, givenName, houseName } from './pack';
 import { SurfaceSubstrate } from './substrate';
 import { nearestFeatureAt, type GeoFeature } from './geography';
 import { deathProbability } from '../systems/lifecycle';

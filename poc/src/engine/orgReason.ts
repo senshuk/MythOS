@@ -35,7 +35,7 @@ import {
   worldviewFromValues,
   INTENTS,
   EVALUATOR_VERSION,
-} from '../content/fixture';
+} from './pack';
 import { getOrganization } from './organization';
 import { getEvent, clamp } from './world';
 

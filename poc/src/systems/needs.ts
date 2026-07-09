@@ -14,7 +14,7 @@
 import { type World, type EntityId } from '../engine/model';
 import { relCount, clamp, isWed } from '../engine/world';
 import { standingOf } from '../engine/reputation';
-import { REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../content/fixture';
+import { REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, SAFETY_NEED, ESTEEM_NEED } from '../engine/pack';
 
 /** Move a value a fraction of the way toward a target (deterministic easing). */
 function drift(v: number, target: number, rate: number): number {

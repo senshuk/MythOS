@@ -19,8 +19,8 @@ import {
   canBear,
   isAsexual,
   fecundityOf,
-} from '../content/fixture';
-import { givenName } from '../content/languages';
+} from '../engine/pack';
+import { givenName } from '../engine/pack';
 
 export function deathProbability(age: number, lifespan: number): number {
   const r = age / lifespan;

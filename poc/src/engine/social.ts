@@ -11,7 +11,7 @@ import { computeOpinion } from './opinion';
 import { standingOf } from './reputation';
 import { isKin, canTakeSpouse, emit } from './world';
 import { Rng, mixSeed } from './rng';
-import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, REPUTATION_EFFECTS, type Personality } from '../content/fixture';
+import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, REPUTATION_EFFECTS, type Personality } from './pack';
 
 const CRUSH_WARMTH = 120; // opinion that marks a real fondness (vs an acquaintance)
 

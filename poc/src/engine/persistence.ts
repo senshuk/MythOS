@@ -18,7 +18,7 @@ import { type World, type Identity, type Lifecycle, type Needs, type Thought, ty
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational } from './pack';
 
 export const SAVE_VERSION = 21;
 

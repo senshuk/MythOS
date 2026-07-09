@@ -22,8 +22,8 @@ import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
 import { perceiveCoronation } from './perception';
 import { propagateCoronation } from './news';
-import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
-import { givenName, houseName } from '../content/languages';
+import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from './pack';
+import { givenName, houseName } from './pack';
 import { startCivilWarClock } from './factions';
 import { appointLeader, dissolve } from './organization';
 

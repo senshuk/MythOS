@@ -16,7 +16,7 @@ import {
   DAYS_PER_YEAR,
   MEMORY_LIMIT,
 } from './model';
-import { NEEDS, monogamousOf, valueProfile, temperamentProfile, patronDeityOf, faithProbability } from '../content/fixture';
+import { NEEDS, monogamousOf, valueProfile, temperamentProfile, patronDeityOf, faithProbability } from './pack';
 import { Rng, mixSeed } from './rng';
 import { pruneThoughts } from './opinion';
 // addSelfThought is a pure mark op (no personality read); the module cycle through

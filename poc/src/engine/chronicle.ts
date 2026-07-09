@@ -12,7 +12,7 @@ import { endHouseAt } from './figures';
 import { renderEvent } from './render';
 import { Rng, mixSeed } from './rng';
 import { expand } from './grammar';
-import { eventInterest, LANDMARK_TYPES, LEGEND_GRAMMAR, ERA_GRAMMAR, ERA_SYMBOL } from '../content/narrative';
+import { eventInterest, LANDMARK_TYPES, LEGEND_GRAMMAR, ERA_GRAMMAR, ERA_SYMBOL } from './pack';
 
 const MIN_INTEREST = 15; // below this an event isn't worth remembering
 const CHRONICLE_LIMIT = 60; // how many tales the world keeps

@@ -48,11 +48,11 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE } from '../content/languages';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
-import { eventInterest } from '../content/narrative';
-import { PLAYER_ACTIONS } from '../content/actions';
+import { eventInterest } from './pack';
+import { PLAYER_ACTIONS } from './pack';
 import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
@@ -79,7 +79,10 @@ import { schedulePlayerIntent } from './player';
  * deep worldgen pre-history cheaply for centuries before a player enters. A
  * settlement is then promoted on demand with `focusSettlement`.
  */
-export function createWorld(seed: number, focus = true): World {
+export function createWorld(seed: number, focus = true, pack?: UniversePack): World {
+  // bind the universe FIRST — every pack member the worldgen touches (species, cultures,
+  // tongues, biomes…) must already speak this universe. Omitted = the built-in fantasy pack.
+  if (pack) setPack(pack);
   const world: World = {
     seed,
     substrate: createSubstrate(seed),

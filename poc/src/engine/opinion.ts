@@ -7,7 +7,7 @@
  * deterministic (no wall-clock; expiry is by tick).
  */
 import { type RelEdge, type ThoughtKind, type EventId } from './model';
-import { thoughtSpec } from '../content/fixture';
+import { thoughtSpec } from './pack';
 import { isActive, activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Add a thought to an edge, pruning expired ones of that kind and enforcing the

@@ -29,7 +29,7 @@ import {
   type InteractionDef,
   DAYS_PER_YEAR,
 } from './model';
-import { INTERACTIONS, INTENT_TO_INTERACTION, ORG_INTERACTION } from '../content/fixture';
+import { INTERACTIONS, INTENT_TO_INTERACTION, ORG_INTERACTION } from './pack';
 import { emit } from './world';
 import { perceive, worldviewOf } from './orgReason';
 import { applyEffects } from './orgAction';
