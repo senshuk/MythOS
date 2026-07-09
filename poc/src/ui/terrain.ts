@@ -8,7 +8,7 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_NONE, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -278,7 +278,6 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   const T = geo.temperature;
   const WTR = geo.water;
   const HILL = geo.hilliness;
-  const SD = geo.seaDist;
   const sea = geo.seaLevel;
   const water = theme.water ?? { deep: [18, 26, 40] as RGB, shallow: [40, 60, 80] as RGB, level: sea };
   const river: RGB = [Math.min(255, water.shallow[0] * 1.15 + 16), Math.min(255, water.shallow[1] * 1.15 + 16), Math.min(255, water.shallow[2] * 1.15 + 20)];
@@ -290,46 +289,34 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
   const gOf = (w: number) => Math.max(0, Math.min(N - 1, ((w - GEO_MIN) / GEO_SPAN) * (N - 1)));
 
-  // 1) BASE COLOUR per cell (biome or water, with coast shallows + snow), computed once so
-  //    the pixel loop can BILINEAR-BLEND cell colours — smooth coasts and biome transitions
-  //    instead of the blocky nearest-neighbour squares of a low-res grid.
+  // 1) LAND COLOUR per cell — the biome tint (+ snow) for EVERY cell, even submerged ones.
+  //    Water is NOT baked in here: it is decided per-pixel in the loop (see below) so the
+  //    coastline stays crisp at any zoom. Computing a land colour for water cells too means
+  //    the bilinear land blend near a shore interpolates land↔land (never land↔water), so a
+  //    beach never bleeds a muddy ramp of sea-colour up the shore.
   const NN = N * N;
-  const cellR = new Float32Array(NN);
-  const cellG = new Float32Array(NN);
-  const cellB = new Float32Array(NN);
+  const landR = new Float32Array(NN);
+  const landG = new Float32Array(NN);
+  const landB = new Float32Array(NN);
   for (let ci = 0; ci < NN; ci++) {
-    const w = WTR[ci];
-    let c: RGB;
-    if (w === WATER_SEA) {
-      const depth = Math.max(0, Math.min(1, E[ci] / sea));
-      const coast = Math.max(0, 1 - SD[ci] / 4);
-      c = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
-      if (coast > 0) c = lerp3(c, shore, coast * coast * 0.5);
-    } else if (w === WATER_LAKE) {
-      c = lerp3(water.deep, water.shallow, 0.7);
-    } else if (w === WATER_RIVER) {
-      c = river;
-    } else {
-      const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
-      c = [col[0], col[1], col[2]];
-      const e = E[ci];
-      const temp = T[ci];
-      // a sandy BEACH on the low land right at the waterline (not on cold shores, which
-      // are shingle/ice, nor up cliffs).
-      if (SD[ci] <= 1 && e < sea + 0.05 && temp > 0.34) {
-        c = lerp3(c, sand, 0.6);
-      } else if (e > 0.72 && temp < 0.4) {
-        // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
-        const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
-        c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
-      }
+    const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
+    let c: RGB = [col[0], col[1], col[2]];
+    const e = E[ci];
+    const temp = T[ci];
+    if (e > 0.72 && temp < 0.4) {
+      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
+      const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
+      c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
     }
-    cellR[ci] = c[0];
-    cellG[ci] = c[1];
-    cellB[ci] = c[2];
+    landR[ci] = c[0];
+    landG[ci] = c[1];
+    landB[ci] = c[2];
   }
 
-  // 2) pixel loop: bilinear-blend the cell colours, apply relief hillshade, keep rivers crisp.
+  // 2) pixel loop. The land/water boundary is resolved PER PIXEL from the (bilinearly
+  //    interpolated) elevation field, perturbed by sub-cell fractal noise near the waterline —
+  //    so the coastline is a crisp, fractally-detailed line at every zoom instead of a soft
+  //    ramp over a blocky one-cell step. Land interiors still bilinear-blend for smoothness.
   const img = ctx.createImageData(W, H);
   const data = img.data;
   for (let py = 0; py < H; py++) {
@@ -350,14 +337,62 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       const w10 = fx * (1 - fy);
       const w01 = (1 - fx) * fy;
       const w11 = fx * fy;
-      let r = cellR[i00] * w00 + cellR[i10] * w10 + cellR[i01] * w01 + cellR[i11] * w11;
-      let g = cellG[i00] * w00 + cellG[i10] * w10 + cellG[i01] * w01 + cellG[i11] * w11;
-      let b = cellB[i00] * w00 + cellB[i10] * w10 + cellB[i01] * w01 + cellB[i11] * w11;
       const nci = Math.round(gy) * N + Math.round(gx);
-      // hillshade LAND ONLY — applying the relief shade to water lit the sea-floor relief
-      // and made open water read as shaded mountains. The sea keeps its flat depth colour.
-      if (WTR[nci] === WATER_NONE) {
-        const e = bilinear(E, N, gx, gy);
+
+      // continuous elevation, then a crisp fractal coastline: perturb the elevation only
+      // NEAR the waterline (so deep water and high land are untouched — no inland puddles or
+      // phantom offshore isles), letting the shore wander at sub-cell scale.
+      const ePlain = bilinear(E, N, gx, gy);
+      const nearShore = 1 - Math.abs(ePlain - sea) / 0.06;
+      let eP = ePlain;
+      if (nearShore > 0) {
+        let cd = 0;
+        let camp = 0.5;
+        let cf = 1.6;
+        for (let o = 0; o < 4; o++) {
+          cd += camp * (vnoise(gx * cf + o * 31.7, gy * cf + o * 13.3, 917) - 0.5);
+          camp *= 0.5;
+          cf *= 2.15;
+        }
+        eP = ePlain + cd * 0.06 * nearShore;
+      }
+
+      let r: number;
+      let g: number;
+      let b: number;
+      if (eP < sea) {
+        // WATER — crisp per-pixel. Sea vs lake is read from the bilinear neighbours; near the
+        // shore the water brightens to a turquoise shallow.
+        const anySea = WTR[i00] === WATER_SEA || WTR[i10] === WATER_SEA || WTR[i01] === WATER_SEA || WTR[i11] === WATER_SEA;
+        const anyLake = WTR[i00] === WATER_LAKE || WTR[i10] === WATER_LAKE || WTR[i01] === WATER_LAKE || WTR[i11] === WATER_LAKE;
+        const below = sea - eP;
+        const coast = Math.max(0, 1 - below / 0.05);
+        let c: RGB;
+        if (anyLake && !anySea) {
+          c = lerp3(water.deep, water.shallow, Math.max(0.7, coast));
+        } else {
+          const depth = Math.max(0, Math.min(1, eP / sea));
+          c = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
+          if (coast > 0) c = lerp3(c, shore, coast * coast * 0.5);
+        }
+        r = c[0];
+        g = c[1];
+        b = c[2];
+      } else {
+        // LAND — bilinear blend of land colours (no water contamination), then a waterline
+        // beach, relief hillshade, ambient occlusion and fractal micro-detail.
+        r = landR[i00] * w00 + landR[i10] * w10 + landR[i01] * w01 + landR[i11] * w11;
+        g = landG[i00] * w00 + landG[i10] * w10 + landG[i01] * w01 + landG[i11] * w11;
+        b = landB[i00] * w00 + landB[i10] * w10 + landB[i01] * w01 + landB[i11] * w11;
+        // a sandy BEACH on warm low land right at the waterline (crisp, per-pixel).
+        const temp = T[nci];
+        if (eP < sea + 0.018 && temp > 0.34) {
+          const beach = Math.max(0, 1 - (eP - sea) / 0.018);
+          r = lerp(r, sand[0], beach * 0.7);
+          g = lerp(g, sand[1], beach * 0.7);
+          b = lerp(b, sand[2], beach * 0.7);
+        }
+        const e = ePlain;
         const gxp = Math.min(N - 1, gx + 0.8);
         const gyp = Math.min(N - 1, gy + 0.8);
         const gxm = Math.max(0, gx - 0.8);
@@ -373,7 +408,6 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         // FRACTAL MICRO-DETAIL — multi-octave noise at frequencies FINER than a grid cell,
         // sampled in grid space. At low zoom it averages out; zoomed in it resolves into
         // terrain texture (roughness, mottling) so the map reads as detail, not smooth blobs.
-        // Stronger on rough/mountain ground; both brightness and a slight hue break-up.
         let d = 0;
         let amp = 0.5;
         let f = 0.9;
@@ -387,18 +421,19 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         r *= s;
         g *= s;
         b *= s;
-      }
-      // keep RIVERS crisp AND a touch wider — the bilinear blend would wash a one-cell river
-      // away, so where the nearest OR an adjacent cell is a river, pull toward the river colour.
-      const nearRiver = WTR[nci] === WATER_RIVER
-        ? 0.68
-        : WTR[i00] === WATER_RIVER || WTR[i10] === WATER_RIVER || WTR[i01] === WATER_RIVER || WTR[i11] === WATER_RIVER
-          ? 0.34
-          : 0;
-      if (nearRiver > 0) {
-        r = lerp(r, river[0], nearRiver);
-        g = lerp(g, river[1], nearRiver);
-        b = lerp(b, river[2], nearRiver);
+        // RIVERS run over land — keep them crisp AND a touch wider. Where the nearest OR an
+        // adjacent cell is a river, pull toward the river colour (bilinear would wash a
+        // one-cell river away). Only on land, so a river mouth doesn't tint open sea.
+        const nearRiver = WTR[nci] === WATER_RIVER
+          ? 0.68
+          : WTR[i00] === WATER_RIVER || WTR[i10] === WATER_RIVER || WTR[i01] === WATER_RIVER || WTR[i11] === WATER_RIVER
+            ? 0.34
+            : 0;
+        if (nearRiver > 0) {
+          r = lerp(r, river[0], nearRiver);
+          g = lerp(g, river[1], nearRiver);
+          b = lerp(b, river[2], nearRiver);
+        }
       }
       const i = (py * W + px) * 4;
       data[i] = r;
