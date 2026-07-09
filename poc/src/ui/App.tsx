@@ -12,7 +12,7 @@ import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
-import { featureName } from '../content/languages';
+import { featureName, CULTURES } from '../engine/pack';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -103,22 +103,10 @@ function subsistenceClass(security: number): string {
   return 'muted';
 }
 
-// settlements on the map are coloured by their culture (presentation only)
-const CULTURE_COLOR: Record<string, string> = {
-  martial: '#e0685f', // the Iron Creed
-  sylvan: '#6cc08a', // the Green Way
-  artisan: '#e0b25e', // the Maker Folk
-  free: '#6fb6d6', // the Free Companies
-  devout: '#b79be0', // the Old Faith
-};
-const cultureColor = (id: string) => CULTURE_COLOR[id] ?? '#8a8f9e';
-const CULTURE_NAMES: Record<string, string> = {
-  martial: 'Iron Creed',
-  sylvan: 'Green Way',
-  artisan: 'Maker Folk',
-  free: 'Free Companies',
-  devout: 'Old Faith',
-};
+// culture names & colours come from the PACK (a universe knows its factions' banners) —
+// read through the engine's pack boundary, so a different universe recolours the map for free.
+const cultureColor = (id: string) => CULTURES.find((c) => c.id === id)?.color ?? '#8a8f9e';
+const cultureName = (id: string) => CULTURES.find((c) => c.id === id)?.name ?? id;
 
 /** Renders an event's prose with its named settlements & people as clickable links. */
 function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef) => void }) {
@@ -703,7 +691,7 @@ function RegionMap({
             const focused = n.id === focusedId;
             const r = n.ruined ? 1.9 : radius(n.population);
             const color = cultureColor(n.cultureId);
-            const sub = n.ruined ? 'a ruin' : `${CULTURE_NAMES[n.cultureId] ?? n.cultureId} · ${n.population} souls`;
+            const sub = n.ruined ? 'a ruin' : `${cultureName(n.cultureId)} · ${n.population} souls`;
             const enter = (e: RMouseEvent) => setHover({ name: n.name, meaning: n.nameMeaning, sub, cx: e.clientX, cy: e.clientY });
             return (
               <g
@@ -823,7 +811,7 @@ function Dashboard({
       <div className="legend cultures">
         {[...new Set(stat.map.nodes.map((n) => n.cultureId))].map((id) => (
           <span key={id}>
-            <i className="cdot" style={{ background: cultureColor(id) }} /> {CULTURE_NAMES[id] ?? id}
+            <i className="cdot" style={{ background: cultureColor(id) }} /> {cultureName(id)}
           </span>
         ))}
       </div>
@@ -1392,12 +1380,12 @@ function HistoryFeed({
             {tongues.map((t) => (
               <div key={t.cultureId} className="tongue">
                 <h3>
-                  {CULTURE_NAMES[t.cultureId] ?? t.cultureId} — <span className="tongue-demonym">the {t.demonym}</span>
+                  {cultureName(t.cultureId)} — <span className="tongue-demonym">the {t.demonym}</span>
                   <span className="tongue-voice"> · a {t.voice} tongue</span>
                 </h3>
                 {t.kin.length > 0 && (
                   <p className="tongue-kin muted">
-                    kin to {t.kin.map((k) => CULTURE_NAMES[k] ?? k).join(' and ')} — one mother tongue, long divided
+                    kin to {t.kin.map((k) => cultureName(k)).join(' and ')} — one mother tongue, long divided
                   </p>
                 )}
                 {t.kin.length === 0 && <p className="tongue-kin muted">an isolate — kin to no living tongue</p>}

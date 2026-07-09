@@ -423,6 +423,9 @@ export interface StatePrecept {
 export interface Culture {
   id: string;
   name: string;
+  /** the culture's map/legend colour — presentation, but PACK data (a universe knows
+   *  its factions' banners; the engine and UI stay colour-blind). */
+  color: string;
   /** The deity whose domain mirrors this culture's highest value. */
   patronDeityId: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
@@ -436,7 +439,7 @@ export interface Culture {
 
 export const CULTURES: Culture[] = [
   {
-    id: 'martial', name: 'the Iron Creed',
+    id: 'martial', name: 'the Iron Creed', color: '#e0685f',
     patronDeityId: 'iron_father',
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
     // warriors: killing in conflict is expected — bloodshed barely stings standing and
@@ -458,7 +461,7 @@ export const CULTURES: Culture[] = [
     ],
   },
   {
-    id: 'sylvan', name: 'the Green Way',
+    id: 'sylvan', name: 'the Green Way', color: '#6cc08a',
     patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
     // peace-keepers: killing PROFANES the living world (sacred outrage; the killer is
@@ -476,7 +479,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'hoarding', self: 'disquiet', sacred: true, label: 'hoarding', holds: (s) => s.wealth >= 880 }],
   },
   {
-    id: 'artisan', name: 'the Maker Folk',
+    id: 'artisan', name: 'the Maker Folk', color: '#e0b25e',
     patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
     // civic builders: violence disrupts ORDER (civic wrong, not divine — felt by all,
@@ -493,7 +496,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'prosperous', self: 'at_peace', label: 'honest prosperity', holds: (s) => s.wealth >= 780 }],
   },
   {
-    id: 'free', name: 'the Free Companies',
+    id: 'free', name: 'the Free Companies', color: '#6fb6d6',
     patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
     // mercenaries: pragmatic about violence (no conscience toll); generosity is rare and
@@ -510,7 +513,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'beholden', self: 'disquiet', label: 'destitution', holds: (s) => s.wealth <= 130 }],
   },
   {
-    id: 'devout', name: 'the Old Faith',
+    id: 'devout', name: 'the Old Faith', color: '#b79be0',
     patronDeityId: 'ancestors',
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
     // sacred law governs life: killing is a profound PROFANITY, brawling stains one's
