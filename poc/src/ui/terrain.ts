@@ -8,7 +8,7 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
+import { type Geography, WATER_NONE, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -348,16 +348,19 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       let r = cellR[i00] * w00 + cellR[i10] * w10 + cellR[i01] * w01 + cellR[i11] * w11;
       let g = cellG[i00] * w00 + cellG[i10] * w10 + cellG[i01] * w01 + cellG[i11] * w11;
       let b = cellB[i00] * w00 + cellB[i10] * w10 + cellB[i01] * w01 + cellB[i11] * w11;
-      // hillshade from the interpolated slope — mountainous ground casts a stronger shadow
       const nci = Math.round(gy) * N + Math.round(gx);
-      const e = bilinear(E, N, gx, gy);
-      const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
-      const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
-      let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
-      s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
-      r *= s;
-      g *= s;
-      b *= s;
+      // hillshade LAND ONLY — applying the relief shade to water lit the sea-floor relief
+      // and made open water read as shaded mountains. The sea keeps its flat depth colour.
+      if (WTR[nci] === WATER_NONE) {
+        const e = bilinear(E, N, gx, gy);
+        const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
+        const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
+        let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
+        s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
+        r *= s;
+        g *= s;
+        b *= s;
+      }
       // keep RIVERS crisp — the bilinear blend would wash a one-cell river away, so where the
       // nearest cell is a river, pull the pixel back toward the river colour.
       if (WTR[nci] === WATER_RIVER) {
