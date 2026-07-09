@@ -125,7 +125,10 @@ describe('mood', () => {
     const a = actors[0];
     const foe = actors.find((x) => x !== a)!;
     const edge = getRel(w, a, foe);
-    for (let i = 0; i < 6; i++) addThought(edge, 'slighted', w.tick);
+    // make foe DECISIVELY the most-resented soul a knows (a reshaped world may hand `a`
+    // an organic rival lower than a mere six slights) so the lash-out unambiguously targets them
+    for (let i = 0; i < 12; i++) addThought(edge, 'slighted', w.tick);
+    for (let i = 0; i < 4; i++) addThought(edge, 'feared', w.tick);
     for (let i = 0; i < 4; i++) addSelfThought(w, a, 'grief_spouse');
     w.needs.get(a)!.food = 0;
     w.needs.get(a)!.belonging = 0;

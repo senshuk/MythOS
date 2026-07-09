@@ -251,13 +251,10 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
   const fertility = new Float32Array(NN);
   const wOf = (i: number) => GEO_MIN + (i / (N - 1)) * GEO_SPAN;
 
-  // 1) elevation (base fbm continents + TECTONIC mountain belts) and TEMPERATURE —
-  //    colder toward one pole (latitude) and with altitude (mountains keep snow),
-  //    shifted by the world's overall climate (baseTemp: an ice world vs a hot one).
+  // 1) ELEVATION — base fbm continents + TECTONIC mountain belts.
   const tectonic = computeTectonics(seed, N);
   for (let j = 0; j < N; j++) {
     const wy = wOf(j);
-    const lat = (wy - GEO_MIN) / GEO_SPAN; // 0 (one pole) … 1 (the other)
     for (let i = 0; i < N; i++) {
       const wx = wOf(i);
       const wxN = wx * freq;
@@ -276,16 +273,26 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
       // fine coastal/island detail — a high-frequency wobble that breaks smooth shores into
       // inlets and offshore islands (and scoops the occasional inland basin for a lake).
       e += (fbm(wxN * 4.3 + 20, wyN * 4.3 + 20, seed + 131, 2) - 0.5) * 0.11;
-      const elev = e < 0 ? 0 : e > 1 ? 1 : e;
-      elevation[k] = elev;
-      // temperature: a FULL climate gradient runs across the map — cold toward one pole,
-      // hot toward the other — so a single world spans tundra → boreal → temperate →
-      // savanna → jungle, the way a RimWorld planet does (the map is a hemisphere slice,
-      // not one uniform region). `baseTemp` still shifts the whole band (an icier or hotter
-      // world), so worlds differ in overall warmth while each keeps a rich spread. Altitude
-      // keeps the peaks white; a little noise softens the band edges.
-      const tNoise = fbm(wx * freq * 1.3 + 90, wy * freq * 1.3 + 90, seed + 23, 2);
-      const t = 0.5 + baseTemp * 0.55 + (lat - 0.5) * 0.92 - elev * 0.42 + (tNoise - 0.5) * 0.16;
+      elevation[k] = e < 0 ? 0 : e > 1 ? 1 : e;
+    }
+  }
+
+  // 1b) HYDRAULIC EROSION — carve river valleys into the raw terrain (stream-power incision
+  //     along the drainage), so ranges are dissected by real valleys and drainage concentrates.
+  hydraulicErosion(elevation, seaLevel, N);
+
+  // 1c) TEMPERATURE — a FULL climate gradient runs across the map (cold toward one pole, hot
+  //     toward the other) so a single world spans tundra → boreal → temperate → savanna →
+  //     jungle, the way a RimWorld planet does. `baseTemp` shifts the whole band (icier/hotter
+  //     world); altitude keeps peaks white; a little noise softens the band edges. Computed
+  //     AFTER erosion so the altitude term reflects the carved terrain.
+  for (let j = 0; j < N; j++) {
+    const wy = wOf(j);
+    const lat = (wy - GEO_MIN) / GEO_SPAN;
+    for (let i = 0; i < N; i++) {
+      const k = j * N + i;
+      const tNoise = fbm(wOf(i) * freq * 1.3 + 90, wy * freq * 1.3 + 90, seed + 23, 2);
+      const t = 0.5 + baseTemp * 0.55 + (lat - 0.5) * 0.92 - elevation[k] * 0.42 + (tNoise - 0.5) * 0.16;
       temperature[k] = t < 0 ? 0 : t > 1 ? 1 : t;
     }
   }
@@ -434,6 +441,37 @@ function advectMoisture(
       // humidity (so lowlands just past a coast are green, not bone dry)
       const m = rain * 6 + h * 0.42;
       moisture[k] = m < 0 ? 0 : m > 1 ? 1 : m;
+    }
+  }
+}
+
+/**
+ * HYDRAULIC EROSION (stream-power incision) — carve valleys into the raw terrain. Each pass
+ * routes drainage (priority-flood tree over the current surface with uniform rainfall) and
+ * lowers every land cell in proportion to √(drainage) × slope-to-downstream: high-flux, steep
+ * cells cut deepest, so rivers carve V-valleys and dissect the mountain belts, and drainage
+ * concentrates into real trunks over successive passes. Deterministic; operates in place on
+ * `elevation`. Uses seaLevel as base level (below-sea cells are fixed outlets).
+ */
+function hydraulicErosion(elevation: Float32Array, seaLevel: number, N: number): void {
+  const NN = N * N;
+  const PASSES = 4;
+  const K_E = 0.055; // incision strength
+  const proto = new Uint8Array(NN);
+  const rain = new Float32Array(NN).fill(1); // uniform rainfall (moisture isn't computed yet)
+  for (let pass = 0; pass < PASSES; pass++) {
+    for (let k = 0; k < NN; k++) proto[k] = elevation[k] < seaLevel ? WATER_SEA : WATER_NONE;
+    const { filled, flowTo } = fillDepressions(elevation, proto, N);
+    const flux = accumulateFlow(filled, flowTo, proto, rain, N);
+    for (let k = 0; k < NN; k++) {
+      if (proto[k] !== WATER_NONE) continue;
+      const d = flowTo[k];
+      if (d < 0 || proto[d] !== WATER_NONE) continue; // a river mouth / edge — don't cut below the sea
+      const slope = elevation[k] - elevation[d];
+      if (slope <= 0) continue;
+      // stream power: incise ∝ √flux × slope, capped so a cell never sinks below its downstream
+      const incision = Math.min(slope * 0.6, K_E * Math.sqrt(flux[k]) * slope);
+      elevation[k] -= incision;
     }
   }
 }
