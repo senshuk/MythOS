@@ -22,8 +22,8 @@ import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
 import { perceiveCoronation } from './perception';
 import { propagateCoronation } from './news';
-import { generateGiven, generateFamily, maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
-import { tongueFor } from '../content/languages';
+import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from '../content/fixture';
+import { givenName, houseName } from '../content/languages';
 import { startCivilWarClock } from './factions';
 import { appointLeader, dissolve } from './organization';
 
@@ -94,10 +94,16 @@ export function mintFigure(
 ): HistoricalFigure {
   const id: FigureId = world.nextEntityId++;
   const species = s.macro.dominantSpecies;
-  // draw the given name first (preserve the rng order); take the house surname if one
-  // was supplied, else coin a new family — so founders/new dynasties stay byte-identical.
-  const given = generateGiven(rng, species);
-  const name = `${given} ${family ?? generateFamily(rng, tongueFor(s.cultureId, world.seed))}`;
+  // draw the given name first (preserve the rng order); take the house surname if one was
+  // supplied, else FOUND a new House — a meaningful epithet, whose meaning we remember.
+  const given = givenName(s.cultureId, world.seed, rng);
+  let surname = family;
+  if (surname === undefined) {
+    const h = houseName(s.cultureId, world.seed, rng);
+    surname = h.name;
+    world.houseMeaning.set(surname, h.meaning);
+  }
+  const name = `${given} ${surname}`;
   world.names.set(id, name); // so events that reference this figure render its name
   const fig: HistoricalFigure = {
     id,

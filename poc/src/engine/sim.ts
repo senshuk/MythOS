@@ -106,6 +106,7 @@ export function createWorld(seed: number, focus = true): World {
     eventsBySettlement: new Map(),
     identity: new Map(),
     names: new Map(),
+    houseMeaning: new Map(),
     lifecycle: new Map(),
     needs: new Map(),
     selfThoughts: new Map(),
@@ -1054,6 +1055,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .slice(0, 12)
     .map((h) => ({
       name: h.name,
+      meaning: world.houseMeaning.get(h.name),
       foundedYear: h.foundedYear,
       prestige: Math.round(h.prestige),
       origin: world.settlements[h.originSettlementId]?.name ?? '?',

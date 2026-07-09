@@ -49,8 +49,6 @@ import {
   SPECIES,
   speciesById,
   macroFertilityOf,
-  generateGiven,
-  generateFamily,
   pickSex,
   pickTraits,
   pickProfession,
@@ -75,7 +73,7 @@ import {
   SETTLEMENT_LOCATION_TYPE,
 } from '../content/fixture';
 import { biomeOf } from '../content/biomes';
-import { tongueFor, placeName, featureName } from '../content/languages';
+import { placeName, featureName, givenName, houseName } from '../content/languages';
 import { SurfaceSubstrate } from './substrate';
 import { nearestFeatureAt, type GeoFeature } from './geography';
 import { deathProbability } from '../systems/lifecycle';
@@ -489,10 +487,12 @@ export function promote(world: World, s: Settlement): void {
   for (let i = 0; i < remaining; i++) {
     const species = rng.chance(0.7) ? m.dominantSpecies : SPECIES[rng.int(SPECIES.length)].id;
     const [lo, hi] = bandRanges(species)[rng.weightedIndex(weights)];
+    const house = houseName(s.cultureId, world.seed, rng);
+    world.houseMeaning.set(house.name, house.meaning);
     made.push(
       createActor(world, {
-        given: generateGiven(rng, species),
-        family: generateFamily(rng, tongueFor(s.cultureId, world.seed)),
+        given: givenName(s.cultureId, world.seed, rng),
+        family: house.name,
         sex: pickSex(rng, species),
         speciesId: species,
         profession: pickProfession(rng),

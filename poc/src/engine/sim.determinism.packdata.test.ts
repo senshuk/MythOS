@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, buildSnapshot, focusSettlement, hashWorld, forgeWorld } from './sim';
+import { serializeWorld, deserializeWorld } from './persistence';
 import { fullActors, summaryActors, createActor, emit, canTakeSpouse, allEvents } from './world';
 import { generateGeography, isLand, freshWaterDist, seaDist } from './geography';
 import { worldShapeFor } from './substrate';
@@ -14,7 +15,7 @@ import { EVENT_RENDER, eventInterest } from '../content/narrative';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
 import { makeLanguage, coinWord } from './language';
-import { tongueFor, kitFor, placeName, lexeme, peopleName } from '../content/languages';
+import { tongueFor, kitFor, placeName, lexeme, peopleName, givenName, houseName } from '../content/languages';
 import { resolveIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
 import { maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, CULTURES } from '../content/fixture';
@@ -537,6 +538,25 @@ describe('procedural philology (each culture names the world in its own tongue)'
     expect(a).toMatch(/^[A-Z][a-z]+$/);
     expect(peopleName('martial', 1)).toBe(a); // stable within a world
     expect(peopleName('sylvan', 1)).not.toBe(a); // different peoples sound different
+  });
+
+  it('people are named in their CULTURE’s tongue, and Houses carry meaningful epithets', () => {
+    // given names are cultural + deterministic; different tongues sound different
+    expect(givenName('martial', 1, new Rng(4))).toBe(givenName('martial', 1, new Rng(4)));
+    expect(givenName('martial', 1, new Rng(4))).toMatch(/^[A-Z][a-z]+$/);
+    // a House name MEANS a heraldic epithet ("Korthan — the Iron Hand")
+    const h = houseName('sylvan', 1, new Rng(9));
+    expect(h.name).toMatch(/^[A-Z][a-z]+$/);
+    expect(h.meaning).toMatch(/^the \w+ \w+$/);
+    // a world remembers its Houses' meanings, and they survive save/load
+    const w = createWorld(1);
+    expect(w.houseMeaning.size).toBeGreaterThan(0);
+    for (const [surname, meaning] of w.houseMeaning) {
+      expect(surname).toMatch(/^[A-Z][a-z]+$/);
+      expect(meaning).toMatch(/^the \w+ \w+$/);
+    }
+    const loaded = deserializeWorld(JSON.parse(JSON.stringify(serializeWorld(w))));
+    expect([...loaded.houseMeaning]).toEqual([...w.houseMeaning]);
   });
 
   it('the lexicon is consistent — one concept keeps one root within a tongue', () => {

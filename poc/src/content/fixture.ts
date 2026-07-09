@@ -6,7 +6,6 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
-import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
@@ -1168,20 +1167,6 @@ export const INTENT_TO_INTERACTION: Record<string, string> = {
 
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;
-}
-
-export function generateGiven(rng: Rng, speciesId: string): string {
-  const sp = speciesById(speciesId);
-  const parts = [rng.pick(sp.onset), rng.pick(sp.nucleus)];
-  if (rng.chance(0.45)) parts.push(rng.pick(sp.nucleus));
-  parts.push(rng.pick(sp.coda));
-  return parts.join('');
-}
-
-/** A lineage surname, coined in a people's own tongue (see engine/language) — so houses
- *  and families of one culture share a sound. The caller resolves the culture's Language. */
-export function generateFamily(rng: Rng, lang: Language): string {
-  return coinWord(lang, rng, 'person');
 }
 
 export function pickSex(rng: Rng, speciesId: string): Sex {

@@ -196,6 +196,35 @@ export function peopleName(cultureId: string, seed: number): string {
   return compose(lang, [lexeme(cultureId, seed, SELF.id), lexeme(cultureId, seed, PPL.id)]);
 }
 
+/** A person's GIVEN name, coined in their CULTURE's tongue — naming follows culture, not
+ *  biology, so an assimilated individual takes their new people's names. */
+export function givenName(cultureId: string, seed: number, rng: Rng): string {
+  return coinWord(tongueFor(cultureId, seed), rng, 'given');
+}
+
+// heraldic nouns for House epithets — the second half of a lineage name ("the Iron HAND").
+const HOUSE_NOUNS: Concept[] = [
+  { id: 'hand', gloss: 'hand' }, { id: 'heart', gloss: 'heart' }, { id: 'blade', gloss: 'blade' },
+  { id: 'oath', gloss: 'oath' }, { id: 'crown', gloss: 'crown' }, { id: 'banner', gloss: 'banner' },
+  { id: 'watch', gloss: 'watch' }, { id: 'shield', gloss: 'shield' }, { id: 'spear', gloss: 'spear' },
+  { id: 'stone', gloss: 'stone' }, { id: 'thorn', gloss: 'thorn' }, { id: 'gate', gloss: 'gate' },
+  { id: 'wolf', gloss: 'wolf' }, { id: 'raven', gloss: 'raven' }, { id: 'stag', gloss: 'stag' },
+  { id: 'star', gloss: 'star' },
+];
+
+/** A House/lineage name AND its meaning — a heraldic epithet in the founders' tongue
+ *  ("Korthan — the Iron Hand"), built from the SAME stable roots as their homeland's names, so
+ *  a House shares words with the towns around it. `rng` (the worldgen stream) picks which
+ *  descriptor + noun; the roots are stable. */
+export function houseName(cultureId: string, seed: number, rng: Rng): { name: string; meaning: string } {
+  const desc = rng.pick(descriptorsFor(cultureId));
+  const noun = rng.pick(HOUSE_NOUNS);
+  return {
+    name: compose(tongueFor(cultureId, seed), [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, noun.id)]),
+    meaning: `the ${desc.gloss} ${noun.gloss}`,
+  };
+}
+
 /** Coin a settlement's name AND its meaning in the founding people's tongue. The STRUCTURE
  *  varies — a two-root compound, a descriptor + the tongue's locative suffix, or a founder's
  *  possessive — so a region reads varied yet rule-governed (the locative suffix recurs as an

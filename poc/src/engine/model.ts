@@ -897,6 +897,10 @@ export interface World {
    * would prune this to names still referenced by retained events.)
    */
   names: Map<EntityId, string>;
+  /** the MEANING of each House/lineage surname in its founders' tongue ("Korthan" → "the Iron
+   *  Hand"), keyed by the surname. Derived flavour like a settlement's nameMeaning — serialized
+   *  (it's cheap world data) but NOT in the determinism hash. */
+  houseMeaning: Map<string, string>;
   lifecycle: Map<EntityId, Lifecycle>;
   needs: Map<EntityId, Needs>;
   /** per-actor SELF-THOUGHTS: sourced, decaying marks about one's OWN life (grief, joy,
@@ -1299,6 +1303,7 @@ export interface FigureView {
 /** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */
 export interface HouseView {
   name: string;
+  meaning?: string; // the surname's sense in the founders' tongue ("the Iron Hand")
   foundedYear: number;
   prestige: number;
   origin: string; // the settlement where the line began

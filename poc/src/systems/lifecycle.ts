@@ -12,7 +12,6 @@ import { perceiveEvent } from '../engine/perception';
 import { addSelfThought } from '../engine/mood';
 import {
   speciesById,
-  generateGiven,
   pickSex,
   pickTraits,
   pickProfession,
@@ -21,6 +20,7 @@ import {
   isAsexual,
   fecundityOf,
 } from '../content/fixture';
+import { givenName } from '../content/languages';
 
 export function deathProbability(age: number, lifespan: number): number {
   const r = age / lifespan;
@@ -88,8 +88,11 @@ function bear(world: World, bearer: EntityId): void {
   const mate = primarySpouse(world, bearer); // undefined for asexual (solo) births
   const parents = mate !== undefined ? [bearer, mate] : [bearer];
 
+  // the child is named in its people's tongue — culture, not species, shapes names
+  const home = world.homeSettlement.get(bearer);
+  const cultureId = (home !== undefined ? world.settlements[home]?.cultureId : undefined) ?? world.settlements[0]?.cultureId ?? '';
   const childId = createActor(world, {
-    given: generateGiven(rng, species),
+    given: givenName(cultureId, world.seed, rng),
     family: idn.family, // the child takes the bearer's family (no patrilineal assumption)
     sex: pickSex(rng, species),
     speciesId: species,

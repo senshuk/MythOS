@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
 import { religionYearly } from './religion';
 import { witnessDeed } from './perception';
-import { fullActors, emit, getRel } from './world';
+import { fullActors, emit } from './world';
 import { patronDeityOf, CULTURES, thoughtSpec } from '../content/fixture';
 import { DAYS_PER_YEAR } from './model';
 

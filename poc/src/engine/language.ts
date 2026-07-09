@@ -99,7 +99,7 @@ function polish(w: string): string {
  *  MEANINGFUL compound names, kept to one syllable so a two-root name stays short ("Korth" +
  *  "ul" = Korthul, not a mouthful). */
 export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'root' | 'given'): string {
-  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : kind === 'given' ? [1, 2] : [1, 1];
+  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : kind === 'given' ? [2, 2] : [1, 1];
   const syllables = rng.range(lo, hi);
   let w = '';
   for (let i = 0; i < syllables; i++) {

@@ -244,6 +244,7 @@ button { font-family: inherit; }
 .houses li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line-soft); }
 .houses li.house-fallen { opacity: 0.6; }
 .house-name { font-family: var(--serif); color: var(--violet); font-weight: 600; }
+.house-gloss { font-weight: 400; font-style: italic; color: var(--ink-dim); font-size: var(--fs-xs); }
 .house-status { margin-left: var(--space-2); font-size: var(--fs-xs); color: var(--ink-dim); }
 .houses li.house-fallen .house-status { color: var(--rose); }
 .house-meta { display: block; font-size: var(--fs-xs); margin-top: 2px; }

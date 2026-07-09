@@ -1402,7 +1402,7 @@ function HistoryFeed({
               <ul className="houses">
                 {houses.slice(0, 8).map((h, i) => (
                   <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                    <span className="house-name">House {h.name}</span>
+                    <span className="house-name">House {h.name}{h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}</span>
                     <span className="house-status">
                       {h.extinctYear !== undefined
                         ? `fell with its seat, y${h.extinctYear}`

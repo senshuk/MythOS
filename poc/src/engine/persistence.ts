@@ -89,6 +89,7 @@ export interface SaveFile {
   fidelity: [number, World['fidelity'] extends Map<number, infer V> ? V : never][];
   identity: [number, Identity][];
   names: [number, string][];
+  houseMeaning: [string, string][];
   lifecycle: [number, Lifecycle][];
   needs: [number, Needs][];
   /** per-actor self-thoughts (mood memory). Optional for saves predating v21. */
@@ -190,6 +191,7 @@ export function serializeWorld(world: World): SaveFile {
     fidelity: [...world.fidelity],
     identity: [...world.identity],
     names: [...world.names],
+    houseMeaning: [...world.houseMeaning],
     lifecycle: [...world.lifecycle],
     needs: [...world.needs],
     selfThoughts: [...world.selfThoughts],
@@ -368,6 +370,7 @@ export function deserializeWorld(s: SaveFile): World {
     stats,
     identity: new Map(s.identity),
     names: new Map(s.names),
+    houseMeaning: new Map(s.houseMeaning ?? []), // ?? for pre-3a-2 saves
     lifecycle: new Map(s.lifecycle),
     needs: new Map(s.needs),
     // pre-v21 saves carry no mood memory: every living actor starts unburdened, but the
