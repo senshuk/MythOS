@@ -111,6 +111,22 @@ export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'r
   return polish(w);
 }
 
+/** A REGULAR sound-change — every occurrence of `from` becomes `to` — the mechanism of
+ *  language drift. A daughter tongue differs from its ancestor by a small set of such shifts
+ *  applied to the WHOLE lexicon, so related cultures' words stay audible COGNATES (the way
+ *  Latin pater / English father differ by one regular p→f). The engine applies shifts; the
+ *  PACK owns which sounds shift to which (content/languages). */
+export type SoundShift = [from: string, to: string];
+
+/** Drift a word through a tongue's sound-changes (applied in order, globally), then soften
+ *  any letter pile-up the shifts created (an h is a modifier — never doubled, so a k→kh shift
+ *  striking an existing kh yields kh, not khh). Deterministic — same word + shifts ⇒ same result. */
+export function applyShifts(word: string, shifts: SoundShift[]): string {
+  let w = word;
+  for (const [from, to] of shifts) w = w.split(from).join(to);
+  return w.replace(/hh+/g, 'h').replace(/(.)\1{2,}/g, '$1$1');
+}
+
 const CONS = /[bcdfghjklmnpqrstvwxz]/i; // (vowels + y-as-vowel excluded; a rough sound test)
 function consRun(s: string, fromEnd: boolean): number {
   let n = 0;

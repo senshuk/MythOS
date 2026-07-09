@@ -5,7 +5,7 @@
  * this file alone: an elvish kit (soft liquids, open syllables), a Klingon kit (guttural
  * stops, hard codas), a Dovahzul kit — the engine is unchanged.
  */
-import { type PhonologyKit, type Language, languageFor, coinWord, compose } from '../engine/language';
+import { type PhonologyKit, type Language, type SoundShift, languageFor, coinWord, compose, applyShifts } from '../engine/language';
 import { type GeoFeature } from '../engine/geography';
 import { Rng, mixSeed } from '../engine/rng';
 import { biomeOf } from './biomes';
@@ -65,8 +65,7 @@ const TEMPERATE: PhonologyKit = {
 };
 
 // Which voice each culture speaks. Harsh creeds are guttural, wild/free folk flowing, makers
-// temperate. Two cultures sharing a kit sound RELATED but distinct — a hint of the language
-// families a later stage will model.
+// temperate.
 const CULTURE_VOICE: Record<string, PhonologyKit> = {
   martial: GUTTURAL,
   devout: GUTTURAL,
@@ -75,8 +74,47 @@ const CULTURE_VOICE: Record<string, PhonologyKit> = {
   artisan: TEMPERATE,
 };
 
+// ---------------------------------------------------- language families ------
+// Cultures DESCEND from proto-tongues: the martial and devout creeds both speak daughters of
+// a proto-guttural; the sylvan and free folk of a proto-flowing; the artisan tongue is an
+// isolate. A daughter does not coin its lexicon fresh — it INHERITS the proto's roots through
+// its own small set of regular sound-changes (below), so two kin cultures' words for "iron"
+// are audible COGNATES: colonization history you can hear. (The engine applies shifts;
+// this file — the pack — owns the family tree and which sounds may shift.)
+const FAMILY: Record<string, string> = {
+  martial: '@proto-guttural',
+  devout: '@proto-guttural',
+  sylvan: '@proto-flowing',
+  free: '@proto-flowing',
+};
+const PROTO_KIT: Record<string, PhonologyKit> = {
+  '@proto-guttural': GUTTURAL,
+  '@proto-flowing': FLOWING,
+};
+// the regular changes a daughter tongue may undergo (lenition, fortition, vowel shifts) —
+// each culture draws 2–3, applied to EVERY inherited root, so the drift is systematic.
+const SOUND_SHIFTS: SoundShift[] = [
+  ['k', 'kh'], ['kh', 'g'], ['g', 'k'], ['t', 'th'], ['th', 'd'], ['d', 't'],
+  ['b', 'v'], ['v', 'w'], ['s', 'sh'], ['sh', 's'], ['r', 'l'], ['l', 'r'], ['m', 'n'],
+  ['a', 'e'], ['e', 'i'], ['o', 'u'], ['u', 'o'], ['i', 'y'], ['au', 'o'], ['ai', 'ei'],
+];
+const shiftCache = new Map<string, SoundShift[]>();
+function shiftsFor(cultureId: string, seed: number): SoundShift[] {
+  const ck = `${seed}:${cultureId}`;
+  let shifts = shiftCache.get(ck);
+  if (!shifts) {
+    const rng = new Rng(mixSeed(seed, hashConcept(`${cultureId}@drift`)));
+    const bag = [...SOUND_SHIFTS];
+    shifts = [];
+    const n = 2 + rng.int(2); // 2–3 regular changes per daughter tongue
+    for (let i = 0; i < n && bag.length; i++) shifts.push(bag.splice(rng.int(bag.length), 1)[0]);
+    shiftCache.set(ck, shifts);
+  }
+  return shifts;
+}
+
 export function kitFor(cultureId: string): PhonologyKit {
-  return CULTURE_VOICE[cultureId] ?? TEMPERATE;
+  return PROTO_KIT[cultureId] ?? CULTURE_VOICE[cultureId] ?? TEMPERATE;
 }
 
 /** The tongue a culture speaks in this world — its kit, sampled into a distinct language
@@ -211,12 +249,18 @@ const DIRS: Record<string, Concept> = {
 
 // a root WORD for a concept in a culture's tongue — STABLE per (culture, concept, world), so
 // the same meaning always sounds the same within a people. Memoised; lowercased for compounding.
+// A culture with an ANCESTOR (see FAMILY) does not coin the root fresh: it INHERITS the
+// proto-tongue's root through its own regular sound-changes — so kin cultures hold COGNATES
+// ("korth" / "khorth" for iron), while an isolate coins its own.
 const lexCache = new Map<string, string>();
 export function lexeme(cultureId: string, seed: number, conceptId: string): string {
   const ck = `${seed}:${cultureId}:${conceptId}`;
   let root = lexCache.get(ck);
   if (root === undefined) {
-    root = coinWord(tongueFor(cultureId, seed), new Rng(mixSeed(seed, hashConcept(ck))), 'root').toLowerCase();
+    const proto = FAMILY[cultureId];
+    root = proto
+      ? applyShifts(lexeme(proto, seed, conceptId), shiftsFor(cultureId, seed))
+      : coinWord(tongueFor(cultureId, seed), new Rng(mixSeed(seed, hashConcept(ck))), 'root').toLowerCase();
     lexCache.set(ck, root);
   }
   return root;

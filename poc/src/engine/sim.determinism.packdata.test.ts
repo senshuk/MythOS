@@ -534,6 +534,29 @@ describe('procedural philology (each culture names the world in its own tongue)'
     expect(peakHit).toBe(true);
   });
 
+  it('kin cultures hold COGNATES — a family’s tongues drifted from one proto, isolates did not', () => {
+    // edit distance, for measuring how far two roots have drifted apart
+    const lev = (a: string, b: string): number => {
+      const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+      for (let j = 1; j <= b.length; j++) d[0][j] = j;
+      for (let i = 1; i <= a.length; i++)
+        for (let j = 1; j <= b.length; j++)
+          d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      return d[a.length][b.length];
+    };
+    const concepts = ['iron', 'high', 'haven', 'ford', 'wood', 'old', 'deep', 'town', '@loc', '@ppl'];
+    for (const seed of [1, 7, 42]) {
+      let kin = 0, cross = 0;
+      for (const c of concepts) {
+        kin += lev(lexeme('martial', seed, c), lexeme('devout', seed, c)); // same family (proto-guttural)
+        cross += lev(lexeme('martial', seed, c), lexeme('sylvan', seed, c)); // different families
+      }
+      expect(kin).toBeLessThan(cross); // kinship is AUDIBLE: kin roots drift, strangers' differ outright
+    }
+    // the drift is REGULAR and deterministic — one culture's shift set gives one answer
+    expect(lexeme('devout', 1, 'iron')).toBe(lexeme('devout', 1, 'iron'));
+  });
+
   it('a town by a named river can take the river’s name; a colony can take its mother’s', () => {
     const inland = { coast: 0, elevation: 0.4, moisture: 0.5, temperature: 0.5, freshWater: 0.8 };
     // hydronym: given a landmark, some rolls borrow its (old-tongue) name — "the ford on the Skarnald"
