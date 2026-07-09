@@ -8,13 +8,90 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand, elevationAt } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
   y: number;
   w: number;
   h: number;
+}
+
+// -------------------------------------------------------------- roads --------
+
+/** A generated route between two settlements, as an SVG path. `road` = an overland
+ *  road (hugs valleys, avoids water); `sea` = the neighbours are across water, so the
+ *  link is a shipping lane, drawn differently. */
+export interface MapRoad {
+  d: string; // svg path in map (world) coordinates
+  kind: 'road' | 'sea';
+  width: number;
+}
+interface RoadNode {
+  id: number;
+  x: number;
+  y: number;
+  ruined: boolean;
+}
+interface RoadEdge {
+  a: number;
+  b: number;
+  relation: number;
+  tradeVolume: number;
+}
+
+/**
+ * Route roads along the region graph (design: RimWorld draws roads between world
+ * settlements). For each peaceful edge, sample the straight line and, at interior
+ * points, nudge perpendicular toward lower LAND elevation — so a road hugs the valleys
+ * and bends around hills instead of climbing straight over them. If the pair is mostly
+ * separated by water it becomes a `sea` lane. Pure function of geography + node
+ * positions (deterministic), computed once per snapshot, never stored.
+ */
+export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[]): MapRoad[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const roads: MapRoad[] = [];
+  const SAMPLES = 14;
+  for (const e of edges) {
+    if (e.relation <= -20) continue; // a hostile border is not a road
+    const a = byId.get(e.a);
+    const b = byId.get(e.b);
+    if (!a || !b || a.ruined || b.ruined) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = -dy / len; // perpendicular unit (for the valley-hugging nudge)
+    const py = dx / len;
+    const pts: { x: number; y: number }[] = [];
+    let water = 0;
+    for (let s = 0; s <= SAMPLES; s++) {
+      const t = s / SAMPLES;
+      let x = a.x + dx * t;
+      let y = a.y + dy * t;
+      if (!isLand(geo, x, y)) water++;
+      if (s > 0 && s < SAMPLES) {
+        let bestE = elevationAt(geo, x, y);
+        for (const off of [-3, -1.5, 1.5, 3]) {
+          const nx = x + px * off;
+          const ny = y + py * off;
+          if (isLand(geo, nx, ny)) {
+            const el = elevationAt(geo, nx, ny);
+            if (el < bestE) {
+              bestE = el;
+              x = nx;
+              y = ny;
+            }
+          }
+        }
+      }
+      pts.push({ x, y });
+    }
+    const kind: MapRoad['kind'] = water / (SAMPLES + 1) > 0.4 ? 'sea' : 'road';
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
+    roads.push({ d, kind, width: kind === 'sea' ? 0.3 : 0.4 + Math.min(1.4, e.tradeVolume / 7) });
+  }
+  return roads;
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -56,9 +133,13 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   const M = geo.moisture;
   const T = geo.temperature;
   const WTR = geo.water;
+  const HILL = geo.hilliness;
+  const SD = geo.seaDist;
   const sea = geo.seaLevel;
   const water = theme.water ?? { deep: [18, 26, 40] as RGB, shallow: [40, 60, 80] as RGB, level: sea };
   const river: RGB = [Math.min(255, water.shallow[0] * 1.15 + 16), Math.min(255, water.shallow[1] * 1.15 + 16), Math.min(255, water.shallow[2] * 1.15 + 20)];
+  // a turquoise kiss for the shallowest coastal water (blended in near shore)
+  const shore: RGB = [Math.min(255, water.shallow[0] + 24), Math.min(255, water.shallow[1] + 44), Math.min(255, water.shallow[2] + 40)];
 
   // world coord → grid coord over the geography's full extent (the grid spans more than
   // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
@@ -77,9 +158,14 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       let b: number;
       if (w === WATER_SEA) {
         const e = bilinear(E, N, gx, gy);
-        [r, g, b] = lerp3(water.deep, water.shallow, Math.max(0, Math.min(1, e / sea)));
+        // depth by elevation, brightened toward the shore (seaDist small) so coasts read
+        // as shallows shelving into deep ocean — then a turquoise kiss on the shallowest.
+        const depth = Math.max(0, Math.min(1, e / sea));
+        const coast = Math.max(0, 1 - SD[ci] / 4);
+        [r, g, b] = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
+        if (coast > 0) [r, g, b] = lerp3([r, g, b], shore, coast * coast * 0.5);
       } else if (w === WATER_LAKE) {
-        [r, g, b] = lerp3(water.deep, water.shallow, 0.65);
+        [r, g, b] = lerp3(water.deep, water.shallow, 0.7);
       } else if (w === WATER_RIVER) {
         [r, g, b] = river;
       } else {
@@ -89,14 +175,24 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         r = col[0];
         g = col[1];
         b = col[2];
-        // NW hillshade for relief
+        // hillshade for relief — mountainous ground (higher `hilliness`) casts a stronger
+        // shadow, so ranges read as real ridges rather than a faint gradient.
         const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
         const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
-        let s = 1 + (-ex - ey) * theme.hillshade * 8;
-        s = s < 0.72 ? 0.72 : s > 1.28 ? 1.28 : s;
+        let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[ci] * 4);
+        s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
         r *= s;
         g *= s;
         b *= s;
+        // SNOW on cold high ground — the white-capped peaks a RimWorld planet shows near
+        // its poles and on its tallest ranges.
+        const temp = T[ci];
+        if (e > 0.72 && temp < 0.4) {
+          const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
+          r = lerp(r, 236, snow);
+          g = lerp(g, 240, snow);
+          b = lerp(b, 245, snow);
+        }
       }
       const i = (py * W + px) * 4;
       data[i] = r;

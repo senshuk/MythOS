@@ -11,7 +11,7 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraVie
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
-import { paintTerrain, paintStarfield, type TerrainLabel } from './terrain';
+import { paintTerrain, paintStarfield, buildRoads, type TerrainLabel } from './terrain';
 import { featureName } from '../content/languages';
 import { useSim } from './useSim';
 
@@ -580,6 +580,12 @@ function RegionMap({
   };
 
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
+  // roads follow the region graph across the real terrain — recomputed only when the
+  // world (nodes/edges) changes, not on pan/zoom. Surface worlds only (a galaxy has none).
+  const roads = useMemo(
+    () => (sub instanceof SurfaceSubstrate ? buildRoads(sub.geography, map.nodes, map.edges) : []),
+    [sub, map.nodes, map.edges],
+  );
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
   const radius = (pop: number) => 1.7 + 3.4 * Math.sqrt(pop / maxPop);
   // on a big, busy map only the GREATEST cities are labelled (others are dots with a
@@ -601,24 +607,28 @@ function RegionMap({
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
         <canvas ref={canvasRef} className="map-terrain" />
         <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
-          {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
-          {map.edges.map((e, i) => {
+          {/* ROADS: the physical links between peaceful settlements — overland roads hug
+              the valleys, sea lanes cross the water (design: RimWorld draws world roads). */}
+          {roads.map((rd, i) => (
+            <path
+              key={`rd${i}`}
+              className={`road ${rd.kind}`}
+              d={rd.d}
+              fill="none"
+              stroke={rd.kind === 'sea' ? 'var(--cyan)' : 'var(--neutral)'}
+              strokeWidth={rd.width}
+              strokeDasharray={rd.kind === 'sea' ? '0.9 1.3' : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={rd.kind === 'sea' ? 0.32 : 0.5}
+            />
+          ))}
+          {/* hostile borders stay straight — a contested march, not a road */}
+          {map.edges.filter((e) => e.relation < -20).map((e, i) => {
             const a = nodeById.get(e.a)!;
             const b = nodeById.get(e.b)!;
-            const trade = e.relation > 15;
-            const hostile = e.relation < -20;
             return (
-              <line
-                key={i}
-                className={`edge ${hostile ? 'hostile' : trade ? 'trade' : 'quiet'}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={hostile ? 'var(--rose)' : trade ? 'var(--jade)' : 'var(--line)'}
-                strokeWidth={hostile ? 0.5 : trade ? 0.5 + Math.min(1.7, e.tradeVolume / 6) : 0.35}
-                opacity={hostile ? 0.7 : trade ? 0.9 : 0.4}
-              />
+              <line key={`h${i}`} className="edge hostile" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--rose)" strokeWidth={0.5} strokeDasharray="1 1" opacity={0.7} />
             );
           })}
           {/* nodes: coloured by culture, sized by population; hover for a glance, click for its story */}

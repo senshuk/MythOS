@@ -154,16 +154,29 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
     const lat = (wy - GEO_MIN) / GEO_SPAN; // 0 (one pole) … 1 (the other)
     for (let i = 0; i < N; i++) {
       const wx = wOf(i);
-      let e = fbm(wx * freq, wy * freq, seed, 5);
-      e = e * 0.82 + (0.5 - Math.abs(fbm(wx * freq * 2.4, wy * freq * 2.4, seed + 99, 3) - 0.5)) * 0.36;
+      const wxN = wx * freq;
+      const wyN = wy * freq;
+      // DOMAIN WARP: bend the sampling space with a low-frequency offset so coastlines are
+      // organic — bays, capes, fjords, scattered isles — instead of smooth ovals.
+      const warpX = (fbm(wxN * 0.85 + 5.2, wyN * 0.85 + 1.3, seed + 41, 3) - 0.5) * 1.5;
+      const warpY = (fbm(wxN * 0.85 + 2.7, wyN * 0.85 + 8.1, seed + 57, 3) - 0.5) * 1.5;
+      let e = fbm(wxN + warpX, wyN + warpY, seed, 5);
+      // ridged detail carves mountain spines
+      e = e * 0.80 + (0.5 - Math.abs(fbm(wxN * 2.4, wyN * 2.4, seed + 99, 3) - 0.5)) * 0.34;
+      // fine coastal/island detail — a high-frequency wobble that breaks smooth shores into
+      // inlets and offshore islands (and scoops the occasional inland basin for a lake).
+      e += (fbm(wxN * 4.3 + 20, wyN * 4.3 + 20, seed + 131, 2) - 0.5) * 0.11;
       const k = j * N + i;
       const elev = e < 0 ? 0 : e > 1 ? 1 : e;
       elevation[k] = elev;
-      // temperature: the world's CLIMATE (baseTemp) dominates; the in-map latitude band is
-      // gentle (a region, not a whole hemisphere) so a world reads as one climate — frozen,
-      // temperate, or scorching — instead of every world having the same cold→hot stripe.
+      // temperature: a FULL climate gradient runs across the map — cold toward one pole,
+      // hot toward the other — so a single world spans tundra → boreal → temperate →
+      // savanna → jungle, the way a RimWorld planet does (the map is a hemisphere slice,
+      // not one uniform region). `baseTemp` still shifts the whole band (an icier or hotter
+      // world), so worlds differ in overall warmth while each keeps a rich spread. Altitude
+      // keeps the peaks white; a little noise softens the band edges.
       const tNoise = fbm(wx * freq * 1.3 + 90, wy * freq * 1.3 + 90, seed + 23, 2);
-      const t = baseTemp + 0.42 + lat * 0.34 - elev * 0.42 + (tNoise - 0.5) * 0.2;
+      const t = 0.5 + baseTemp * 0.55 + (lat - 0.5) * 0.92 - elev * 0.42 + (tNoise - 0.5) * 0.16;
       temperature[k] = t < 0 ? 0 : t > 1 ? 1 : t;
     }
   }

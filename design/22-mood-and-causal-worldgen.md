@@ -139,3 +139,36 @@ nothing — not every place is famous). Coverage: ~75–100% of settlements on m
 (optional, no migration), excluded from the hash (derived flavour, stable per seed),
 surfaced in the settlement inspector. This is "geography is the prime mover" reaching the
 story text, not just the sim numbers.
+
+## Part 4 — Mapgen v2 (make it read like a RimWorld planet)
+
+The causal spine (Parts 2–3) was right but a single map read as *one* climate. This pass
+makes a map look like a RimWorld world — a slice of planet spanning many biomes — and adds
+the two things that most sell that look: roads, and terrain the renderer does justice to.
+(The aspect ratio was already square like RimWorld's play map, so no ratio change.)
+
+1. **Climate bands.** Temperature is now a FULL latitude gradient — cold at one pole, hot
+   at the other — so one map runs tundra → boreal → temperate → savanna → jungle. `baseTemp`
+   still shifts the whole band (icier/hotter worlds), so worlds differ in overall warmth
+   while each keeps a rich spread. Measured: 5–8 biomes above 2% land per map (was ~2–3).
+   Settlement *placement* is unaffected (it reads fresh-water/fertility/elevation, not
+   temperature) — only biomes/yields shift.
+2. **Richer coastlines & islands.** The base elevation is now DOMAIN-WARPED (a low-frequency
+   offset bends the sampling space) for organic bays, capes and fjords, plus a
+   high-frequency coastal wobble that breaks smooth shores into inlets and offshore isles.
+3. **Roads.** `buildRoads` (ui/terrain.ts) routes a path along each peaceful region edge,
+   nudging interior points perpendicular toward lower LAND elevation so a road hugs the
+   valleys and bends around hills; a pair mostly separated by water becomes a dashed `sea`
+   lane instead. Pure function of geography + node positions — computed once per snapshot in
+   a `useMemo`, never stored, no determinism/persistence impact. Hostile borders stay
+   straight rose lines (a contested march, not a road).
+4. **Render polish** (paintTerrain): coastal SHALLOWS (sea brightens toward the shore via
+   `seaDist`, with a turquoise kiss on the shallowest), SNOW on cold high ground (white
+   peaks near the poles and on tall ranges), and a stronger HILLSHADE amplified by
+   `hilliness` so ranges read as real ridges.
+
+Costs: the elevation change reshapes fixed-seed worlds (one seed-luck ambition test was
+re-anchored). geography is still pure-from-seed and never serialized, so no save/hash impact.
+12 geography tests (added: climate-band span, road classification); 260 total green.
+Browser-verified: snow-capped northern band, roads threading between settlements, varied
+coastlines, named features — a recognisably RimWorld-like world map.
