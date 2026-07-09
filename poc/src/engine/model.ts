@@ -1312,6 +1312,18 @@ export interface HouseView {
   extinctYear?: number; // the year it fell with its seat
 }
 
+/** A living culture's TONGUE, made explorable — its self-name, its sound, its kin (the
+ *  language family it drifted from), a sample of its lexicon, and towns that carry it.
+ *  Pure presentation of the pack's philology (content/languages); nothing here is stored. */
+export interface TongueView {
+  cultureId: string;
+  demonym: string; // the people's own name for themselves ("the Rodadra")
+  voice: string; // the character of its sound ("guttural", "flowing", …)
+  kin: string[]; // culture ids that share its mother tongue (empty = an isolate)
+  lexicon: { root: string; gloss: string }[]; // a learnable sample: root = meaning
+  towns: { name: string; meaning?: string }[]; // living settlements that speak it
+}
+
 export interface DirectorView {
   personality: string;
   label: string;
@@ -1529,6 +1541,7 @@ export interface Snapshot {
   director: DirectorView; // the storyteller's current state
   historicalFigures: FigureView[]; // renowned people of history (founders, rulers)
   houses: HouseView[]; // the great Houses, ranked by prestige — dynasties as family sagas
+  tongues: TongueView[]; // the living cultures' languages, explorable (sound, kin, lexicon)
   player?: PlayerView; // the controlled actor's actionable state, if any
 }
 

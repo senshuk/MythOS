@@ -117,6 +117,19 @@ export function kitFor(cultureId: string): PhonologyKit {
   return PROTO_KIT[cultureId] ?? CULTURE_VOICE[cultureId] ?? TEMPERATE;
 }
 
+/** The character of a culture's sound, as a word for the Tongues panel. */
+export function voiceOf(cultureId: string): string {
+  const kit = kitFor(cultureId);
+  return kit === GUTTURAL ? 'guttural' : kit === FLOWING ? 'flowing' : 'temperate';
+}
+
+/** The culture ids that share this culture's mother tongue (empty = an isolate). */
+export function kinOf(cultureId: string): string[] {
+  const proto = FAMILY[cultureId];
+  if (!proto) return [];
+  return Object.keys(FAMILY).filter((c) => c !== cultureId && FAMILY[c] === proto);
+}
+
 /** The tongue a culture speaks in this world — its kit, sampled into a distinct language
  *  (memoised, deterministic from culture + world seed). Callers name settlements/lineages
  *  with this via engine/language.coinWord. */
@@ -296,6 +309,15 @@ export function featureName(seed: number, feature: GeoFeature): { name: string; 
   const name = compose(tongueFor(OLD_TONGUE, seed), [lexeme(OLD_TONGUE, seed, desc.id), lexeme(OLD_TONGUE, seed, kind.id)]);
   return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }
+
+/** A curated sample of concepts for the Tongues panel — enough of a lexicon to LEARN a
+ *  people's words and recognise them in town names, without dumping the whole table. */
+export const LEXICON_SAMPLE: { id: string; gloss: string }[] = [
+  { id: 'iron', gloss: 'iron' }, { id: 'high', gloss: 'high' }, { id: 'old', gloss: 'old' },
+  { id: 'deep', gloss: 'deep' }, { id: 'bright', gloss: 'bright' }, { id: 'stone', gloss: 'stone' },
+  { id: 'haven', gloss: 'haven' }, { id: 'ford', gloss: 'ford' }, { id: 'wood', gloss: 'wood' },
+  { id: 'hold', gloss: 'hold' }, { id: '@loc', gloss: 'stead (settlement)' }, { id: '@ppl', gloss: 'folk (people)' },
+];
 
 /** The people's own name for themselves — a stable endonym root + the tongue's people-suffix
  *  ("the Korthun"). Deterministic per (culture, world); the suffix recurs across kin tongues. */

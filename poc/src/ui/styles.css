@@ -245,6 +245,16 @@ button { font-family: inherit; }
 .houses li.house-fallen { opacity: 0.6; }
 .house-name { font-family: var(--serif); color: var(--violet); font-weight: 600; }
 .house-gloss { font-weight: 400; font-style: italic; color: var(--ink-dim); font-size: var(--fs-xs); }
+/* the Tongues panel — each living culture's language, explorable */
+.tongue { margin-bottom: var(--space-4); }
+.tongue h3 { margin-bottom: 2px; }
+.tongue-demonym { font-family: var(--serif); font-style: italic; color: var(--parchment); font-weight: 400; }
+.tongue-voice { font-weight: 400; color: var(--ink-dim); font-size: var(--fs-xs); }
+.tongue-kin { margin: 0 0 var(--space-1); font-size: var(--fs-xs); font-style: italic; }
+.tongue-lexicon { margin: 0 0 var(--space-1); line-height: 1.9; }
+.tongue-lexicon .lex { display: inline-block; margin-right: var(--space-3); font-size: var(--fs-sm); color: var(--ink-dim); white-space: nowrap; }
+.tongue-lexicon .lex b { font-family: var(--serif); color: var(--gold); font-weight: 600; }
+.tongue-towns { font-size: var(--fs-xs); line-height: 1.7; }
 .house-status { margin-left: var(--space-2); font-size: var(--fs-xs); color: var(--ink-dim); }
 .houses li.house-fallen .house-status { color: var(--rose); }
 .house-meta { display: block; font-size: var(--fs-xs); margin-top: 2px; }

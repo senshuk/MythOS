@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
@@ -408,6 +408,7 @@ export default function App() {
               legends={stat.chronicle}
               figures={stat.historicalFigures}
               houses={stat.houses}
+              tongues={stat.tongues}
               focusedName={stat.settlementName}
               onPickEvent={inspectEvent}
               onRef={inspectRef}
@@ -1304,6 +1305,7 @@ function HistoryFeed({
   legends,
   figures,
   houses,
+  tongues,
   focusedName,
   onPickEvent,
   onRef,
@@ -1313,11 +1315,12 @@ function HistoryFeed({
   legends: TaleView[];
   figures: FigureView[];
   houses: HouseView[];
+  tongues: TongueView[];
   focusedName: string;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
 }) {
-  const [view, setView] = usePersistentState<'recent' | 'legends'>('mythos.feed.view', 'recent');
+  const [view, setView] = usePersistentState<'recent' | 'legends' | 'tongues'>('mythos.feed.view', 'recent');
   const [scope, setScope] = usePersistentState<'world' | 'place'>('mythos.feed.scope', 'world');
   const [mode, setMode] = usePersistentState<'notable' | 'all'>('mythos.feed.mode', 'notable');
   const items = useMemo(() => processFeed(events, scope, mode), [events, scope, mode]);
@@ -1329,6 +1332,7 @@ function HistoryFeed({
       <div className="seg view-tabs" role="group" aria-label="history view">
         <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')}>Recent</button>
         <button className={view === 'legends' ? 'on' : ''} onClick={() => setView('legends')}>Legends &amp; Ages</button>
+        <button className={view === 'tongues' ? 'on' : ''} onClick={() => setView('tongues')}>Tongues</button>
       </div>
 
       {view === 'recent' ? (
@@ -1380,6 +1384,39 @@ function HistoryFeed({
             </ul>
           )}
         </>
+      ) : view === 'tongues' ? (
+        tongues.length === 0 ? (
+          <p className="muted">No living tongues — this world has no peoples to speak them.</p>
+        ) : (
+          <div className="tongues">
+            {tongues.map((t) => (
+              <div key={t.cultureId} className="tongue">
+                <h3>
+                  {CULTURE_NAMES[t.cultureId] ?? t.cultureId} — <span className="tongue-demonym">the {t.demonym}</span>
+                  <span className="tongue-voice"> · a {t.voice} tongue</span>
+                </h3>
+                {t.kin.length > 0 && (
+                  <p className="tongue-kin muted">
+                    kin to {t.kin.map((k) => CULTURE_NAMES[k] ?? k).join(' and ')} — one mother tongue, long divided
+                  </p>
+                )}
+                {t.kin.length === 0 && <p className="tongue-kin muted">an isolate — kin to no living tongue</p>}
+                <p className="tongue-lexicon">
+                  {t.lexicon.map((w, i) => (
+                    <span key={i} className="lex">
+                      <b>{w.root}</b> {w.gloss}
+                    </span>
+                  ))}
+                </p>
+                {t.towns.length > 0 && (
+                  <p className="tongue-towns muted">
+                    their towns: {t.towns.map((tw) => (tw.meaning ? `${tw.name} “${tw.meaning}”` : tw.name)).join(' · ')}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )
       ) : eras.length === 0 && legends.length === 0 && figures.length === 0 && houses.length === 0 ? (
         <p className="muted">No legends yet — the great deeds of this age are still being written.</p>
       ) : (

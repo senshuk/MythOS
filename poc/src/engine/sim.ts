@@ -49,6 +49,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE } from '../content/languages';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -1064,6 +1065,22 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       extinctYear: h.extinctYear,
     }));
 
+  // TONGUES — each living culture's language made explorable: its demonym, its sound, its
+  // kin (the family it drifted from), a learnable lexicon sample, and towns that carry it.
+  // Pure presentation of the pack's philology; deterministic from the seed, never stored.
+  const livingCultures = [...new Set(world.settlements.filter((s) => s.ruinedYear === undefined).map((s) => s.cultureId))].sort();
+  const tongues = livingCultures.map((cultureId) => ({
+    cultureId,
+    demonym: peopleName(cultureId, world.seed),
+    voice: voiceOf(cultureId),
+    kin: kinOf(cultureId).filter((c) => livingCultures.includes(c)),
+    lexicon: LEXICON_SAMPLE.map(({ id, gloss }) => ({ root: lexeme(cultureId, world.seed, id), gloss })),
+    towns: world.settlements
+      .filter((s) => s.ruinedYear === undefined && s.cultureId === cultureId)
+      .slice(0, 4)
+      .map((s) => ({ name: s.name, meaning: s.nameMeaning })),
+  }));
+
   return {
     seed: world.seed,
     year: Math.floor(world.tick / DAYS_PER_YEAR),
@@ -1116,6 +1133,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     },
     historicalFigures,
     houses,
+    tongues,
     player: buildPlayerView(world, full),
   };
 }
