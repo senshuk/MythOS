@@ -18,7 +18,7 @@ export const WATER_LAKE = 2;
 export const WATER_RIVER = 3;
 export type WaterKind = 0 | 1 | 2 | 3;
 
-export const GEO_SIZE = 300; // grid resolution across the world extent (v3: finer coasts/rivers)
+export const GEO_SIZE = 450; // grid resolution across the world extent (v3: finer coasts/rivers)
 /** the resolution the flux thresholds were tuned at — drainage flux scales with cell area,
  *  so river thresholds scale by (N/REF_N)² to keep the same river density at any resolution. */
 const REF_N = 208;
@@ -455,8 +455,8 @@ function advectMoisture(
  */
 function hydraulicErosion(elevation: Float32Array, seaLevel: number, N: number): void {
   const NN = N * N;
-  const PASSES = 4;
-  const K_E = 0.055; // incision strength
+  const PASSES = 3;
+  const K_E = 0.07; // incision strength (fewer passes, each cuts a touch deeper)
   const proto = new Uint8Array(NN);
   const rain = new Float32Array(NN).fill(1); // uniform rainfall (moisture isn't computed yet)
   for (let pass = 0; pass < PASSES; pass++) {
@@ -500,8 +500,8 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
     while (i > 0) {
       const par = (i - 1) >> 1;
       if (hp[par] <= hp[i]) break;
-      [hp[par], hp[i]] = [hp[i], hp[par]];
-      [hc[par], hc[i]] = [hc[i], hc[par]];
+      const tp = hp[par]; hp[par] = hp[i]; hp[i] = tp;
+      const tc = hc[par]; hc[par] = hc[i]; hc[i] = tc;
       i = par;
     }
   };
@@ -521,8 +521,8 @@ function fillDepressions(elevation: Float32Array, water: Uint8Array, N: number):
         if (l < n && hp[l] < hp[m]) m = l;
         if (r < n && hp[r] < hp[m]) m = r;
         if (m === i) break;
-        [hp[m], hp[i]] = [hp[i], hp[m]];
-        [hc[m], hc[i]] = [hc[i], hc[m]];
+        const tp = hp[m]; hp[m] = hp[i]; hp[i] = tp;
+        const tc = hc[m]; hc[m] = hc[i]; hc[i] = tc;
         i = m;
       }
     }

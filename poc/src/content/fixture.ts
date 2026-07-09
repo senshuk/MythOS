@@ -747,7 +747,7 @@ export function worldviewFromValues(valueMean: Record<ValueAxis, number>): World
     let s = 0;
     const weights = WORLDVIEW_WEIGHTS[axis];
     for (const v of VALUES) s += (weights[v] ?? 0) * (valueMean[v] ?? 0);
-    wv[axis] = Math.round(s);
+    wv[axis] = Math.round(s) + 0; // + 0 collapses -0 → 0 so in-memory == JSON round-trip
   }
   return wv;
 }

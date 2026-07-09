@@ -218,8 +218,20 @@ re-anchored as they surfaced.
   (concave ground sits in shadow), a low-frequency **detail-noise grain** so broad biome fills
   aren't flat, and rivers rendered a touch **wider** (nearest + adjacent cells pulled toward the
   river colour). Render-only.
+- **v3-F — fidelity pass (kill the blur).** Two failure modes were showing at zoom: *soft/smudgy*
+  (the canvas lived inside the CSS zoom transform, so the browser was stretching a fixed bitmap)
+  and *blocky/pixelated* (the 300-grid was still coarse relative to the pixels). Fixes: (1) the
+  terrain canvas is **decoupled from the CSS transform** and re-paints the *visible* world region
+  at native device resolution (cap 1600px) on a rAF-debounced pan/zoom/resize/visibility loop —
+  no more stretch-blur; (2) grid **300 → 450** (`GEO_SIZE`), the definitive detail bump; (3) a
+  screen-space **fractal micro-detail** shade (4 octaves) so even sub-cell pixels carry texture.
+  To keep generation affordable at N=450, `fillDepressions`' binary min-heap swaps were hand-inlined
+  (temp vars over array-destructuring) and erosion trimmed to 3 passes (K_E 0.07) — gen ~520ms warm.
+  Settlement habitability held (mean ≈ 19.9 at both 300 and 450). The reshaped worlds re-anchored
+  three org seed-luck tests, and exposed a latent **`-0` round-trip bug** in `worldviewFromValues`
+  (`Math.round(-0.3)` → `-0`, which JSON normalises to `0`); fixed with `Math.round(s) + 0`.
 
 Result: snow-capped linear ranges dissected by river valleys, textured biome bands from tundra
-to jungle, smooth coasts with beaches, A*-routed roads, named features. 260 tests green.
-(Deferred, v3-D: river deltas + endorheic salt lakes — heavier generation for marginal payoff
-on the current arid-leaning worlds; left as future work.)
+to jungle, smooth coasts with beaches, A*-routed roads, named features — crisp at every zoom.
+260 tests green. (Deferred, v3-D: river deltas + endorheic salt lakes — heavier generation for
+marginal payoff on the current arid-leaning worlds; left as future work.)

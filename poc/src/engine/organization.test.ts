@@ -19,6 +19,7 @@ import {
   membersWithRole,
   roleHistory,
   currentMembers,
+  dissolve,
   ROLE_LEADER,
   ROLE_FOUNDER,
 } from './organization';
@@ -247,11 +248,14 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('dissolving an org closes its whole roster but keeps the records', () => {
-    const { w } = orgFixture();
-    const dissolved = w.organizations.find((o) => o.dissolvedYear !== undefined)!;
-    const open = currentMembers(w, dissolved.id);
-    expect(open.length).toBe(0); // nothing currently held
-    expect((w.orgMembers.get(dissolved.id) ?? []).length).toBeGreaterThan(0); // but remembered
+    // a FRESH world (not the shared fixture) so dissolving doesn't pollute other tests;
+    // dissolve an org explicitly rather than relying on a natural collapse at this seed.
+    const w = createWorld(ORG_FIXTURE_SEED);
+    const org = w.organizations.find((o) => o.dissolvedYear === undefined && (w.orgMembers.get(o.id)?.length ?? 0) > 0)!;
+    expect(org).toBeDefined();
+    dissolve(w, org.id, 1);
+    expect(currentMembers(w, org.id).length).toBe(0); // roster closed…
+    expect((w.orgMembers.get(org.id) ?? []).length).toBeGreaterThan(0); // …but remembered
   });
 
   it('surfaces founder and leader-count in the snapshot polity view', () => {

@@ -74,13 +74,13 @@ describe('Execution: feasibility gates history', () => {
 
 describe('Execution: actions are org-only history', () => {
   it('a yearly pass records history but changes no geography', () => {
-    const w = createWorld(4);
+    const w = createWorld(123456); // settlement-rich world → polities that can afford to act
     const geoStr = () => w.settlements.map((s) => `${s.id}:${s.pos.x},${s.pos.y}:${s.ruinedYear ?? -1}`);
     // run year by year (orgs accrue the funds/food an action needs) until a pass produces
     // outcome events — a reshaped world's polities may need a few years before any can act.
     let geoBefore = geoStr();
     let acted = false;
-    for (let y = 0; y < 15 && !acted; y++) {
+    for (let y = 0; y < 25 && !acted; y++) {
       runYears(w, 1);
       geoBefore = geoStr();
       const evBefore = w.events.length;
