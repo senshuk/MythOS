@@ -75,16 +75,23 @@ describe('Execution: feasibility gates history', () => {
 describe('Execution: actions are org-only history', () => {
   it('a yearly pass records history but changes no geography', () => {
     const w = createWorld(4);
-    runYears(w, 1); // build up intents + some operational state
-    const geoBefore = w.settlements.map((s) => `${s.id}:${s.pos.x},${s.pos.y}:${s.ruinedYear ?? -1}`);
-    const evBefore = w.events.length;
+    const geoStr = () => w.settlements.map((s) => `${s.id}:${s.pos.x},${s.pos.y}:${s.ruinedYear ?? -1}`);
+    // run year by year (orgs accrue the funds/food an action needs) until a pass produces
+    // outcome events — a reshaped world's polities may need a few years before any can act.
+    let geoBefore = geoStr();
+    let acted = false;
+    for (let y = 0; y < 15 && !acted; y++) {
+      runYears(w, 1);
+      geoBefore = geoStr();
+      const evBefore = w.events.length;
+      w.lastAction.clear(); // clear cooldowns so feasible orgs act this call
+      orgActionYearly(w);
+      acted = w.events.length > evBefore;
+    }
 
-    w.lastAction.clear(); // clear cooldowns so feasible orgs act this call
-    orgActionYearly(w);
-
-    expect(w.events.length).toBeGreaterThan(evBefore); // some org acted → outcome events
+    expect(acted).toBe(true); // some org acted → outcome events
     expect(w.settlements.length).toBe(geoBefore.length); // geography untouched…
-    expect(w.settlements.map((s) => `${s.id}:${s.pos.x},${s.pos.y}:${s.ruinedYear ?? -1}`)).toEqual(geoBefore);
+    expect(geoStr()).toEqual(geoBefore);
     // the new events are organizational action outcomes
     expect(allEvents(w).some((e) => e.type.startsWith('org_'))).toBe(true);
   });

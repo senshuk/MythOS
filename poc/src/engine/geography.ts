@@ -130,6 +130,106 @@ export const RIVER_FLUX = 24;
 export const GREAT_RIVER_FLUX = 55;
 
 /**
+ * TECTONIC UPLIFT — mountains as LINEAR BELTS raised at plate boundaries, not scattered
+ * ridged-noise peaks. Scatters a handful of drifting plates (Voronoi, with a wavy noise-warped
+ * boundary), and where two plates CONVERGE (their drift closes the boundary) raises a ridge
+ * that falls off with distance — a cordillera. Returns a 0..1 uplift field the elevation adds
+ * in. Deterministic from the seed. This is what makes ranges look *placed*, not sprinkled.
+ */
+function computeTectonics(seed: number, N: number): Float32Array {
+  const NN = N * N;
+  const K = 5 + Math.floor(hash2(1, 2, seed + 811) * 4); // 5..8 plates (fewer, bolder ranges)
+  const px = new Float32Array(K);
+  const py = new Float32Array(K);
+  const dvx = new Float32Array(K);
+  const dvy = new Float32Array(K);
+  for (let p = 0; p < K; p++) {
+    px[p] = hash2(p, 1, seed + 811) * (N - 1);
+    py[p] = hash2(p, 2, seed + 811) * (N - 1);
+    const a = hash2(p, 3, seed + 811) * Math.PI * 2;
+    dvx[p] = Math.cos(a);
+    dvy[p] = Math.sin(a);
+  }
+  // 1) assign each cell to the nearest plate seed, but query a NOISE-WARPED position so the
+  //    plate boundaries wander like real ones rather than following straight Voronoi edges.
+  const plate = new Int16Array(NN);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const qx = x + (fbm(x * 0.03 + 3, y * 0.03 + 3, seed + 821, 2) - 0.5) * 26;
+      const qy = y + (fbm(x * 0.03 + 9, y * 0.03 + 9, seed + 822, 2) - 0.5) * 26;
+      let best = 0;
+      let bd = Infinity;
+      for (let p = 0; p < K; p++) {
+        const dx = qx - px[p];
+        const dy = qy - py[p];
+        const d = dx * dx + dy * dy;
+        if (d < bd) {
+          bd = d;
+          best = p;
+        }
+      }
+      plate[y * N + x] = best;
+    }
+  }
+  // 2) mark CONVERGENT boundary cells (adjacent plates whose drift closes the boundary)
+  const q: number[] = [];
+  const onBoundary = new Uint8Array(NN);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const k = y * N + x;
+      const p = plate[k];
+      for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx >= N || ny >= N) continue;
+        const nk = ny * N + nx;
+        const pp = plate[nk];
+        if (pp === p) continue;
+        let bnx = px[pp] - px[p];
+        let bny = py[pp] - py[p];
+        const bl = Math.hypot(bnx, bny) || 1;
+        bnx /= bl;
+        bny /= bl;
+        const relv = (dvx[p] - dvx[pp]) * bnx + (dvy[p] - dvy[pp]) * bny; // + ⇒ converging
+        if (relv > 0.3) {
+          if (!onBoundary[k]) { onBoundary[k] = 1; q.push(k); }
+          if (!onBoundary[nk]) { onBoundary[nk] = 1; q.push(nk); }
+        }
+      }
+    }
+  }
+  // 3) BFS out from the convergent boundaries; uplift falls off with distance → a belt
+  const RANGE_W = Math.max(5, Math.round(N * 0.037)); // belt half-width (~11 cells at N=300)
+  const dist = new Uint16Array(NN).fill(0xffff);
+  for (const k of q) dist[k] = 0;
+  for (let i = 0; i < q.length; i++) {
+    const k = q[i];
+    if (dist[k] >= RANGE_W) continue;
+    const x = k % N;
+    const y = (k / N) | 0;
+    const nd = dist[k] + 1;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+      const nk = ny * N + nx;
+      if (nd < dist[nk]) {
+        dist[nk] = nd;
+        q.push(nk);
+      }
+    }
+  }
+  const uplift = new Float32Array(NN);
+  for (let k = 0; k < NN; k++) {
+    if (dist[k] <= RANGE_W) {
+      const t = 1 - dist[k] / (RANGE_W + 1);
+      uplift[k] = t * t; // a peaked ridge profile
+    }
+  }
+  return uplift;
+}
+
+/**
  * Generate the world's geography. Deterministic from `seed`. `seaLevel` controls how
  * wet the world is (dry/desert → low, water world → high); `freq` sets the noise scale
  * (smaller = larger, smoother landmasses; larger = broken-up, island-y terrain).
@@ -151,9 +251,10 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
   const fertility = new Float32Array(NN);
   const wOf = (i: number) => GEO_MIN + (i / (N - 1)) * GEO_SPAN;
 
-  // 1) elevation (base fbm + ridged detail for mountain ranges) and TEMPERATURE —
+  // 1) elevation (base fbm continents + TECTONIC mountain belts) and TEMPERATURE —
   //    colder toward one pole (latitude) and with altitude (mountains keep snow),
   //    shifted by the world's overall climate (baseTemp: an ice world vs a hot one).
+  const tectonic = computeTectonics(seed, N);
   for (let j = 0; j < N; j++) {
     const wy = wOf(j);
     const lat = (wy - GEO_MIN) / GEO_SPAN; // 0 (one pole) … 1 (the other)
@@ -165,13 +266,16 @@ export function generateGeography(seed: number, size = GEO_SIZE, seaLevel = SEA_
       // organic — bays, capes, fjords, scattered isles — instead of smooth ovals.
       const warpX = (fbm(wxN * 0.85 + 5.2, wyN * 0.85 + 1.3, seed + 41, 3) - 0.5) * 1.5;
       const warpY = (fbm(wxN * 0.85 + 2.7, wyN * 0.85 + 8.1, seed + 57, 3) - 0.5) * 1.5;
+      const k = j * N + i;
       let e = fbm(wxN + warpX, wyN + warpY, seed, 5);
-      // ridged detail carves mountain spines
-      e = e * 0.80 + (0.5 - Math.abs(fbm(wxN * 2.4, wyN * 2.4, seed + 99, 3) - 0.5)) * 0.34;
+      // TECTONIC belts: linear mountain ranges raised along convergent plate boundaries
+      // (replaces the old scattered ridged-noise), plus a whisper of ridged texture on their
+      // flanks so a range is a rough cordillera, not a smooth welt.
+      const belt = tectonic[k];
+      e = e * 0.90 + belt * 0.24 + belt * (0.5 - Math.abs(fbm(wxN * 2.6, wyN * 2.6, seed + 99, 3) - 0.5)) * 0.09;
       // fine coastal/island detail — a high-frequency wobble that breaks smooth shores into
       // inlets and offshore islands (and scoops the occasional inland basin for a lake).
       e += (fbm(wxN * 4.3 + 20, wyN * 4.3 + 20, seed + 131, 2) - 0.5) * 0.11;
-      const k = j * N + i;
       const elev = e < 0 ? 0 : e > 1 ? 1 : e;
       elevation[k] = elev;
       // temperature: a FULL climate gradient runs across the map — cold toward one pole,
@@ -672,11 +776,17 @@ export function fluxAt(geo: Geography, x: number, y: number): number {
  * base carrying capacity. Fertile, well-watered, coastal ground supports large cities
  * (think floodplains and ports); harsh, dry, isolated ground supports only villages.
  */
+/** cell-distance thresholds are tuned in REF_N cells; scale them to the actual grid so a
+ *  "within N cells" reach is the same WORLD distance at any resolution. */
+function cellScale(geo: Geography): number {
+  return geo.size / REF_N;
+}
 export function terrainCapacity(geo: Geography, x: number, y: number): number {
+  const s = cellScale(geo);
   const fert = fertilityAt(geo, x, y);
   let c = 0.55 + fert * 0.95;
-  if (freshWaterDist(geo, x, y) <= 1) c += 0.25; // on a river
-  if (seaDist(geo, x, y) <= 3) c += 0.2; // a port
+  if (freshWaterDist(geo, x, y) <= 1 * s) c += 0.25; // on a river
+  if (seaDist(geo, x, y) <= 3 * s) c += 0.2; // a port
   if (hillinessAt(geo, x, y) === HILL_MOUNTAIN) c -= 0.2; // scarce buildable ground
   return c; // ≈ 0.35 (barren mountains) … 1.9 (a fertile river-coast)
 }
@@ -701,15 +811,16 @@ export function seaDist(geo: Geography, x: number, y: number): number {
  */
 export function siteSuitability(geo: Geography, x: number, y: number): number {
   if (!isLand(geo, x, y)) return -1;
+  const sc = cellScale(geo);
   const fresh = freshWaterDist(geo, x, y);
-  if (fresh > 8) return -1; // a people cannot live without fresh water
+  if (fresh > 8 * sc) return -1; // a people cannot live without fresh water
   const sea = seaDist(geo, x, y);
   const e = elevationAt(geo, x, y);
   const fert = fertilityAt(geo, x, y);
   let s = 0;
-  s += Math.max(0, 1 - fresh / 8) * 3.0; // fresh water is everything
+  s += Math.max(0, 1 - fresh / (8 * sc)) * 3.0; // fresh water is everything
   s += fert * 2.6; // arable land for food
-  s += Math.max(0, 1 - sea / 14) * 1.6; // a coastline for fish & trade
+  s += Math.max(0, 1 - sea / (14 * sc)) * 1.6; // a coastline for fish & trade
   s += e > 0.5 && e < 0.72 ? 0.8 : 0; // defensible high ground
   s -= e > 0.85 ? 1.6 : 0; // not on a bare mountaintop
   return s;
@@ -717,10 +828,11 @@ export function siteSuitability(geo: Geography, x: number, y: number): number {
 
 /** A short reason a site is good, for legends/UI ("a river town", "a coastal city"). */
 export function siteEpithet(geo: Geography, x: number, y: number): string {
+  const sc = cellScale(geo);
   const sea = seaDist(geo, x, y);
   const fresh = freshWaterDist(geo, x, y);
-  const onRiver = waterAt(geo, x, y) === WATER_RIVER || fresh <= 1;
-  if (sea <= 2) return 'a coastal settlement';
+  const onRiver = waterAt(geo, x, y) === WATER_RIVER || fresh <= 1 * sc;
+  if (sea <= 2 * sc) return 'a coastal settlement';
   if (onRiver) return 'a river settlement';
   if (fertilityAt(geo, x, y) > 0.55) return 'a settlement of rich farmland';
   if (elevationAt(geo, x, y) > 0.7) return 'a hill settlement';
