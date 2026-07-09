@@ -189,4 +189,37 @@ so no determinism/seed impact:
   water, with coast shallows + snow) once, then **bilinear-blends the four surrounding cells
   per pixel** — smooth coasts and biome transitions instead of blocky squares — with hillshade
   applied per-pixel on top and rivers pulled back crisp (a one-cell river would otherwise blur
-  away). Canvas renders at ~1.5× the display box so it stays sharp when zoomed.
+  away). Canvas renders at ~1.5× the display box so it stays sharp when zoomed. (Follow-up fix:
+  hillshade is applied to LAND ONLY — shading the sea-floor relief made open water read as
+  mountains.)
+
+## Part 5 — Mapgen v3 (geological realism)
+
+A deep pass on the terrain's physics, driven by "improve fidelity/realism." Each generation
+step is pure-from-seed (no save/hash impact) but reshapes worlds, so seed-luck tests were
+re-anchored as they surfaced.
+
+- **v3-A — 300-cell grid + priority-flood drainage.** Grid 208→300 (finer everything), river
+  thresholds scaled by (N/REF_N)². Replaced the O(N·N²) iterative depression fill (1.6s and
+  under-draining at N=300) with **priority-flood** (Barnes 2014, ~150ms) that records a
+  **drainage tree** — each cell's downstream — so flow accumulates to the sea along a real tree
+  instead of dispersing via local steepest-descent on the flat filled surface. Site-suitability
+  cell-distance thresholds (fresh-water reach) scaled by resolution, else founding starves.
+- **v3-B — tectonic mountain belts.** `computeTectonics` scatters 5–8 drifting plates (Voronoi
+  with a noise-warped wandering boundary); where two plates CONVERGE, a ridge is raised that
+  falls off with distance — a **cordillera**. Replaces the old scattered ridged noise. ~5 coherent
+  ranges per world. (Uplift tuned down after it over-mountained worlds and cut settlement counts.)
+- **v3-C — hydraulic erosion.** `hydraulicErosion` runs 4 stream-power passes on the raw
+  elevation: route drainage, then lower each land cell by ~K·√flux·slope so rivers **incise
+  V-valleys** and dissect the ranges. Temperature is computed *after* so the lapse term reflects
+  the carved terrain. Side benefit: the carved valleys create fresh-water sites that **recover the
+  habitability** the uplift cost (seed 123456: 12→35 settlements).
+- **v3-E — render polish.** Sandy **beaches** at warm waterlines, **valley ambient-occlusion**
+  (concave ground sits in shadow), a low-frequency **detail-noise grain** so broad biome fills
+  aren't flat, and rivers rendered a touch **wider** (nearest + adjacent cells pulled toward the
+  river colour). Render-only.
+
+Result: snow-capped linear ranges dissected by river valleys, textured biome bands from tundra
+to jungle, smooth coasts with beaches, A*-routed roads, named features. 260 tests green.
+(Deferred, v3-D: river deltas + endorheic salt lakes — heavier generation for marginal payoff
+on the current arid-leaning worlds; left as future work.)

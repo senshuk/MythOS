@@ -284,6 +284,7 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   const river: RGB = [Math.min(255, water.shallow[0] * 1.15 + 16), Math.min(255, water.shallow[1] * 1.15 + 16), Math.min(255, water.shallow[2] * 1.15 + 20)];
   // a turquoise kiss for the shallowest coastal water (blended in near shore)
   const shore: RGB = [Math.min(255, water.shallow[0] + 24), Math.min(255, water.shallow[1] + 44), Math.min(255, water.shallow[2] + 40)];
+  const sand: RGB = [216, 205, 168]; // a warm beach at the waterline
 
   // world coord → grid coord over the geography's full extent (the grid spans more than
   // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
@@ -311,10 +312,14 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
     } else {
       const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
       c = [col[0], col[1], col[2]];
-      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
       const e = E[ci];
       const temp = T[ci];
-      if (e > 0.72 && temp < 0.4) {
+      // a sandy BEACH on the low land right at the waterline (not on cold shores, which
+      // are shingle/ice, nor up cliffs).
+      if (SD[ci] <= 1 && e < sea + 0.05 && temp > 0.34) {
+        c = lerp3(c, sand, 0.6);
+      } else if (e > 0.72 && temp < 0.4) {
+        // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
         const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
         c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
       }
@@ -353,20 +358,35 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       // and made open water read as shaded mountains. The sea keeps its flat depth colour.
       if (WTR[nci] === WATER_NONE) {
         const e = bilinear(E, N, gx, gy);
-        const ex = bilinear(E, N, Math.min(N - 1, gx + 0.8), gy) - e;
-        const ey = bilinear(E, N, gx, Math.min(N - 1, gy + 0.8)) - e;
+        const gxp = Math.min(N - 1, gx + 0.8);
+        const gyp = Math.min(N - 1, gy + 0.8);
+        const gxm = Math.max(0, gx - 0.8);
+        const gym = Math.max(0, gy - 0.8);
+        const ex = bilinear(E, N, gxp, gy) - e;
+        const ey = bilinear(E, N, gx, gyp) - e;
         let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
         s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
+        // AMBIENT OCCLUSION — a cell sunk below its surroundings (a valley/gorge) sits in
+        // shadow; a convex ridge catches a touch more light. Reads the terrain's concavity.
+        const concavity = (bilinear(E, N, gxp, gy) + bilinear(E, N, gxm, gy) + bilinear(E, N, gx, gyp) + bilinear(E, N, gx, gym)) / 4 - e;
+        s *= 1 - Math.max(-0.12, Math.min(0.16, concavity * 6));
+        // DETAIL GRAIN — a low-frequency value noise so broad biome fills aren't flat.
+        s *= 1 + (vnoise(gx * 0.55, gy * 0.55, 1337) - 0.5) * 0.1;
         r *= s;
         g *= s;
         b *= s;
       }
-      // keep RIVERS crisp — the bilinear blend would wash a one-cell river away, so where the
-      // nearest cell is a river, pull the pixel back toward the river colour.
-      if (WTR[nci] === WATER_RIVER) {
-        r = lerp(r, river[0], 0.6);
-        g = lerp(g, river[1], 0.6);
-        b = lerp(b, river[2], 0.6);
+      // keep RIVERS crisp AND a touch wider — the bilinear blend would wash a one-cell river
+      // away, so where the nearest OR an adjacent cell is a river, pull toward the river colour.
+      const nearRiver = WTR[nci] === WATER_RIVER
+        ? 0.68
+        : WTR[i00] === WATER_RIVER || WTR[i10] === WATER_RIVER || WTR[i01] === WATER_RIVER || WTR[i11] === WATER_RIVER
+          ? 0.34
+          : 0;
+      if (nearRiver > 0) {
+        r = lerp(r, river[0], nearRiver);
+        g = lerp(g, river[1], nearRiver);
+        b = lerp(b, river[2], nearRiver);
       }
       const i = (py * W + px) * 4;
       data[i] = r;
