@@ -14,7 +14,7 @@ import { EVENT_RENDER, eventInterest } from '../content/narrative';
 import { expand, type GrammarRules } from './grammar';
 import { Rng } from './rng';
 import { makeLanguage, coinWord } from './language';
-import { tongueFor, kitFor, placeName, lexeme } from '../content/languages';
+import { tongueFor, kitFor, placeName, lexeme, peopleName } from '../content/languages';
 import { resolveIntent } from '../systems/resolve';
 import { EXTRA_ACTIONS } from '../content/actions';
 import { maturityOf, elderhoodOf, fertileWindowOf, professionIncomeOf, ambitionOf, successionOf, hasLeader, leaderTitleOf, speciesById, RESOURCES, SUBSISTENCE_RESOURCE, PREMIUM_RESOURCE, NEEDS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, CULTURES } from '../content/fixture';
@@ -505,15 +505,38 @@ describe('procedural philology (each culture names the world in its own tongue)'
     expect(same / sameN).toBeGreaterThan(cross / crossN);
   });
 
-  it('names MEAN something — a descriptor + a land-fitting place-kind, in the tongue', () => {
+  it('names MEAN something, in VARIED structures — compound, locative or a founder’s possessive', () => {
     const inland = { coast: 0, elevation: 0.7, moisture: 0.3, temperature: 0.5, freshWater: 0.2 };
-    const nm = placeName('martial', 1, inland, new Rng(3));
-    expect(nm.meaning).toMatch(/^the \w+ \w+$/); // "the iron hold"
-    expect(nm.name).toMatch(/^[A-Z][a-z]+$/);
-    expect(placeName('martial', 1, inland, new Rng(3))).toEqual(nm); // deterministic
-    // the place-kind reflects the LAND: a coastal site is named for the sea
-    const coast = placeName('artisan', 1, { coast: 0.9, elevation: 0.2, moisture: 0.5, temperature: 0.5, freshWater: 0.3 }, new Rng(5));
-    expect(/haven|port|strand/.test(coast.meaning)).toBe(true);
+    expect(placeName('martial', 1, inland, new Rng(3))).toEqual(placeName('martial', 1, inland, new Rng(3))); // deterministic
+    // every gloss is a known shape; every name is a single capitalised word; the STRUCTURE varies
+    const shapes = new Set<string>();
+    for (let s = 0; s < 40; s++) {
+      const nm = placeName('martial', 1, inland, new Rng(s));
+      expect(nm.name).toMatch(/^[A-Z][a-z]+$/);
+      const compound = /^the \w+ \w+$/.test(nm.meaning); // "the iron haven" / "the grey stead"
+      const possessive = /^[A-Z][a-z]+'s \w+$/.test(nm.meaning); // "Ereth's ford"
+      expect(compound || possessive).toBe(true);
+      shapes.add(possessive ? 'poss' : nm.meaning.endsWith(' stead') ? 'loc' : 'compound');
+    }
+    expect(shapes.size).toBeGreaterThan(1); // not every town is 'the X Y' — real morphology
+    // the place-kind reflects the LAND: a coastal people's names reach for coastal kinds, a
+    // highland people's for peaks (across the templates that carry a land-kind).
+    const coast = { coast: 0.9, elevation: 0.2, moisture: 0.5, temperature: 0.5, freshWater: 0.3 };
+    const peak = { coast: 0, elevation: 0.8, moisture: 0.3, temperature: 0.5, freshWater: 0.2 };
+    let coastHit = false, peakHit = false;
+    for (let s = 0; s < 40; s++) {
+      if (/haven|port|strand/.test(placeName('artisan', 1, coast, new Rng(s)).meaning)) coastHit = true;
+      if (/hold|peak|crag/.test(placeName('artisan', 1, peak, new Rng(s)).meaning)) peakHit = true;
+    }
+    expect(coastHit).toBe(true);
+    expect(peakHit).toBe(true);
+  });
+
+  it('a people has a self-name (demonym) in its own tongue, stable per world', () => {
+    const a = peopleName('martial', 1);
+    expect(a).toMatch(/^[A-Z][a-z]+$/);
+    expect(peopleName('martial', 1)).toBe(a); // stable within a world
+    expect(peopleName('sylvan', 1)).not.toBe(a); // different peoples sound different
   });
 
   it('the lexicon is consistent — one concept keeps one root within a tongue', () => {

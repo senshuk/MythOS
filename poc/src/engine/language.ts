@@ -39,6 +39,9 @@ export interface Language {
   vowelStart: number;
   place: [number, number];
   person: [number, number];
+  /** a connecting vowel this tongue slips between morphemes whose seam would otherwise
+   *  pile up an unsayable run of consonants (compound + affix morphology). */
+  linker: string;
 }
 
 function pickSubset(pool: readonly string[], rng: Rng, [min, max]: [number, number]): string[] {
@@ -59,6 +62,7 @@ export function makeLanguage(rng: Rng, kit: PhonologyKit): Language {
     vowelStart: rng.range(kit.vowelStart[0], kit.vowelStart[1]) / 100,
     place: kit.place,
     person: kit.person,
+    linker: pickSubset(kit.vowelsSingle, rng, [1, 1])[0] ?? 'a', // this tongue's connecting vowel
   };
 }
 
@@ -90,11 +94,12 @@ function polish(w: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Coin a word in a tongue: a settlement name ('place'), a surname ('person'), or a single
- *  morpheme ('root') — the building block of MEANINGFUL compound names, kept to one syllable
- *  so a two-root name stays short ("Korth" + "ul" = Korthul, not a mouthful). */
-export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'root'): string {
-  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : [1, 1];
+/** Coin a word in a tongue: a settlement name ('place'), a surname ('person'), a personal
+ *  given name ('given', 1–2 syllables), or a single morpheme ('root') — the building block of
+ *  MEANINGFUL compound names, kept to one syllable so a two-root name stays short ("Korth" +
+ *  "ul" = Korthul, not a mouthful). */
+export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'root' | 'given'): string {
+  const [lo, hi] = kind === 'place' ? lang.place : kind === 'person' ? lang.person : kind === 'given' ? [1, 2] : [1, 1];
   const syllables = rng.range(lo, hi);
   let w = '';
   for (let i = 0; i < syllables; i++) {
@@ -102,6 +107,28 @@ export function coinWord(lang: Language, rng: Rng, kind: 'place' | 'person' | 'r
     w += rng.pick(lang.nuclei);
     const last = i === syllables - 1;
     if (rng.chance(lang.codaChance) && (last || rng.chance(0.4))) w += rng.pick(lang.codas);
+  }
+  return polish(w);
+}
+
+const CONS = /[bcdfghjklmnpqrstvwxz]/i; // (vowels + y-as-vowel excluded; a rough sound test)
+function consRun(s: string, fromEnd: boolean): number {
+  let n = 0;
+  if (fromEnd) for (let i = s.length - 1; i >= 0 && CONS.test(s[i]); i--) n++;
+  else for (let i = 0; i < s.length && CONS.test(s[i]); i++) n++;
+  return n;
+}
+
+/** Join morphemes into one word in a tongue — the mechanism behind MORPHOLOGY (compound roots,
+ *  affixes). Where a seam would collide into an unsayable run of 3+ consonants, the tongue's
+ *  linker vowel is slipped in; then the word is polished (no triple letters, capitalised). The
+ *  ENGINE joins; the PACK decides which morphemes carry which meaning (content/languages). */
+export function compose(lang: Language, parts: string[]): string {
+  let w = '';
+  for (const p of parts) {
+    if (!p) continue;
+    if (w && consRun(w, true) + consRun(p, false) >= 3) w += lang.linker;
+    w += p;
   }
   return polish(w);
 }

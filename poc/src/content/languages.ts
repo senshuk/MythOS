@@ -5,7 +5,7 @@
  * this file alone: an elvish kit (soft liquids, open syllables), a Klingon kit (guttural
  * stops, hard codas), a Dovahzul kit — the engine is unchanged.
  */
-import { type PhonologyKit, type Language, languageFor, coinWord } from '../engine/language';
+import { type PhonologyKit, type Language, languageFor, coinWord, compose } from '../engine/language';
 import { type GeoFeature } from '../engine/geography';
 import { Rng, mixSeed } from '../engine/rng';
 import { biomeOf } from './biomes';
@@ -104,6 +104,24 @@ const DESCRIPTORS: Concept[] = [
   { id: 'white', gloss: 'white' }, { id: 'black', gloss: 'black' }, { id: 'lost', gloss: 'lost' },
   { id: 'holy', gloss: 'hallowed' }, { id: 'stone', gloss: 'stone' }, { id: 'green', gloss: 'green' },
 ];
+// A culture's descriptors lean toward its CHARACTER, so its towns' meanings sound like its
+// people — a martial creed's iron and blood, a sylvan folk's green and fair. (Falls back to the
+// neutral pool for any culture without a leaning.) Pack data; a sci-fi pack would swap them.
+const DESC_CULTURE: Record<string, Concept[]> = {
+  martial: [{ id: 'iron', gloss: 'iron' }, { id: 'grim', gloss: 'grim' }, { id: 'red', gloss: 'red' }, { id: 'war', gloss: 'war' }, { id: 'black', gloss: 'black' }, { id: 'high', gloss: 'high' }, { id: 'blood', gloss: 'blood' }],
+  devout: [{ id: 'holy', gloss: 'hallowed' }, { id: 'grey', gloss: 'grey' }, { id: 'high', gloss: 'high' }, { id: 'old', gloss: 'elder' }, { id: 'white', gloss: 'white' }, { id: 'bright', gloss: 'bright' }, { id: 'still', gloss: 'still' }],
+  sylvan: [{ id: 'green', gloss: 'green' }, { id: 'fair', gloss: 'fair' }, { id: 'wild', gloss: 'wild' }, { id: 'deep', gloss: 'deep' }, { id: 'bright', gloss: 'bright' }, { id: 'dawn', gloss: 'dawn' }, { id: 'silver', gloss: 'silver' }],
+  free: [{ id: 'far', gloss: 'far' }, { id: 'swift', gloss: 'swift' }, { id: 'lost', gloss: 'lost' }, { id: 'wind', gloss: 'wind' }, { id: 'gold', gloss: 'golden' }, { id: 'free', gloss: 'free' }, { id: 'wide', gloss: 'wide' }],
+  artisan: [{ id: 'gold', gloss: 'golden' }, { id: 'stone', gloss: 'stone' }, { id: 'bright', gloss: 'bright' }, { id: 'high', gloss: 'high' }, { id: 'deep', gloss: 'deep' }, { id: 'iron', gloss: 'iron' }, { id: 'fair', gloss: 'fair' }],
+};
+function descriptorsFor(cultureId: string): Concept[] {
+  return DESC_CULTURE[cultureId] ?? DESCRIPTORS;
+}
+// grammatical morphemes — coined as stable roots like any other, so a tongue's locative
+// ("-place-of") and its people-suffix recur across its names as a learnable, audible signature.
+const LOC: Concept = { id: '@loc', gloss: 'stead' }; // a settlement/locative suffix
+const PPL: Concept = { id: '@ppl', gloss: 'folk' }; // a people/demonym suffix
+const SELF: Concept = { id: '@self', gloss: 'self' }; // a culture's endonym root
 // place-kinds, grouped by the land that suits them (a coast gets a haven, a peak a hold…).
 const KIND_COAST: Concept[] = [{ id: 'haven', gloss: 'haven' }, { id: 'port', gloss: 'port' }, { id: 'strand', gloss: 'strand' }];
 const KIND_WOOD: Concept[] = [{ id: 'wood', gloss: 'wood' }, { id: 'grove', gloss: 'grove' }, { id: 'holt', gloss: 'holt' }];
@@ -167,25 +185,48 @@ export function featureName(seed: number, feature: GeoFeature): { name: string; 
   const rng = new Rng(mixSeed(seed, 0xfea7 + feature.index * 131));
   const desc = rng.pick(DESCRIPTORS);
   const kind = rng.pick(FEATURE_KINDS[feature.kind]);
-  const joined = (lexeme(OLD_TONGUE, seed, desc.id) + lexeme(OLD_TONGUE, seed, kind.id))
-    .replace(/(.)\1{2,}/g, '$1$1');
-  const name = joined.charAt(0).toUpperCase() + joined.slice(1);
+  const name = compose(tongueFor(OLD_TONGUE, seed), [lexeme(OLD_TONGUE, seed, desc.id), lexeme(OLD_TONGUE, seed, kind.id)]);
   return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }
 
-/** Coin a settlement's name AND its meaning, in the founding people's tongue: a descriptor +
- *  a land-fitting place-kind, each a root in that tongue. `rng` (the worldgen stream) only
- *  picks WHICH concepts; the roots themselves are stable, so a people's towns share a lexicon. */
+/** The people's own name for themselves — a stable endonym root + the tongue's people-suffix
+ *  ("the Korthun"). Deterministic per (culture, world); the suffix recurs across kin tongues. */
+export function peopleName(cultureId: string, seed: number): string {
+  const lang = tongueFor(cultureId, seed);
+  return compose(lang, [lexeme(cultureId, seed, SELF.id), lexeme(cultureId, seed, PPL.id)]);
+}
+
+/** Coin a settlement's name AND its meaning in the founding people's tongue. The STRUCTURE
+ *  varies — a two-root compound, a descriptor + the tongue's locative suffix, or a founder's
+ *  possessive — so a region reads varied yet rule-governed (the locative suffix recurs as an
+ *  audible morpheme). `rng` (the worldgen stream) picks the template + WHICH concepts; the
+ *  roots are stable, so a people's towns still share a learnable lexicon. Descriptors lean to
+ *  the culture's character. */
 export function placeName(
   cultureId: string,
   seed: number,
   attributes: Record<string, number>,
   rng: Rng,
 ): { name: string; meaning: string } {
-  const desc = rng.pick(DESCRIPTORS);
-  const kind = rng.pick(kindsForLand(attributes));
-  const joined = (lexeme(cultureId, seed, desc.id) + lexeme(cultureId, seed, kind.id))
-    .replace(/(.)\1{2,}/g, '$1$1'); // soften an awkward seam (e.g. ...thth...)
-  const name = joined.charAt(0).toUpperCase() + joined.slice(1);
-  return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
+  const lang = tongueFor(cultureId, seed);
+  const descs = descriptorsFor(cultureId);
+  const kinds = kindsForLand(attributes);
+  const roll = rng.int(100);
+  if (roll < 42) {
+    // COMPOUND — descriptor + land-kind ("the iron haven")
+    const desc = rng.pick(descs);
+    const kind = rng.pick(kinds);
+    return { name: compose(lang, [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, kind.id)]), meaning: `the ${desc.gloss} ${kind.gloss}` };
+  }
+  if (roll < 72) {
+    // LOCATIVE — descriptor + the tongue's settlement suffix ("the grey stead"); the suffix
+    // is one stable morpheme, so it recurs across this people's towns like -ton or -by.
+    const desc = rng.pick(descs);
+    return { name: compose(lang, [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, LOC.id)]), meaning: `the ${desc.gloss} ${LOC.gloss}` };
+  }
+  // POSSESSIVE — a founder's name + a land-kind ("Ereth's ford"); the founder is coined afresh
+  // for this town (the worldgen stream), the kind stays stable.
+  const founder = coinWord(lang, rng, 'given');
+  const kind = rng.pick(kinds);
+  return { name: compose(lang, [founder.toLowerCase(), lexeme(cultureId, seed, kind.id)]), meaning: `${founder}'s ${kind.gloss}` };
 }

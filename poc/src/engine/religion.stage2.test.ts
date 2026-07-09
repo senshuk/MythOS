@@ -42,18 +42,19 @@ describe('faith bonds & friction', () => {
 
   it('different-faith pairs get faithFriction thoughts', () => {
     const w = createWorld(42);
-    // Force two actors to follow different faiths so we can test friction
-    const [a, b] = fullActors(w);
-    w.faith.set(a, 'rootmother');
-    w.faith.set(b, 'iron_father');
-    w.tick += DAYS_PER_YEAR;
-    // Run many passes to ensure the sampler hits this pair
-    for (let y = 0; y < 20; y++) {
+    // split the whole population into two rival faiths, so the friction sampler (a random
+    // sample of co-residents per actor) is sure to pair a different-faith couple — rather than
+    // hoping it lands on one hand-picked pair in a large, seed-shaped population.
+    const actors = fullActors(w);
+    const split = () => actors.forEach((id, i) => w.faith.set(id, i % 2 ? 'rootmother' : 'iron_father'));
+    for (let y = 0; y < 6; y++) {
+      split(); // re-assert the split each year (defeat conversion) before the friction pass
       w.tick += DAYS_PER_YEAR;
       religionYearly(w);
     }
-    const edge = getRel(w, a, b);
-    expect(edge.thoughts.some((t) => t.kind === 'faithFriction')).toBe(true);
+    // somewhere, two co-residents of different faith rubbed each other wrong
+    const friction = actors.some((id) => [...(w.rels.get(id) ?? [])].some(([, e]) => e.thoughts.some((t) => t.kind === 'faithFriction')));
+    expect(friction).toBe(true);
   });
 
   it('faithBond thought is positive and faithFriction is negative by spec', () => {

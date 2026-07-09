@@ -34,6 +34,9 @@ function feuding(seed: number, years = 8): { w: ReturnType<typeof createWorld>; 
   for (let i = 0; i < 10; i++) addThought(edge, 'slighted', w.tick);
   for (let i = 0; i < 3; i++) addThought(edge, 'feared', w.tick);
   edge.flags.feud = true;
+  // make this the player's ONLY feud, so strongestFeud (the 'rival' offer) points here no
+  // matter what enmities the seed dealt organically.
+  for (const [other, e] of w.rels.get(player)!) if (other !== foe) e.flags.feud = false;
   return { w, player, foe };
 }
 
