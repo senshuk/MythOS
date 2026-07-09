@@ -5,13 +5,18 @@ system that holds **precepts**, named moral rules that EMIT thoughts (approval, 
 guilt, pride) when an actor witnesses or commits a deed the creed cares about. It is the
 natural consumer of the mood system (design/22).
 
-**STATUS: Stage 1 SHIPPED (2026-07-09).** Precepts subsume the ethics map (one source of
-truth), and a witnessed deed now lays a self-thought on the doer (guilt) and witnesses
-(moral outrage) → mood — the conscience. Empirically, over 40 grim years a Green Way town
-carried guilt/outrage while an Iron Creed one stayed at 0/0 (a warrior's killing rolls off
-where a devout soul's weighs). 246 tests green; determinism + round-trip hold. Known Stage-2
-gap: `edified`/`righteous` (virtue felt) rarely fire organically because NPCs don't perform
-`generosity` deeds in the decider — only the player's gift does. Stages 2–3 below remain.
+**STATUS: Stages 1 & 2 SHIPPED (2026-07-09).**
+- **Stage 1** — precepts subsume the ethics map (one source of truth); a witnessed deed lays
+  a self-thought on the doer (guilt) and witnesses (moral outrage) → mood. Over 40 grim years
+  a Green Way town carried guilt/outrage while an Iron Creed one stayed at 0/0.
+- **Stage 2** — belief now produces PRIDE, and each creed has a distinct moral fingerprint.
+  Per-creed VIRTUE precepts on the positive deeds (reconciliation, valor) — the Iron Creed
+  reveres valour but is unmoved by peacemaking; the Green Way reveres peace; the Old Faith
+  reveres both. And NPC GENEROSITY: a warm, well-provided soul now gives to someone dear (the
+  everyday virtue), spending real wealth so it self-limits — which is what makes `edified`/
+  `righteous` a regular felt thing (~800 gifts / 25y; the Old Faith carries edified/righteous
+  from constant almsgiving; the Iron Creed feels no pride in giving — coherent). 250 tests
+  green; no determinism re-anchoring needed. Stage 3 below remains.
 
 ## Why now / what it adds
 
@@ -88,11 +93,17 @@ New `SELF_THOUGHT_SPECS` (mood table): **`moral_outrage`, `edified`, `guilt`, `r
   moral self-thoughts; wire `witnessDeed` to emit witness-outrage + doer-guilt alongside the
   existing path. No save bump (reuses `selfThoughts` v21). Payoff: a killer feels guilt, a devout
   onlooker feels outrage, moods move, breaks/behavior shift — visible in the mood "why."
-- **Stage 2 — Virtues + adherence.** Revered precepts (generosity → `edified`/`righteous`) so belief
-  produces pride, not just horror; weight the faithful strongly, the faithless weakly.
+- **Stage 2 — Virtues (SHIPPED).** Per-creed virtue precepts on the positive deeds that fire
+  organically (reconciliation, valor), giving each creed a distinct fingerprint; plus NPC
+  generosity in the decider (gated on real wealth surplus, warmth-weighted, self-limiting via a
+  wealth cost) so the everyday virtue actually populates moods. Adherence (civic vs sacred) was
+  already delivered in Stage 1, so it needed no separate pass. Note: the Iron Creed is the
+  deliberate morally-spare outlier — it reveres only valour (rare), so its souls are barely moved
+  by belief; the other four feel everyday virtue via generosity.
 - **Stage 3 (later) — State precepts + surfacing.** Precepts about *states* not just deeds (hoarding
   wealth, marrying out) — needs a state-scan. Plus UI: a settlement's creed and an actor's standing
-  with it.
+  with it. (Also open: the Iron Creed could use more everyday virtues so its conscience isn't nearly
+  inert; and richer deed coverage overall.)
 
 ## Determinism / persistence / tests
 

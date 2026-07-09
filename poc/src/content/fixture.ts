@@ -411,10 +411,13 @@ export const CULTURES: Culture[] = [
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
     // warriors: killing in conflict is expected — bloodshed barely stings standing and
     // pricks no conscience; brawling is normal; giving is fine but not a sacred virtue.
+    // Their SACRED virtue is VALOR — courage before the Iron Father stirs every warrior's
+    // heart; they are unmoved by peacemaking (a fight left unfinished).
     precepts: [
       { deed: 'bloodshed', socialWeight: 0.5 },
       { deed: 'violence', socialWeight: 0.35 },
       { deed: 'generosity', socialWeight: 0.9 },
+      { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
   },
   {
@@ -422,11 +425,14 @@ export const CULTURES: Culture[] = [
     patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
     // peace-keepers: killing PROFANES the living world (sacred outrage; the killer is
-    // wracked); even brawling draws wide civic censure; giving edifies the community.
+    // wracked); even brawling draws wide civic censure; giving edifies the community; and
+    // laying down a feud — PEACEMAKING — is their SACRED virtue, the healing of a rift.
     precepts: [
       { deed: 'bloodshed', socialWeight: 2.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'violence', socialWeight: 1.8, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' }, // civic — courage that shields life
     ],
   },
   {
@@ -434,11 +440,13 @@ export const CULTURES: Culture[] = [
     patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
     // civic builders: violence disrupts ORDER (civic wrong, not divine — felt by all,
-    // faithful or not); generosity oils the trade network and earns quiet pride.
+    // faithful or not); generosity oils the trade network and earns quiet pride; a feud
+    // healed restores the order they prize (civic virtue).
     precepts: [
       { deed: 'bloodshed', socialWeight: 1.6, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'violence', socialWeight: 1.3, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
   },
   {
@@ -446,11 +454,13 @@ export const CULTURES: Culture[] = [
     patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
     // mercenaries: pragmatic about violence (no conscience toll); generosity is rare and
-    // genuinely admired in a world where you keep what you can.
+    // genuinely admired in a world where you keep what you can; and raw courage against a
+    // beast wins a free companion's respect (civic virtue).
     precepts: [
       { deed: 'bloodshed', socialWeight: 0.7 },
       { deed: 'violence', socialWeight: 0.5 },
       { deed: 'generosity', socialWeight: 1.4, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
   },
   {
@@ -459,11 +469,14 @@ export const CULTURES: Culture[] = [
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
     // sacred law governs life: killing is a profound PROFANITY, brawling stains one's
     // honour before the divine, and almsgiving is a holy duty — all sacred, so the
-    // faithful feel them keenly and the fallen-away do not.
+    // faithful feel them keenly and the fallen-away do not. The Old Faith reveres MANY
+    // virtues: peace made and courage shown are both holy before the Ancestors.
     precepts: [
       { deed: 'bloodshed', socialWeight: 2.8, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'violence', socialWeight: 1.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
       { deed: 'generosity', socialWeight: 1.5, sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
     ],
   },
 ];
@@ -1390,6 +1403,19 @@ export function breakThreshold(temperament: Record<string, number>): number {
 export const BREAK_CHANCE_MAX = 0.35;
 /** How the mind pays for a binge (wealth drained per episode). */
 export const BINGE_COST = 90;
+
+// ---- generosity as an everyday act (design/23 Stage 2) ----
+/** What a gift costs the giver (wealth) — a real sacrifice, so giving spends down surplus
+ *  and self-limits. One rule set: the player's `give` pays the same. */
+export const GIFT_COST = 110;
+/** A well-provided soul only gives from real surplus (wealth need above this). */
+export const GIFT_WEALTH_FLOOR = 750;
+/** Base yearly-ish inclination to give when flush, plus a warmth lean (warm hearts give
+ *  more). Clamped so even the coldest rarely gives and the warmest doesn't flood the town. */
+export function giveInclination(warmth: number): number {
+  const p = 0.05 + warmth * 0.0011;
+  return p < 0.01 ? 0.01 : p > 0.16 ? 0.16 : p;
+}
 
 // ---- reputation: what each kind of deed does to public standing ----
 // How a deed marks an actor's standing with the whole community (value, decay, and

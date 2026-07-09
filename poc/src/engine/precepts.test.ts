@@ -12,17 +12,23 @@ import { createWorld, hashWorld, runYears } from './sim';
 import { witnessDeed } from './perception';
 import { fullActors, emit } from './world';
 import { computeMood } from './mood';
-import { ethicsWeightFor, ethicsTaboos, patronDeityOf, CULTURES, SELF_THOUGHT_SPECS } from '../content/fixture';
+import { ethicsWeightFor, ethicsTaboos, patronDeityOf, giveInclination, CULTURES, SELF_THOUGHT_SPECS } from '../content/fixture';
 
-/** Stage a public killing in a settlement of the given culture; return the cast. */
-function stageKilling(seed: number, cultureId: string, townFaith?: string) {
+/** Stage a public deed of `kind` (doer=actor[0], other=actor[1]) in a settlement of the
+ *  given culture; optionally set the whole town's faith. Returns the cast. */
+function stageDeed(seed: number, cultureId: string, kind: string, townFaith?: string) {
   const w = createWorld(seed);
   w.settlements[w.focusedSettlementId].cultureId = cultureId;
   if (townFaith !== undefined) for (const id of fullActors(w)) w.faith.set(id, townFaith);
   const [culprit, victim] = fullActors(w);
-  const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
-  const witnesses = witnessDeed(w, eid, culprit, victim, 'bloodshed');
+  const eid = emit(w, 'deed', [culprit, victim], {});
+  const witnesses = witnessDeed(w, eid, culprit, victim, kind);
   return { w, culprit, victim, witnesses, eid };
+}
+
+/** Stage a public killing (the canonical negative deed). */
+function stageKilling(seed: number, cultureId: string, townFaith?: string) {
+  return stageDeed(seed, cultureId, 'bloodshed', townFaith);
 }
 
 const has = (arr: { kind: string }[] | undefined, kind: string) => !!arr?.some((t) => t.kind === kind);
@@ -102,5 +108,52 @@ describe('precepts — the conscience', () => {
       return hashWorld(w);
     };
     expect(run()).toBe(run());
+  });
+});
+
+describe('precepts — virtues (belief produces PRIDE, each creed distinct)', () => {
+  it('the Iron Creed REVERES valour — the hero feels righteous, the town edified', () => {
+    const { w, culprit, witnesses } = stageDeed(42, 'martial', 'valor', patronDeityOf('martial').id);
+    expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(true);
+    expect(witnesses.length).toBeGreaterThan(0);
+    for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(true);
+  });
+
+  it('…but the Iron Creed is UNMOVED by peacemaking (no reconciliation precept)', () => {
+    const { w, culprit, witnesses } = stageDeed(42, 'martial', 'reconciliation', patronDeityOf('martial').id);
+    expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(false);
+    for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(false);
+  });
+
+  it('the Green Way REVERES peacemaking — a healed feud edifies the faithful', () => {
+    const { w, culprit, witnesses } = stageDeed(42, 'sylvan', 'reconciliation', patronDeityOf('sylvan').id);
+    expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(true);
+    for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(true);
+  });
+
+  it('a virtue lifts a witness’s mood (the positive twin of moral outrage)', () => {
+    const w = createWorld(42);
+    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
+    for (const id of fullActors(w)) w.faith.set(id, patronDeityOf('sylvan').id);
+    const [a, b] = fullActors(w);
+    const before = new Map(fullActors(w).map((id) => [id, computeMood(w, id)]));
+    const witnesses = witnessDeed(w, emit(w, 'deed', [a, b], {}), a, b, 'reconciliation');
+    expect(witnesses.length).toBeGreaterThan(0);
+    for (const x of witnesses) expect(computeMood(w, x)).toBeGreaterThan(before.get(x)!);
+  });
+
+  it('warm hearts are inclined to give more (and none flood the town)', () => {
+    expect(giveInclination(60)).toBeGreaterThan(giveInclination(-60));
+    expect(giveInclination(-100)).toBeGreaterThanOrEqual(0);
+    expect(giveInclination(100)).toBeLessThanOrEqual(0.16);
+  });
+
+  it('NPCs perform generous deeds organically — gifts leave generosity on the record', () => {
+    // (a 'generosity' repute mark is gift-specific: the socialize path's chance-kindness
+    //  never calls witnessDeed, so this proves the give branch actually fires in live play)
+    const w = createWorld(11);
+    runYears(w, 8);
+    const gaveOpenly = [...w.reputation.values()].some((rep) => rep.marks.some((m) => m.kind === 'generosity'));
+    expect(gaveOpenly).toBe(true);
   });
 });

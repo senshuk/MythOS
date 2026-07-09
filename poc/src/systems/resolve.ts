@@ -23,7 +23,7 @@ import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
 import { addSelfThought, computeMood, MOOD_NEUTRAL } from '../engine/mood';
-import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, BINGE_COST } from '../content/fixture';
+import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, BINGE_COST, GIFT_COST } from '../content/fixture';
 import { personalityOf } from '../engine/social';
 import { resolveExtraAction } from '../content/actions';
 
@@ -174,6 +174,10 @@ function resolveGift(world: World, a: EntityId, b: EntityId, rng: Rng): void {
   if (!isAlive(world, b)) return;
   const edge = getRel(world, a, b);
   const giftId = emit(world, 'kindness', [a, b]);
+  // a gift is a real sacrifice — it spends the giver's own surplus (self-limiting, so
+  // the wealthy-and-warm give occasionally, not every week). One rule set: player too.
+  const na = world.needs.get(a);
+  if (na) na[WEALTH_NEED] = clamp(na[WEALTH_NEED] - GIFT_COST, 0, 1000);
   addThought(edge, 'kindness', world.tick, { cause: giftId });
   addSelfThought(world, b, 'heartened', { cause: giftId });
   bumpBelonging(world, a, 30);
