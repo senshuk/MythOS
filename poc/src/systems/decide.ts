@@ -17,7 +17,26 @@ import { type Intent } from '../engine/intent';
 import { currentAspiration } from '../engine/aspiration';
 import { isAlive } from '../engine/world';
 import { maybeBreak } from '../engine/mood';
-import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED } from '../content/fixture';
+import { computeOpinion } from '../engine/opinion';
+import { personalityOf } from '../engine/social';
+import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED, GIFT_WEALTH_FLOOR, giveInclination } from '../content/fixture';
+
+/** The living soul this actor holds dearest — the warmest of their bonds (spouse, friend,
+ *  or kin they are closest to). A pure scan (no RNG), so a gift goes to someone who
+ *  matters. Undefined if they have no warm bond to give to. */
+function dearestBond(world: World, a: EntityId): EntityId | undefined {
+  let best: EntityId | undefined;
+  let bestOp = 120; // a real fondness, not a passing acquaintance
+  for (const [other, edge] of world.rels.get(a) ?? []) {
+    if (!world.lifecycle.get(other)?.alive) continue;
+    const op = computeOpinion(edge, world.tick);
+    if (op > bestOp || (op === bestOp && (best === undefined || other < best))) {
+      bestOp = op;
+      best = other;
+    }
+  }
+  return best;
+}
 
 export function isAdult(world: World, id: EntityId): boolean {
   return world.lifecycle.get(id)!.ageYears >= maturityOf(world.identity.get(id)!.speciesId);
@@ -59,6 +78,19 @@ export function decideActor(world: World, a: EntityId, adults: EntityId[]): Inte
   // social activity at the same rate as before; when active, pursue the goal's
   // subject if it has one, else fall back to deepening an existing bond.
   if (!world.rng.chance(0.55)) return { kind: 'idle' };
+
+  // GENEROSITY — the everyday virtue (design/23 Stage 2). A warm soul with real surplus
+  // sometimes gives to someone they cherish rather than merely chatting; the gift spends
+  // their wealth (resolveGift), so it self-limits. This is what makes the creed's virtue
+  // conscience (edified/righteous) a regular part of life, not just a rare noble deed.
+  if (needs[WEALTH_NEED] > GIFT_WEALTH_FLOOR) {
+    const warmth = personalityOf(world, a).temperament.warmth ?? 0;
+    if (world.rng.chance(giveInclination(warmth))) {
+      const dear = dearestBond(world, a);
+      if (dear !== undefined) return { kind: 'give', target: dear };
+    }
+  }
+
   if (asp.target !== undefined && isAlive(world, asp.target)) {
     // NPCs pursue gently via plain socializing (focus, not fervour) — aggressive
     // `court` is reserved for the player's deliberate choice, so NPC courtship

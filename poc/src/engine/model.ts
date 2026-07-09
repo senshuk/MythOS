@@ -1208,6 +1208,8 @@ export interface SettlementView {
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   culture: string; // the people's culture name (e.g. 'the Iron Creed')
   culturalTaboos: string[]; // deed labels this culture especially abhors (ethics weight ≥ 1.5)
+  /** the creed's moral character (design/23): the deeds & lives it reveres / abhors. */
+  creed: { reveres: string[]; abhors: string[] };
   patronDeity: { name: string; domain: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)

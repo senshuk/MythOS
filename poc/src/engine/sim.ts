@@ -48,7 +48,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from '../content/fixture';
 import { personalityOf } from './social';
 import { eventInterest } from '../content/narrative';
 import { PLAYER_ACTIONS } from '../content/actions';
@@ -63,7 +63,7 @@ import { orgActionYearly } from './orgAction';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
 import { lifecycleYearly } from '../systems/lifecycle';
-import { religionYearly } from './religion';
+import { religionYearly, statePreceptsYearly } from './religion';
 import { factionYearly, factionOf, civilWarYearly, exileYearly } from './factions';
 import { reactToBeliefs } from './reactions';
 
@@ -185,6 +185,7 @@ export function stepTick(world: World): void {
   if (world.tick % DAYS_PER_YEAR === 0) {
     if (hasFocus) lifecycleYearly(world, actors); // focused settlement, full fidelity
     if (hasFocus) religionYearly(world); // faith bonds, friction, conversion & apostasy
+    if (hasFocus) statePreceptsYearly(world); // the creed judges how each soul LIVES (mood)
     if (hasFocus) factionYearly(world); // faction split recomputed before succession check
     macroYearly(world); // every other settlement, aggregate
     geographyYearly(world); // relations drift & raids along the region graph
@@ -395,6 +396,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
       culturalTaboos: ethicsTaboos(s.cultureId),
+      creed: creedOf(s.cultureId),
       patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,

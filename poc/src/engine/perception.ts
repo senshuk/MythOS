@@ -25,7 +25,8 @@ import { recordDeed } from './reputation';
 import { witnessBelief, coronationSlot } from './belief';
 import { learnCoronation } from './statusBelief';
 import { escalateAnimosity, personalityOf } from './social';
-import { reputeSpec, ethicsWeightFor, patronDeityOf, deityById } from '../content/fixture';
+import { reputeSpec, ethicsWeightFor, preceptFor, patronDeityOf, deityById } from '../content/fixture';
+import { addSelfThought } from './mood';
 
 /** A co-resident's chance of having been present to see a public deed. */
 const WITNESS_CHANCE = 0.5;
@@ -71,6 +72,14 @@ export function witnessDeed(
   // condemnation in the history if the settlement has a patron deity.
   const isTaboo = culturalWeight >= 2.0;
 
+  // the creed's PRECEPT about this deed (design/23): its conscience. A precept lays a
+  // SELF-thought (→ mood) on those who see or do the deed — the moral feeling belief
+  // gives, distinct from the opinion of the doer. `sacred` precepts are felt only by
+  // adherents (faithful to the culture's patron); civic ones by everyone of the culture.
+  const precept = preceptFor(cultureId, kind);
+  const patron = patronDeityOf(cultureId).id;
+  const adheres = (id: EntityId): boolean => !precept?.sacred || world.faith.get(id) === patron;
+
   const wt = spec.witnessThought;
   for (const w of witnesses) {
     remember(world, w, eventId); // episodic memory of what they saw — always
@@ -85,7 +94,16 @@ export function witnessDeed(
       // profanities always escalate animosity (moral outrage is never idle)
       if (wt.escalates || isTaboo) escalateAnimosity(world, w, actor, edge);
     }
+    // CONSCIENCE (witness): the moral feeling of having SEEN this deed — independent of
+    // whether an opinion formed, so a devout onlooker is troubled by a brawl (no dread)
+    // just as by a killing. Sacred precepts skip the unfaithful.
+    if (precept?.witnessSelf && adheres(w)) addSelfThought(world, w, precept.witnessSelf, { cause: eventId });
   }
+
+  // CONSCIENCE (doer): what committing the deed does to the actor's OWN mood — guilt
+  // against the creed, or pride in upholding it. The doer feels it whether or not anyone
+  // witnessed (a private sin still weighs), so it is not gated on `witnesses`.
+  if (precept?.commitSelf && adheres(actor)) addSelfThought(world, actor, precept.commitSelf, { cause: eventId });
 
   // standing cost is scaled by the community's ethical stance on this deed type
   recordDeed(world, actor, kind, {

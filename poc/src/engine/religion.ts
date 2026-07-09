@@ -20,11 +20,13 @@
  * here ever advances the shared settlement RNG — NPC outcomes are byte-identical
  * regardless of faith dynamics.
  */
-import { type World } from './model';
-import { fullActors, getRel, emit } from './world';
+import { type World, type EntityId } from './model';
+import { fullActors, getRel, emit, isWed } from './world';
 import { addThought } from './opinion';
+import { addSelfThought } from './mood';
+import { standingOf } from './reputation';
 import { Rng, mixSeed } from './rng';
-import { patronDeityOf, deityById } from '../content/fixture';
+import { patronDeityOf, deityById, cultureById, elderhoodOf, WEALTH_NEED, type ActorLifeState } from '../content/fixture';
 
 /** Neighbours each faithful actor samples per year for faith affinity thoughts. */
 const SAMPLE_N = 4;
@@ -34,6 +36,47 @@ const CONVERT_BASE = 0.02;
 const CONVERT_SOCIAL = 0.06;
 /** Faithful baseline yearly spontaneous apostasy chance (very rare). */
 const APOSTATE_CHANCE = 0.005;
+
+/** Gather how an actor is LIVING — the pure snapshot a state precept judges (mood.ts).
+ *  Kept in the engine (it reads the standing reducer, ties, lifecycle) so pack predicates
+ *  stay pure over primitives. */
+function buildLifeState(world: World, id: EntityId): ActorLifeState {
+  const lc = world.lifecycle.get(id)!;
+  const speciesId = world.identity.get(id)!.speciesId;
+  return {
+    wealth: world.needs.get(id)?.[WEALTH_NEED] ?? 500,
+    standing: standingOf(world, id),
+    ageYears: lc.ageYears,
+    children: world.ties.get(id)?.children.length ?? 0,
+    wed: isWed(world, id),
+    isElder: lc.ageYears >= elderhoodOf(speciesId),
+  };
+}
+
+/**
+ * STATE PRECEPTS (design/23 Stage 3) — the creed's yearly judgement on how each resident
+ * LIVES. For every full actor, any of their culture's state precepts whose condition holds
+ * lays an ongoing self-thought (at_peace / disquiet) on their mood; sacred ones weigh only
+ * on the faithful. Renewed each year, so the mood persists while the life-state does and
+ * fades once it changes. RNG-free — a pure function of state, safe for determinism.
+ */
+export function statePreceptsYearly(world: World): void {
+  const cultureId = world.settlements[world.focusedSettlementId]?.cultureId ?? '';
+  const culture = cultureById(cultureId);
+  const rules = culture.statePrecepts;
+  if (!rules || rules.length === 0) return;
+  const patron = patronDeityOf(cultureId).id;
+
+  for (const id of fullActors(world)) {
+    const faithful = world.faith.get(id) === patron;
+    let state: ActorLifeState | undefined;
+    for (const p of rules) {
+      if (p.sacred && !faithful) continue; // sacred ways of living weigh only on adherents
+      state ??= buildLifeState(world, id); // built once per actor, only if a precept applies
+      if (p.holds(state)) addSelfThought(world, id, p.self);
+    }
+  }
+}
 
 export function religionYearly(world: World): void {
   const residents = fullActors(world);

@@ -311,6 +311,11 @@ button { font-family: inherit; }
 .name-gloss { margin: -2px 0 var(--space-2); font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); }
 /* cultural taboos: what this people consider sacred-forbidden */
 .culture-taboos { margin: var(--space-1) 0; font-size: var(--fs-xs); color: var(--muted); letter-spacing: 0.04em; }
+/* the creed's moral character — the deeds & lives it reveres / abhors (design/23) */
+.creed { margin: var(--space-1) 0; font-size: var(--fs-xs); color: var(--muted); letter-spacing: 0.03em; }
+.creed-reveres { color: var(--gold-dim); }
+.creed-abhors { color: var(--rose); }
+.creed-sep { color: var(--line-soft); }
 /* patron deity: the divine source this settlement's people answer to */
 .patron-deity { margin: var(--space-1) 0; font-size: var(--fs-xs); color: var(--gold-dim); letter-spacing: 0.03em; }
 /* faction split: the contested value axis that divides the community */

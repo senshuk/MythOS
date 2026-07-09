@@ -370,6 +370,57 @@ export function deityById(id: string): Deity {
 
 // -----------------------------------------------------------------------------
 
+/**
+ * A PRECEPT — a creed's moral rule about a kind of deed (design/23, the RimWorld
+ * Ideoligion lesson). It subsumes the old `ethics` multiplier: `socialWeight` still
+ * scales standing damage and witness-opinion (so perception is unchanged), but a precept
+ * ALSO carries the conscience — the SELF-thoughts a witness (`witnessSelf`) or the doer
+ * (`commitSelf`) feels, which feed MOOD (engine/mood.ts). `sacred` precepts are felt only
+ * by the faithful; civic ones by everyone of the culture. Pure PACK DATA.
+ */
+export interface Precept {
+  deed: string; // a REPUTE_SPECS kind ('bloodshed' / 'violence' / 'generosity' / …)
+  /** severity multiplier for standing & witness-opinion (>1 abhorred, <1 tolerated). The
+   *  old `ethics` value verbatim — omit ⇒ 1.0 (neutral). One source of truth for ethics. */
+  socialWeight?: number;
+  /** felt only by adherents (world.faith = the culture's patron); civic (default) by all. */
+  sacred?: boolean;
+  /** the self-thought (SELF_THOUGHT_SPECS kind) an OBSERVER of this deed feels — its
+   *  magnitude comes from the spec, so per-culture data stays a single word. → mood. */
+  witnessSelf?: string;
+  /** the DOER's conscience: the self-thought committing this deed lays on them. → mood. */
+  commitSelf?: string;
+}
+
+/**
+ * A snapshot of how an actor is LIVING — the pure primitives a state precept judges. The
+ * engine gathers it (importing the standing reducer etc.); the pack's `holds` predicate is
+ * pure over these, so pack data never imports an engine module (the INTENT_DEFS pattern).
+ */
+export interface ActorLifeState {
+  wealth: number; // WEALTH_NEED satisfaction (0 destitute … 1000 wealthy)
+  standing: number; // public renown (− notorious … + renowned)
+  ageYears: number;
+  children: number;
+  wed: boolean;
+  isElder: boolean;
+}
+
+/**
+ * A STATE PRECEPT — the creed's judgement on a way of LIVING (design/23 Stage 3), as
+ * opposed to a single deed. Evaluated yearly; while `holds`, it lays an ongoing self-thought
+ * (`self`) on the actor's mood. `sacred` ones weigh only on the faithful. This is how a
+ * warrior takes quiet pride in their renown, or a childless devout elder carries a disquiet.
+ */
+export interface StatePrecept {
+  id: string;
+  self: string; // SELF_THOUGHT_SPECS kind emitted while the state holds (at_peace / disquiet)
+  sacred?: boolean;
+  /** a short noun phrase for the UI ('renown', 'hoarding', 'a broken line'). */
+  label: string;
+  holds: (s: ActorLifeState) => boolean;
+}
+
 export interface Culture {
   id: string;
   name: string;
@@ -377,10 +428,11 @@ export interface Culture {
   patronDeityId: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
   values: Partial<Record<ValueAxis, number>>;
-  /** Per-deed-kind severity multiplier: >1 = this community abhors it (stronger
-   *  standing damage, stronger witness thoughts); <1 = tolerates/expects it.
-   *  Omitted deed kinds default to 1.0 (neutral). Keys match REPUTE_SPECS kinds. */
-  ethics?: Partial<Record<string, number>>;
+  /** the creed's moral rules — what it abhors and reveres, and how those deeds land on
+   *  a witness's and a doer's conscience. Subsumes the old `ethics` map (design/23). */
+  precepts?: Precept[];
+  /** the creed's judgement on ways of LIVING (design/23 Stage 3) — evaluated yearly. */
+  statePrecepts?: StatePrecept[];
 }
 
 export const CULTURES: Culture[] = [
@@ -388,41 +440,94 @@ export const CULTURES: Culture[] = [
     id: 'martial', name: 'the Iron Creed',
     patronDeityId: 'iron_father',
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
-    // warriors: killing in conflict is expected — bloodshed barely stings standing;
-    // brawling is normal; open-handed giving is fine but not a sacred virtue.
-    ethics: { bloodshed: 0.5, violence: 0.35, generosity: 0.9 },
+    // warriors: killing in conflict is expected — bloodshed barely stings standing and
+    // pricks no conscience; brawling is normal; giving is fine but not a sacred virtue.
+    // Their SACRED virtue is VALOR — courage before the Iron Father stirs every warrior's
+    // heart; they are unmoved by peacemaking (a fight left unfinished).
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 0.5 },
+      { deed: 'violence', socialWeight: 0.35 },
+      { deed: 'generosity', socialWeight: 0.9 },
+      { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
+    // a warrior's worth is their NAME: high renown is a quiet, sacred pride; to be scorned
+    // and nameless is a warrior's disquiet. (This is how the Iron Creed's spare conscience
+    // still touches its souls — through the standing they live and die by.)
+    statePrecepts: [
+      { id: 'renowned', self: 'at_peace', sacred: true, label: 'renown', holds: (s) => s.standing >= 220 },
+      { id: 'nameless', self: 'disquiet', label: 'obscurity', holds: (s) => s.standing <= -180 },
+    ],
   },
   {
     id: 'sylvan', name: 'the Green Way',
     patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
-    // peace-keepers: killing is a profound wrong; even brawling draws wide censure;
-    // giving is a community bond and earns extra regard.
-    ethics: { bloodshed: 2.4, violence: 1.8, generosity: 1.2 },
+    // peace-keepers: killing PROFANES the living world (sacred outrage; the killer is
+    // wracked); even brawling draws wide civic censure; giving edifies the community; and
+    // laying down a feud — PEACEMAKING — is their SACRED virtue, the healing of a rift.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 2.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.8, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' }, // civic — courage that shields life
+    ],
+    // a communal creed: to sit on great personal wealth while the grove is shared is a
+    // sacred unease (hoarding offends the Green Way).
+    statePrecepts: [{ id: 'hoarding', self: 'disquiet', sacred: true, label: 'hoarding', holds: (s) => s.wealth >= 880 }],
   },
   {
     id: 'artisan', name: 'the Maker Folk',
     patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
-    // civic builders: violence disrupts order and wastes lives; generosity oils the
-    // trade network and earns quiet respect.
-    ethics: { bloodshed: 1.6, violence: 1.3, generosity: 1.2 },
+    // civic builders: violence disrupts ORDER (civic wrong, not divine — felt by all,
+    // faithful or not); generosity oils the trade network and earns quiet pride; a feud
+    // healed restores the order they prize (civic virtue).
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 1.6, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.3, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
+    // makers at peace with the fruits of their craft: an honest prosperity is a quiet
+    // contentment (civic — the well-built life the Maker Folk prize).
+    statePrecepts: [{ id: 'prosperous', self: 'at_peace', label: 'honest prosperity', holds: (s) => s.wealth >= 780 }],
   },
   {
     id: 'free', name: 'the Free Companies',
     patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
-    // mercenaries: pragmatic about violence; generosity is rare and genuinely admired
-    // in a world where you keep what you can.
-    ethics: { bloodshed: 0.7, violence: 0.5, generosity: 1.4 },
+    // mercenaries: pragmatic about violence (no conscience toll); generosity is rare and
+    // genuinely admired in a world where you keep what you can; and raw courage against a
+    // beast wins a free companion's respect (civic virtue).
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 0.7 },
+      { deed: 'violence', socialWeight: 0.5 },
+      { deed: 'generosity', socialWeight: 1.4, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
+    // free folk prize self-reliance: to be destitute is to have lost your independence —
+    // a quiet civic shame among the companies.
+    statePrecepts: [{ id: 'beholden', self: 'disquiet', label: 'destitution', holds: (s) => s.wealth <= 130 }],
   },
   {
     id: 'devout', name: 'the Old Faith',
     patronDeityId: 'ancestors',
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
-    // sacred law governs life: killing is a profound profanity; brawling stains one's
-    // honour before the divine; almsgiving is a holy duty and earns deep respect.
-    ethics: { bloodshed: 2.8, violence: 1.4, generosity: 1.5 },
+    // sacred law governs life: killing is a profound PROFANITY, brawling stains one's
+    // honour before the divine, and almsgiving is a holy duty — all sacred, so the
+    // faithful feel them keenly and the fallen-away do not. The Old Faith reveres MANY
+    // virtues: peace made and courage shown are both holy before the Ancestors.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 2.8, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.5, sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'reconciliation', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+      { deed: 'valor', sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
+    // the unbroken line is a holy duty: an elder who leaves no children carries a sacred
+    // sorrow before the Ancestors.
+    statePrecepts: [{ id: 'childless_elder', self: 'disquiet', sacred: true, label: 'a broken line', holds: (s) => s.isElder && s.children === 0 }],
   },
 ];
 
@@ -443,11 +548,16 @@ export function faithProbability(traitIds: string[]): number {
   return traitIds.includes('devout') ? 0.9 : 0.6;
 }
 
+/** The creed's precept about a given deed kind, if it has one. */
+export function preceptFor(cultureId: string, deedKind: string): Precept | undefined {
+  return cultureById(cultureId).precepts?.find((p) => p.deed === deedKind);
+}
+
 /** How much this culture amplifies (>1) or tolerates (<1) a deed of the given kind.
- *  1.0 = neutral (omitted kinds). Used by perception.ts to scale standing damage and
- *  witness-thought strength so the same act lands differently across peoples. */
+ *  1.0 = neutral (no precept). Derived from the precept's socialWeight — one source of
+ *  truth — so perception.ts scales standing/witness-thought exactly as before. */
 export function ethicsWeightFor(cultureId: string, deedKind: string): number {
-  return cultureById(cultureId).ethics?.[deedKind] ?? 1.0;
+  return preceptFor(cultureId, deedKind)?.socialWeight ?? 1.0;
 }
 
 // ----------------------------------------------------------- factions ---------
@@ -1272,6 +1382,22 @@ export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // the strange peace after a mental break — RimWorld's catharsis. It is what stops a
   // broken soul breaking again every week: the break itself buys back some mood.
   catharsis: { base: 90, durationTicks: 60, stackLimit: 1, mult: 1, label: 'a weight lifted' },
+  // ---- MORAL self-thoughts (the conscience — emitted by PRECEPTS, design/23) ----
+  // Belief made felt: seeing or doing a deed your creed judges moves your OWN mood, not
+  // just your opinion of the doer. moral_outrage/edified are what a WITNESS feels; guilt/
+  // righteous are the DOER's conscience. Tuned to the compressed mood band — strong enough
+  // to darken a devout soul toward a break under a run of profanity, gentle enough that one
+  // witnessed scuffle doesn't shatter the town.
+  moral_outrage: { base: -55, durationTicks: 150, stackLimit: 4, mult: 0.7, label: 'witnessed a wrong against your creed' },
+  edified: { base: 30, durationTicks: 120, stackLimit: 4, mult: 0.7, label: 'saw your creed upheld' },
+  guilt: { base: -85, durationTicks: Math.round(1.5 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.7, label: 'the weight of what you did' },
+  righteous: { base: 45, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.75, label: 'lived by your creed' },
+  // STATE precepts (design/23 Stage 3): the ongoing mood of how you LIVE, not a single deed.
+  // Renewed each year while the life-state holds (stackLimit 1 ⇒ a steady background weight),
+  // fading within ~2 years once you leave it. `at_peace` = a life your creed blesses; `disquiet`
+  // = a life at odds with it.
+  at_peace: { base: 40, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'at peace with your creed' },
+  disquiet: { base: -50, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'a life at odds with your creed' },
 };
 
 export function selfThoughtSpec(kind: string): ThoughtSpec {
@@ -1334,6 +1460,19 @@ export const BREAK_CHANCE_MAX = 0.35;
 /** How the mind pays for a binge (wealth drained per episode). */
 export const BINGE_COST = 90;
 
+// ---- generosity as an everyday act (design/23 Stage 2) ----
+/** What a gift costs the giver (wealth) — a real sacrifice, so giving spends down surplus
+ *  and self-limits. One rule set: the player's `give` pays the same. */
+export const GIFT_COST = 110;
+/** A well-provided soul only gives from real surplus (wealth need above this). */
+export const GIFT_WEALTH_FLOOR = 750;
+/** Base yearly-ish inclination to give when flush, plus a warmth lean (warm hearts give
+ *  more). Clamped so even the coldest rarely gives and the warmest doesn't flood the town. */
+export function giveInclination(warmth: number): number {
+  const p = 0.05 + warmth * 0.0011;
+  return p < 0.01 ? 0.01 : p > 0.16 ? 0.16 : p;
+}
+
 // ---- reputation: what each kind of deed does to public standing ----
 // How a deed marks an actor's standing with the whole community (value, decay, and
 // any opinion it sows in each witness). PACK DATA, like THOUGHT_SPECS: a harsher
@@ -1389,13 +1528,36 @@ export function reputeSpec(kind: string): ReputeSpec {
   return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
 }
 
-/** Deed labels this culture especially abhors (ethics weight ≥ 1.5) — used by the
- *  view layer to surface what a settlement's people hold as sacred/forbidden. */
+/** Deed labels this culture especially abhors (precept weight ≥ 1.5) — used by the
+ *  view layer to surface what a settlement's people hold as sacred/forbidden. Preserves
+ *  the precept declaration order, so the output matches the pre-precept behaviour. */
 export function ethicsTaboos(cultureId: string): string[] {
-  const e = cultureById(cultureId).ethics ?? {};
-  return Object.entries(e)
-    .filter(([, w]) => (w ?? 0) >= 1.5)
-    .map(([kind]) => reputeSpec(kind).label);
+  return (cultureById(cultureId).precepts ?? [])
+    .filter((p) => (p.socialWeight ?? 0) >= 1.5)
+    .map((p) => reputeSpec(p.deed).label);
+}
+
+/**
+ * The creed's MORAL CHARACTER made legible (design/23 Stage 3): the deeds and ways of
+ * living it holds virtuous (`reveres`) or sinful (`abhors`), for the settlement panel. A
+ * virtue is a precept that lays pride (righteous / at_peace); a sin, one that lays a
+ * burden (guilt / disquiet). Deed labels come from REPUTE_SPECS; life labels from the
+ * state precept. So each people reads as a distinct moral outlook, not a stat block.
+ */
+export function creedOf(cultureId: string): { reveres: string[]; abhors: string[] } {
+  const c = cultureById(cultureId);
+  const deeds = c.precepts ?? [];
+  const lives = c.statePrecepts ?? [];
+  return {
+    reveres: [
+      ...deeds.filter((p) => p.commitSelf === 'righteous').map((p) => reputeSpec(p.deed).label),
+      ...lives.filter((p) => p.self === 'at_peace').map((p) => p.label),
+    ],
+    abhors: [
+      ...deeds.filter((p) => p.commitSelf === 'guilt').map((p) => reputeSpec(p.deed).label),
+      ...lives.filter((p) => p.self === 'disquiet').map((p) => p.label),
+    ],
+  };
 }
 
 // ---- how public standing colours daily life (the consequences of reputation) ----

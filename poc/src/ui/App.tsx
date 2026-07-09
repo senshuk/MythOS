@@ -1629,8 +1629,12 @@ function Inspector({
           {settV?.patronDeity && (
             <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
           )}
-          {settV?.culturalTaboos && settV.culturalTaboos.length > 0 && (
-            <p className="culture-taboos">taboo: {settV.culturalTaboos.join(' · ')}</p>
+          {settV?.creed && (settV.creed.reveres.length > 0 || settV.creed.abhors.length > 0) && (
+            <p className="creed">
+              {settV.creed.reveres.length > 0 && <>reveres <span className="creed-reveres">{settV.creed.reveres.join(' · ')}</span></>}
+              {settV.creed.reveres.length > 0 && settV.creed.abhors.length > 0 && <span className="creed-sep"> · </span>}
+              {settV.creed.abhors.length > 0 && <>abhors <span className="creed-abhors">{settV.creed.abhors.join(' · ')}</span></>}
+            </p>
           )}
           {settV?.factionSplit && (
             <p className="faction-split">divided over <em>{settV.factionSplit.axis}</em>: <span className="faction-high">{settV.factionSplit.highName}</span> vs <span className="faction-low">{settV.factionSplit.lowName}</span></p>
