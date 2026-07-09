@@ -506,31 +506,53 @@ describe('procedural philology (each culture names the world in its own tongue)'
     expect(same / sameN).toBeGreaterThan(cross / crossN);
   });
 
-  it('names MEAN something, in VARIED structures — compound, locative or a founder’s possessive', () => {
+  it('names MEAN something, in VARIED structures — the ways real toponyms are made', () => {
     const inland = { coast: 0, elevation: 0.7, moisture: 0.3, temperature: 0.5, freshWater: 0.2 };
     expect(placeName('martial', 1, inland, new Rng(3))).toEqual(placeName('martial', 1, inland, new Rng(3))); // deterministic
     // every gloss is a known shape; every name is a single capitalised word; the STRUCTURE varies
     const shapes = new Set<string>();
-    for (let s = 0; s < 40; s++) {
+    for (let s = 0; s < 60; s++) {
       const nm = placeName('martial', 1, inland, new Rng(s));
       expect(nm.name).toMatch(/^[A-Z][a-z]+$/);
       const compound = /^the \w+ \w+$/.test(nm.meaning); // "the iron haven" / "the grey stead"
       const possessive = /^[A-Z][a-z]+'s \w+$/.test(nm.meaning); // "Ereth's ford"
-      expect(compound || possessive).toBe(true);
-      shapes.add(possessive ? 'poss' : nm.meaning.endsWith(' stead') ? 'loc' : 'compound');
+      const founderkin = /^home of [A-Z][a-z]+'s folk$/.test(nm.meaning); // the -ingham pattern
+      expect(compound || possessive || founderkin).toBe(true);
+      shapes.add(founderkin ? 'kin' : possessive ? 'poss' : nm.meaning.endsWith(' stead') ? 'loc' : 'compound');
     }
-    expect(shapes.size).toBeGreaterThan(1); // not every town is 'the X Y' — real morphology
+    expect(shapes.size).toBeGreaterThan(2); // several naming traditions in play, not one template
     // the place-kind reflects the LAND: a coastal people's names reach for coastal kinds, a
     // highland people's for peaks (across the templates that carry a land-kind).
     const coast = { coast: 0.9, elevation: 0.2, moisture: 0.5, temperature: 0.5, freshWater: 0.3 };
     const peak = { coast: 0, elevation: 0.8, moisture: 0.3, temperature: 0.5, freshWater: 0.2 };
     let coastHit = false, peakHit = false;
-    for (let s = 0; s < 40; s++) {
-      if (/haven|port|strand/.test(placeName('artisan', 1, coast, new Rng(s)).meaning)) coastHit = true;
-      if (/hold|peak|crag/.test(placeName('artisan', 1, peak, new Rng(s)).meaning)) peakHit = true;
+    for (let s = 0; s < 60; s++) {
+      if (/haven|port|strand|cove|bay|point|sands|cliff|quay/.test(placeName('artisan', 1, coast, new Rng(s)).meaning)) coastHit = true;
+      if (/hold|peak|crag|tor|pass|cairn|fell/.test(placeName('artisan', 1, peak, new Rng(s)).meaning)) peakHit = true;
     }
     expect(coastHit).toBe(true);
     expect(peakHit).toBe(true);
+  });
+
+  it('a town by a named river can take the river’s name; a colony can take its mother’s', () => {
+    const inland = { coast: 0, elevation: 0.4, moisture: 0.5, temperature: 0.5, freshWater: 0.8 };
+    // hydronym: given a landmark, some rolls borrow its (old-tongue) name — "the ford on the Skarnald"
+    let hydro: { name: string; meaning: string } | undefined;
+    for (let s = 0; s < 60 && !hydro; s++) {
+      const nm = placeName('artisan', 1, inland, new Rng(s), { landmark: { name: 'Skarnald', kind: 'river' } });
+      if (nm.meaning.includes('Skarnald')) hydro = nm;
+    }
+    expect(hydro).toBeDefined();
+    expect(hydro!.meaning).toMatch(/^the \w+ (of|on|over) the Skarnald$/);
+    expect(hydro!.name.toLowerCase()).toContain('skarnald'); // the dead name lives on in the town's
+    // colonial transfer: a daughter can commemorate or orient by her mother city
+    let colonial: { name: string; meaning: string } | undefined;
+    for (let s = 0; s < 60 && !colonial; s++) {
+      const nm = placeName('artisan', 1, inland, new Rng(s), { parent: { name: 'Kordul', dx: 0, dy: -10 } });
+      if (nm.meaning.includes('Kordul')) colonial = nm;
+    }
+    expect(colonial).toBeDefined();
+    expect(colonial!.meaning).toMatch(/^(new|north|south|east|west) Kordul$/);
   });
 
   it('a people has a self-name (demonym) in its own tongue, stable per world', () => {

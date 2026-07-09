@@ -123,27 +123,91 @@ const LOC: Concept = { id: '@loc', gloss: 'stead' }; // a settlement/locative su
 const PPL: Concept = { id: '@ppl', gloss: 'folk' }; // a people/demonym suffix
 const SELF: Concept = { id: '@self', gloss: 'self' }; // a culture's endonym root
 // place-kinds, grouped by the land that suits them (a coast gets a haven, a peak a hold…).
-const KIND_COAST: Concept[] = [{ id: 'haven', gloss: 'haven' }, { id: 'port', gloss: 'port' }, { id: 'strand', gloss: 'strand' }];
-const KIND_WOOD: Concept[] = [{ id: 'wood', gloss: 'wood' }, { id: 'grove', gloss: 'grove' }, { id: 'holt', gloss: 'holt' }];
-const KIND_PEAK: Concept[] = [{ id: 'hold', gloss: 'hold' }, { id: 'peak', gloss: 'peak' }, { id: 'crag', gloss: 'crag' }];
-const KIND_MARSH: Concept[] = [{ id: 'mere', gloss: 'mere' }, { id: 'marsh', gloss: 'marsh' }, { id: 'fen', gloss: 'fen' }];
-const KIND_DRY: Concept[] = [{ id: 'waste', gloss: 'waste' }, { id: 'reach', gloss: 'reach' }, { id: 'span', gloss: 'span' }];
-const KIND_OPEN: Concept[] = [{ id: 'field', gloss: 'field' }, { id: 'march', gloss: 'march' }, { id: 'down', gloss: 'down' }];
-const KIND_WATER: Concept[] = [{ id: 'ford', gloss: 'ford' }, { id: 'mere', gloss: 'mere' }, { id: 'water', gloss: 'water' }];
-const KIND_ANY: Concept[] = [{ id: 'town', gloss: 'town' }, { id: 'gate', gloss: 'gate' }, { id: 'vale', gloss: 'vale' }, { id: 'watch', gloss: 'watch' }];
+// Wide pools — real maps repeat -ton and -by, but they also have quays, tors, crofts and fells.
+const KIND_COAST: Concept[] = [
+  { id: 'haven', gloss: 'haven' }, { id: 'port', gloss: 'port' }, { id: 'strand', gloss: 'strand' },
+  { id: 'cove', gloss: 'cove' }, { id: 'bay', gloss: 'bay' }, { id: 'point', gloss: 'point' },
+  { id: 'sands', gloss: 'sands' }, { id: 'cliff', gloss: 'cliff' }, { id: 'quay', gloss: 'quay' },
+];
+const KIND_WOOD: Concept[] = [
+  { id: 'wood', gloss: 'wood' }, { id: 'grove', gloss: 'grove' }, { id: 'holt', gloss: 'holt' },
+  { id: 'glade', gloss: 'glade' }, { id: 'shaw', gloss: 'shaw' }, { id: 'thicket', gloss: 'thicket' },
+];
+const KIND_PEAK: Concept[] = [
+  { id: 'hold', gloss: 'hold' }, { id: 'peak', gloss: 'peak' }, { id: 'crag', gloss: 'crag' },
+  { id: 'tor', gloss: 'tor' }, { id: 'pass', gloss: 'pass' }, { id: 'cairn', gloss: 'cairn' },
+  { id: 'fell', gloss: 'fell' },
+];
+const KIND_MARSH: Concept[] = [
+  { id: 'mere', gloss: 'mere' }, { id: 'marsh', gloss: 'marsh' }, { id: 'fen', gloss: 'fen' },
+  { id: 'carr', gloss: 'carr' }, { id: 'sedge', gloss: 'sedge' },
+];
+const KIND_DRY: Concept[] = [
+  { id: 'waste', gloss: 'waste' }, { id: 'reach', gloss: 'reach' }, { id: 'span', gloss: 'span' },
+  { id: 'dunes', gloss: 'dunes' }, { id: 'pan', gloss: 'pan' }, { id: 'rock', gloss: 'rock' },
+];
+const KIND_OPEN: Concept[] = [
+  { id: 'field', gloss: 'field' }, { id: 'march', gloss: 'march' }, { id: 'down', gloss: 'down' },
+  { id: 'meadow', gloss: 'meadow' }, { id: 'heath', gloss: 'heath' }, { id: 'croft', gloss: 'croft' },
+  { id: 'wold', gloss: 'wold' },
+];
+const KIND_WATER: Concept[] = [
+  { id: 'ford', gloss: 'ford' }, { id: 'mere', gloss: 'mere' }, { id: 'water', gloss: 'water' },
+  { id: 'bridge', gloss: 'bridge' }, { id: 'well', gloss: 'well' }, { id: 'springs', gloss: 'springs' },
+  { id: 'mill', gloss: 'mill' }, { id: 'pool', gloss: 'pool' },
+];
+const KIND_ANY: Concept[] = [
+  { id: 'town', gloss: 'town' }, { id: 'gate', gloss: 'gate' }, { id: 'vale', gloss: 'vale' },
+  { id: 'watch', gloss: 'watch' }, { id: 'market', gloss: 'market' }, { id: 'cross', gloss: 'cross' },
+  { id: 'hall', gloss: 'hall' }, { id: 'mound', gloss: 'mound' },
+];
 
-/** Which kinds of place-name suit this site's LAND (coast, forest, peak, marsh, …). */
+/** Which kinds of place-name suit this site's LAND — a WEIGHTED merge, not a single pool:
+ *  a wooded coast can yield a cove OR a holt, with the dominant terrain weighted heavier
+ *  (duplicated entries = weight). Geography shapes the odds; it doesn't dictate one answer. */
 function kindsForLand(attributes: Record<string, number>): Concept[] {
-  if ((attributes.coast ?? 0) > 0.55) return KIND_COAST;
+  const pool: Concept[] = [...KIND_ANY];
+  const heavy = (kinds: Concept[]) => pool.push(...kinds, ...kinds); // dominant terrain: 2×
+  if ((attributes.coast ?? 0) > 0.55) heavy(KIND_COAST);
+  else if ((attributes.coast ?? 0) > 0.3) pool.push(...KIND_COAST);
+  if ((attributes.freshWater ?? 0) > 0.6) heavy(KIND_WATER);
+  else if ((attributes.freshWater ?? 0) > 0.35) pool.push(...KIND_WATER);
   const biome = biomeOf(attributes).id;
-  if (biome === 'alpine' || (attributes.elevation ?? 0) > 0.66) return KIND_PEAK;
-  if (biome === 'wetland') return KIND_MARSH;
-  if (biome === 'taiga' || biome === 'temperate_forest' || biome === 'jungle') return KIND_WOOD;
-  if (biome === 'desert' || biome === 'tundra') return KIND_DRY;
-  if ((attributes.freshWater ?? 0) > 0.6) return KIND_WATER;
-  if (biome === 'grassland' || biome === 'steppe' || biome === 'savanna') return KIND_OPEN;
-  return KIND_ANY;
+  if (biome === 'alpine' || (attributes.elevation ?? 0) > 0.66) heavy(KIND_PEAK);
+  else if ((attributes.elevation ?? 0) > 0.5) pool.push(...KIND_PEAK);
+  if (biome === 'wetland') heavy(KIND_MARSH);
+  if (biome === 'taiga' || biome === 'temperate_forest' || biome === 'jungle') heavy(KIND_WOOD);
+  if (biome === 'desert' || biome === 'tundra') heavy(KIND_DRY);
+  if (biome === 'grassland' || biome === 'steppe' || biome === 'savanna') heavy(KIND_OPEN);
+  return pool;
 }
+
+// how a settlement can relate to a NAMED feature it sits beside — the hydronym pattern
+// (Exmouth = the mouth of the Exe; the feature's name is older than the town's tongue).
+const FEAT_RELATION: Record<GeoFeature['kind'], Concept[]> = {
+  river: [
+    { id: 'mouth', gloss: 'mouth of the' }, { id: 'ford', gloss: 'ford on the' },
+    { id: 'bank', gloss: 'bank of the' }, { id: 'bend', gloss: 'bend of the' },
+    { id: 'bridge', gloss: 'bridge over the' },
+  ],
+  lake: [
+    { id: 'shore', gloss: 'shore of the' }, { id: 'gate', gloss: 'gate of the' },
+    { id: 'strand', gloss: 'strand of the' },
+  ],
+  sea: [
+    { id: 'strand', gloss: 'strand of the' }, { id: 'gate', gloss: 'gate of the' },
+    { id: 'watch', gloss: 'watch on the' }, { id: 'haven', gloss: 'haven on the' },
+  ],
+  range: [
+    { id: 'foot', gloss: 'foot of the' }, { id: 'gate', gloss: 'gate of the' },
+    { id: 'pass', gloss: 'pass of the' }, { id: 'shade', gloss: 'shade of the' },
+  ],
+};
+const NEW: Concept = { id: 'new', gloss: 'new' };
+const DIRS: Record<string, Concept> = {
+  north: { id: 'north', gloss: 'north' }, south: { id: 'south', gloss: 'south' },
+  east: { id: 'east', gloss: 'east' }, west: { id: 'west', gloss: 'west' },
+};
 
 // a root WORD for a concept in a culture's tongue — STABLE per (culture, concept, world), so
 // the same meaning always sounds the same within a people. Memoised; lowercased for compounding.
@@ -225,37 +289,88 @@ export function houseName(cultureId: string, seed: number, rng: Rng): { name: st
   };
 }
 
-/** Coin a settlement's name AND its meaning in the founding people's tongue. The STRUCTURE
- *  varies — a two-root compound, a descriptor + the tongue's locative suffix, or a founder's
- *  possessive — so a region reads varied yet rule-governed (the locative suffix recurs as an
- *  audible morpheme). `rng` (the worldgen stream) picks the template + WHICH concepts; the
- *  roots are stable, so a people's towns still share a learnable lexicon. Descriptors lean to
- *  the culture's character. */
+/** What a new settlement KNOWS about its situation — the raw material real place-names are
+ *  made of. A named landmark nearby lets the town take the feature's (old-tongue) name, the
+ *  way Exmouth takes the Exe's; a mother settlement lets a colony commemorate or orient. */
+export interface PlaceContext {
+  /** the named geographic feature the site sits beside, if any. */
+  landmark?: { name: string; kind: GeoFeature['kind'] };
+  /** for a daughter colony: the mother settlement and the new site's offset from it. */
+  parent?: { name: string; dx: number; dy: number };
+}
+
+/** Coin a settlement's name AND its meaning in the founding people's tongue, the way real
+ *  toponyms were made — from what the founders KNEW: the landmark they settled beside
+ *  ("the mouth of the Skarnald", hydronym pattern), the mother city they left ("new Kordul",
+ *  "north Kordul"), the founder themselves ("Ereth's ford", "home of Ereth's folk"), or the
+ *  look of the land ("the iron haven", "the grey stead"). `rng` (the worldgen stream) picks
+ *  the template + WHICH concepts; the roots are stable, so a people's towns still share a
+ *  learnable lexicon. Descriptors lean to the culture's character. */
 export function placeName(
   cultureId: string,
   seed: number,
   attributes: Record<string, number>,
   rng: Rng,
+  ctx?: PlaceContext,
 ): { name: string; meaning: string } {
   const lang = tongueFor(cultureId, seed);
   const descs = descriptorsFor(cultureId);
-  const kinds = kindsForLand(attributes);
-  const roll = rng.int(100);
-  if (roll < 42) {
-    // COMPOUND — descriptor + land-kind ("the iron haven")
-    const desc = rng.pick(descs);
-    const kind = rng.pick(kinds);
-    return { name: compose(lang, [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, kind.id)]), meaning: `the ${desc.gloss} ${kind.gloss}` };
+  const lex = (id: string) => lexeme(cultureId, seed, id);
+
+  // weighted templates, only those whose raw material exists (deterministic walk)
+  const templates: [string, number][] = [];
+  if (ctx?.landmark) templates.push(['feature', 26]);
+  if (ctx?.parent) templates.push(['colonial', 16]);
+  templates.push(['compound', 22], ['locative', 12], ['possessive', 12], ['founderkin', 12]);
+  let total = 0;
+  for (const [, w] of templates) total += w;
+  let roll = rng.int(total);
+  let pick = templates[templates.length - 1][0];
+  for (const [t, w] of templates) {
+    if (roll < w) { pick = t; break; }
+    roll -= w;
   }
-  if (roll < 72) {
-    // LOCATIVE — descriptor + the tongue's settlement suffix ("the grey stead"); the suffix
-    // is one stable morpheme, so it recurs across this people's towns like -ton or -by.
-    const desc = rng.pick(descs);
-    return { name: compose(lang, [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, LOC.id)]), meaning: `the ${desc.gloss} ${LOC.gloss}` };
+
+  switch (pick) {
+    case 'feature': {
+      // HYDRONYM — the town borrows the landmark's (old-tongue) name + how it sits on it:
+      // "Skarnaldun — the mouth of the Skarnald". The land's dead name lives on in the town's.
+      const f = ctx!.landmark!;
+      const rel = rng.pick(FEAT_RELATION[f.kind]);
+      return { name: compose(lang, [f.name.toLowerCase(), lex(rel.id)]), meaning: `the ${rel.gloss} ${f.name}` };
+    }
+    case 'colonial': {
+      // TRANSFER — a colony commemorates its mother city ("new Kordul") or orients by her
+      // ("north Kordul"), from the ACTUAL direction the colonists marched.
+      const p = ctx!.parent!;
+      const dir = Math.abs(p.dx) > Math.abs(p.dy) ? (p.dx > 0 ? DIRS.east : DIRS.west) : (p.dy > 0 ? DIRS.south : DIRS.north);
+      const mark = rng.chance(0.45) ? NEW : dir;
+      return { name: compose(lang, [lex(mark.id), p.name.toLowerCase()]), meaning: `${mark.gloss} ${p.name}` };
+    }
+    case 'locative': {
+      // LOCATIVE — descriptor + the tongue's settlement suffix ("the grey stead"); the suffix
+      // is one stable morpheme, so it recurs across this people's towns like -ton or -by.
+      const desc = rng.pick(descs);
+      return { name: compose(lang, [lex(desc.id), lex(LOC.id)]), meaning: `the ${desc.gloss} ${LOC.gloss}` };
+    }
+    case 'possessive': {
+      // POSSESSIVE — a founder's name + a land-kind ("Ereth's ford"); the founder is coined
+      // afresh for this town (the worldgen stream), the kind stays stable.
+      const founder = coinWord(lang, rng, 'given');
+      const kind = rng.pick(kindsForLand(attributes));
+      return { name: compose(lang, [founder.toLowerCase(), lex(kind.id)]), meaning: `${founder}'s ${kind.gloss}` };
+    }
+    case 'founderkin': {
+      // FOUNDER-KIN — the -ingham pattern: founder + people-suffix + settlement suffix,
+      // "home of Ereth's folk". The tongue's @ppl/@loc morphemes recur, audibly.
+      const founder = coinWord(lang, rng, 'given');
+      return { name: compose(lang, [founder.toLowerCase(), lex(PPL.id), lex(LOC.id)]), meaning: `home of ${founder}'s folk` };
+    }
+    default: {
+      // COMPOUND — descriptor + land-kind ("the iron haven")
+      const desc = rng.pick(descs);
+      const kind = rng.pick(kindsForLand(attributes));
+      return { name: compose(lang, [lex(desc.id), lex(kind.id)]), meaning: `the ${desc.gloss} ${kind.gloss}` };
+    }
   }
-  // POSSESSIVE — a founder's name + a land-kind ("Ereth's ford"); the founder is coined afresh
-  // for this town (the worldgen stream), the kind stays stable.
-  const founder = coinWord(lang, rng, 'given');
-  const kind = rng.pick(kinds);
-  return { name: compose(lang, [founder.toLowerCase(), lexeme(cultureId, seed, kind.id)]), meaning: `${founder}'s ${kind.gloss}` };
 }
