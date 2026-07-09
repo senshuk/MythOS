@@ -370,6 +370,28 @@ export function deityById(id: string): Deity {
 
 // -----------------------------------------------------------------------------
 
+/**
+ * A PRECEPT — a creed's moral rule about a kind of deed (design/23, the RimWorld
+ * Ideoligion lesson). It subsumes the old `ethics` multiplier: `socialWeight` still
+ * scales standing damage and witness-opinion (so perception is unchanged), but a precept
+ * ALSO carries the conscience — the SELF-thoughts a witness (`witnessSelf`) or the doer
+ * (`commitSelf`) feels, which feed MOOD (engine/mood.ts). `sacred` precepts are felt only
+ * by the faithful; civic ones by everyone of the culture. Pure PACK DATA.
+ */
+export interface Precept {
+  deed: string; // a REPUTE_SPECS kind ('bloodshed' / 'violence' / 'generosity' / …)
+  /** severity multiplier for standing & witness-opinion (>1 abhorred, <1 tolerated). The
+   *  old `ethics` value verbatim — omit ⇒ 1.0 (neutral). One source of truth for ethics. */
+  socialWeight?: number;
+  /** felt only by adherents (world.faith = the culture's patron); civic (default) by all. */
+  sacred?: boolean;
+  /** the self-thought (SELF_THOUGHT_SPECS kind) an OBSERVER of this deed feels — its
+   *  magnitude comes from the spec, so per-culture data stays a single word. → mood. */
+  witnessSelf?: string;
+  /** the DOER's conscience: the self-thought committing this deed lays on them. → mood. */
+  commitSelf?: string;
+}
+
 export interface Culture {
   id: string;
   name: string;
@@ -377,10 +399,9 @@ export interface Culture {
   patronDeityId: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
   values: Partial<Record<ValueAxis, number>>;
-  /** Per-deed-kind severity multiplier: >1 = this community abhors it (stronger
-   *  standing damage, stronger witness thoughts); <1 = tolerates/expects it.
-   *  Omitted deed kinds default to 1.0 (neutral). Keys match REPUTE_SPECS kinds. */
-  ethics?: Partial<Record<string, number>>;
+  /** the creed's moral rules — what it abhors and reveres, and how those deeds land on
+   *  a witness's and a doer's conscience. Subsumes the old `ethics` map (design/23). */
+  precepts?: Precept[];
 }
 
 export const CULTURES: Culture[] = [
@@ -388,41 +409,62 @@ export const CULTURES: Culture[] = [
     id: 'martial', name: 'the Iron Creed',
     patronDeityId: 'iron_father',
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
-    // warriors: killing in conflict is expected — bloodshed barely stings standing;
-    // brawling is normal; open-handed giving is fine but not a sacred virtue.
-    ethics: { bloodshed: 0.5, violence: 0.35, generosity: 0.9 },
+    // warriors: killing in conflict is expected — bloodshed barely stings standing and
+    // pricks no conscience; brawling is normal; giving is fine but not a sacred virtue.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 0.5 },
+      { deed: 'violence', socialWeight: 0.35 },
+      { deed: 'generosity', socialWeight: 0.9 },
+    ],
   },
   {
     id: 'sylvan', name: 'the Green Way',
     patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
-    // peace-keepers: killing is a profound wrong; even brawling draws wide censure;
-    // giving is a community bond and earns extra regard.
-    ethics: { bloodshed: 2.4, violence: 1.8, generosity: 1.2 },
+    // peace-keepers: killing PROFANES the living world (sacred outrage; the killer is
+    // wracked); even brawling draws wide civic censure; giving edifies the community.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 2.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.8, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
   },
   {
     id: 'artisan', name: 'the Maker Folk',
     patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
-    // civic builders: violence disrupts order and wastes lives; generosity oils the
-    // trade network and earns quiet respect.
-    ethics: { bloodshed: 1.6, violence: 1.3, generosity: 1.2 },
+    // civic builders: violence disrupts ORDER (civic wrong, not divine — felt by all,
+    // faithful or not); generosity oils the trade network and earns quiet pride.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 1.6, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.3, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.2, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
   },
   {
     id: 'free', name: 'the Free Companies',
     patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
-    // mercenaries: pragmatic about violence; generosity is rare and genuinely admired
-    // in a world where you keep what you can.
-    ethics: { bloodshed: 0.7, violence: 0.5, generosity: 1.4 },
+    // mercenaries: pragmatic about violence (no conscience toll); generosity is rare and
+    // genuinely admired in a world where you keep what you can.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 0.7 },
+      { deed: 'violence', socialWeight: 0.5 },
+      { deed: 'generosity', socialWeight: 1.4, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
   },
   {
     id: 'devout', name: 'the Old Faith',
     patronDeityId: 'ancestors',
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
-    // sacred law governs life: killing is a profound profanity; brawling stains one's
-    // honour before the divine; almsgiving is a holy duty and earns deep respect.
-    ethics: { bloodshed: 2.8, violence: 1.4, generosity: 1.5 },
+    // sacred law governs life: killing is a profound PROFANITY, brawling stains one's
+    // honour before the divine, and almsgiving is a holy duty — all sacred, so the
+    // faithful feel them keenly and the fallen-away do not.
+    precepts: [
+      { deed: 'bloodshed', socialWeight: 2.8, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'violence', socialWeight: 1.4, sacred: true, witnessSelf: 'moral_outrage', commitSelf: 'guilt' },
+      { deed: 'generosity', socialWeight: 1.5, sacred: true, witnessSelf: 'edified', commitSelf: 'righteous' },
+    ],
   },
 ];
 
@@ -443,11 +485,16 @@ export function faithProbability(traitIds: string[]): number {
   return traitIds.includes('devout') ? 0.9 : 0.6;
 }
 
+/** The creed's precept about a given deed kind, if it has one. */
+export function preceptFor(cultureId: string, deedKind: string): Precept | undefined {
+  return cultureById(cultureId).precepts?.find((p) => p.deed === deedKind);
+}
+
 /** How much this culture amplifies (>1) or tolerates (<1) a deed of the given kind.
- *  1.0 = neutral (omitted kinds). Used by perception.ts to scale standing damage and
- *  witness-thought strength so the same act lands differently across peoples. */
+ *  1.0 = neutral (no precept). Derived from the precept's socialWeight — one source of
+ *  truth — so perception.ts scales standing/witness-thought exactly as before. */
 export function ethicsWeightFor(cultureId: string, deedKind: string): number {
-  return cultureById(cultureId).ethics?.[deedKind] ?? 1.0;
+  return preceptFor(cultureId, deedKind)?.socialWeight ?? 1.0;
 }
 
 // ----------------------------------------------------------- factions ---------
@@ -1272,6 +1319,16 @@ export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // the strange peace after a mental break — RimWorld's catharsis. It is what stops a
   // broken soul breaking again every week: the break itself buys back some mood.
   catharsis: { base: 90, durationTicks: 60, stackLimit: 1, mult: 1, label: 'a weight lifted' },
+  // ---- MORAL self-thoughts (the conscience — emitted by PRECEPTS, design/23) ----
+  // Belief made felt: seeing or doing a deed your creed judges moves your OWN mood, not
+  // just your opinion of the doer. moral_outrage/edified are what a WITNESS feels; guilt/
+  // righteous are the DOER's conscience. Tuned to the compressed mood band — strong enough
+  // to darken a devout soul toward a break under a run of profanity, gentle enough that one
+  // witnessed scuffle doesn't shatter the town.
+  moral_outrage: { base: -55, durationTicks: 150, stackLimit: 4, mult: 0.7, label: 'witnessed a wrong against your creed' },
+  edified: { base: 30, durationTicks: 120, stackLimit: 4, mult: 0.7, label: 'saw your creed upheld' },
+  guilt: { base: -85, durationTicks: Math.round(1.5 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.7, label: 'the weight of what you did' },
+  righteous: { base: 45, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.75, label: 'lived by your creed' },
 };
 
 export function selfThoughtSpec(kind: string): ThoughtSpec {
@@ -1389,13 +1446,13 @@ export function reputeSpec(kind: string): ReputeSpec {
   return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
 }
 
-/** Deed labels this culture especially abhors (ethics weight ≥ 1.5) — used by the
- *  view layer to surface what a settlement's people hold as sacred/forbidden. */
+/** Deed labels this culture especially abhors (precept weight ≥ 1.5) — used by the
+ *  view layer to surface what a settlement's people hold as sacred/forbidden. Preserves
+ *  the precept declaration order, so the output matches the pre-precept behaviour. */
 export function ethicsTaboos(cultureId: string): string[] {
-  const e = cultureById(cultureId).ethics ?? {};
-  return Object.entries(e)
-    .filter(([, w]) => (w ?? 0) >= 1.5)
-    .map(([kind]) => reputeSpec(kind).label);
+  return (cultureById(cultureId).precepts ?? [])
+    .filter((p) => (p.socialWeight ?? 0) >= 1.5)
+    .map((p) => reputeSpec(p.deed).label);
 }
 
 // ---- how public standing colours daily life (the consequences of reputation) ----
