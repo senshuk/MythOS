@@ -11,7 +11,7 @@ import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraVie
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
-import { paintTerrain, paintStarfield, buildRoads, type TerrainLabel } from './terrain';
+import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
 import { featureName } from '../content/languages';
 import { useSim } from './useSim';
 
@@ -622,6 +622,12 @@ function RegionMap({
     () => (sub instanceof SurfaceSubstrate ? buildRoads(sub.geography, map.nodes, map.edges) : []),
     [sub, map.nodes, map.edges],
   );
+  // great rivers, traced from the drainage tree as meandering vectors (width ∝ discharge).
+  // Depends only on the world, not nodes/edges — recomputed when the world changes.
+  const rivers = useMemo(
+    () => (sub instanceof SurfaceSubstrate ? buildRivers(sub.geography) : []),
+    [sub],
+  );
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
   const radius = (pop: number) => 1.7 + 3.4 * Math.sqrt(pop / maxPop);
   // on a big, busy map only the GREATEST cities are labelled (others are dots with a
@@ -651,6 +657,22 @@ function RegionMap({
       />
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
         <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
+          {/* GREAT RIVERS: traced from the drainage as meandering vectors, width ∝ discharge.
+              Drawn first so roads and bridges sit on top; the fine tributary web is painted
+              into the terrain canvas underneath. */}
+          {rivers.map((rv, i) => (
+            <path
+              key={`rv${i}`}
+              className="river"
+              d={rv.d}
+              fill="none"
+              stroke="var(--cyan)"
+              strokeWidth={rv.width}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.5}
+            />
+          ))}
           {/* ROADS: the physical links between peaceful settlements — overland roads hug
               the valleys, sea lanes cross the water (design: RimWorld draws world roads). */}
           {roads.map((rd, i) => (

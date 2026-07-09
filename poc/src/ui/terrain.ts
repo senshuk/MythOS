@@ -8,7 +8,7 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, isLand } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, GREAT_RIVER_FLUX, REF_N, isLand } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -238,6 +238,62 @@ export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[])
   return roads;
 }
 
+/** A great river traced as a smoothed SVG polyline, with a stroke width scaled by its
+ *  discharge — a trunk reads visibly broader than a headwater. Drawn as a vector in the
+ *  zoom-transformed overlay so it meanders crisply at any zoom (the per-pixel canvas paint
+ *  still fills the fine tributary network). */
+export interface MapRiver {
+  d: string;
+  width: number;
+}
+
+/**
+ * Trace the GREAT rivers of a world into meandering polylines. Each is followed DOWNSTREAM
+ * along the drainage tree (`geo.flowTo`) from a headwater — a great-river cell no other great
+ * cell feeds — to its mouth (or to where it merges into an already-traced trunk). Because the
+ * trunk is claimed by the first headwater to reach it and later tributaries stop at the
+ * confluence, the set is properly dendritic with no full overdraw. Pure function of geography.
+ */
+export function buildRivers(geo: Geography): MapRiver[] {
+  const N = geo.size;
+  const NN = N * N;
+  const { flux, water, flowTo } = geo;
+  const greatFlux = (GREAT_RIVER_FLUX * (N * N)) / (REF_N * REF_N);
+  const isGreat = (k: number) => water[k] === WATER_RIVER && flux[k] >= greatFlux;
+  // mark cells a great cell drains INTO, so a headwater is a great cell nothing great feeds.
+  const fedByGreat = new Uint8Array(NN);
+  for (let k = 0; k < NN; k++) {
+    if (!isGreat(k)) continue;
+    const d = flowTo[k];
+    if (d >= 0) fedByGreat[d] = 1;
+  }
+  const visited = new Uint8Array(NN);
+  const rivers: MapRiver[] = [];
+  for (let s = 0; s < NN; s++) {
+    if (!isGreat(s) || fedByGreat[s] || visited[s]) continue;
+    const cells: number[] = [];
+    let c = s;
+    while (c >= 0 && isGreat(c) && !visited[c]) {
+      visited[c] = 1;
+      cells.push(c);
+      c = flowTo[c];
+    }
+    if (c >= 0) cells.push(c); // one step into the mouth/merge so the line reaches the water
+    if (cells.length < 3) continue;
+    // gauge the width from the flux ~60% down the course, so an upper reach isn't drawn at the
+    // (much larger) mouth width; √discharge is the natural width law.
+    const gauge = flux[cells[Math.floor(cells.length * 0.6)]];
+    const width = Math.max(0.5, Math.min(2.6, Math.sqrt(gauge / greatFlux) * 1.05));
+    const step = Math.max(1, Math.floor(cells.length / 18)); // ~18 control points, then smooth
+    const pts: Pt[] = [];
+    for (let i = 0; i < cells.length; i += step) pts.push(worldOfCell(geo, cells[i]));
+    pts[pts.length - 1] = worldOfCell(geo, cells[cells.length - 1]);
+    rivers.push({ d: smoothPath(pts), width });
+  }
+  rivers.sort((a, b) => b.width - a.width); // widest trunks first; tributaries drawn on top
+  return rivers;
+}
+
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerp3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
@@ -357,20 +413,29 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         eP = ePlain + cd * 0.06 * nearShore;
       }
 
+      // is this pixel over a LAKE? a bilinear lake-fraction gives a crisp-enough edge for a
+      // small body. Highland lakes sit ABOVE sea level, so the eP<sea sea test can't find them —
+      // the water classification decides them.
+      const lakeFrac =
+        (WTR[i00] === WATER_LAKE ? w00 : 0) + (WTR[i10] === WATER_LAKE ? w10 : 0) +
+        (WTR[i01] === WATER_LAKE ? w01 : 0) + (WTR[i11] === WATER_LAKE ? w11 : 0);
+      const lakeHere = lakeFrac >= 0.5;
+
       let r: number;
       let g: number;
       let b: number;
-      if (eP < sea) {
-        // WATER — crisp per-pixel. Sea vs lake is read from the bilinear neighbours; near the
-        // shore the water brightens to a turquoise shallow.
+      if (eP < sea || lakeHere) {
+        // WATER — crisp per-pixel. The ocean shades by depth and brightens to a turquoise
+        // shallow near shore; a lake (sea-level or highland) is calm standing water.
         const anySea = WTR[i00] === WATER_SEA || WTR[i10] === WATER_SEA || WTR[i01] === WATER_SEA || WTR[i11] === WATER_SEA;
         const anyLake = WTR[i00] === WATER_LAKE || WTR[i10] === WATER_LAKE || WTR[i01] === WATER_LAKE || WTR[i11] === WATER_LAKE;
-        const below = sea - eP;
-        const coast = Math.max(0, 1 - below / 0.05);
         let c: RGB;
-        if (anyLake && !anySea) {
-          c = lerp3(water.deep, water.shallow, Math.max(0.7, coast));
+        if (lakeHere || (anyLake && !anySea)) {
+          const shoreLift = lakeHere ? (1 - Math.min(1, lakeFrac)) * 0.45 : 0; // lighten the fringe
+          c = lerp3(water.deep, water.shallow, 0.66 + shoreLift);
         } else {
+          const below = sea - eP;
+          const coast = Math.max(0, 1 - below / 0.05);
           const depth = Math.max(0, Math.min(1, eP / sea));
           c = lerp3(water.deep, water.shallow, Math.max(depth, coast * 0.85));
           if (coast > 0) c = lerp3(c, shore, coast * coast * 0.5);
