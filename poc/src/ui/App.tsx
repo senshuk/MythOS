@@ -524,8 +524,8 @@ function RegionMap({
       const rect = wrap.getBoundingClientRect();
       if (rect.width < 2) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      c.width = Math.min(1100, Math.round(rect.width * dpr));
-      c.height = Math.min(1100, Math.round(rect.height * dpr));
+      c.width = Math.min(1600, Math.round(rect.width * dpr));
+      c.height = Math.min(1600, Math.round(rect.height * dpr));
       // the world rectangle currently visible through the zoom/pan transform
       const s = view.s;
       const vb = {

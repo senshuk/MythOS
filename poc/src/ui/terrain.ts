@@ -370,8 +370,20 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         // shadow; a convex ridge catches a touch more light. Reads the terrain's concavity.
         const concavity = (bilinear(E, N, gxp, gy) + bilinear(E, N, gxm, gy) + bilinear(E, N, gx, gyp) + bilinear(E, N, gx, gym)) / 4 - e;
         s *= 1 - Math.max(-0.12, Math.min(0.16, concavity * 6));
-        // DETAIL GRAIN — a low-frequency value noise so broad biome fills aren't flat.
-        s *= 1 + (vnoise(gx * 0.55, gy * 0.55, 1337) - 0.5) * 0.1;
+        // FRACTAL MICRO-DETAIL — multi-octave noise at frequencies FINER than a grid cell,
+        // sampled in grid space. At low zoom it averages out; zoomed in it resolves into
+        // terrain texture (roughness, mottling) so the map reads as detail, not smooth blobs.
+        // Stronger on rough/mountain ground; both brightness and a slight hue break-up.
+        let d = 0;
+        let amp = 0.5;
+        let f = 0.9;
+        for (let o = 0; o < 4; o++) {
+          d += amp * (vnoise(gx * f + o * 17.3, gy * f + o * 9.1, 5150) - 0.5);
+          amp *= 0.5;
+          f *= 2.3;
+        }
+        const rough = 0.11 + HILL[nci] * 0.05; // mountains are visibly rougher than plains
+        s *= 1 + d * rough * 2;
         r *= s;
         g *= s;
         b *= s;
