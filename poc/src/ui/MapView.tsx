@@ -7,7 +7,8 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
 import type { RegionMapView, SettlementView, EventRef } from '../engine/model';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
-import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
+import { SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
+import { substrateFor } from './substrateCache';
 import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
 import { featureName } from '../engine/pack';
 import { cultureColor, cultureName, usePersistentState } from './common';
@@ -38,6 +39,7 @@ export function RegionMap({
   settlements,
   onInspect,
   onRef,
+  onEnter,
   busy,
 }: {
   map: RegionMapView;
@@ -48,6 +50,8 @@ export function RegionMap({
   onInspect: (id: number) => void;
   /** legend chips inspect what they name (a culture, a deity). */
   onRef?: (ref: EventRef) => void;
+  /** double-click a settlement to enter its CLOSE VIEW (walk its streets). */
+  onEnter?: (id: number) => void;
   busy: boolean;
 }) {
   const [lens, setLens] = usePersistentState<Lens>('mythos.map.lens', 'culture');
@@ -65,7 +69,8 @@ export function RegionMap({
   // NB: this deliberately re-runs worldgen the worker already did. Trade-off: the substrate
   // is deterministic from the seed, so re-deriving it here on the presentation side is
   // cheaper and simpler than shipping the terrain rasters over the worker boundary.
-  const sub = useMemo(() => createSubstrate(seed), [seed]);
+  // Cached per seed so the close view shares the same instance (substrateCache).
+  const sub = useMemo(() => substrateFor(seed), [seed]);
   const isStarfield = sub instanceof StarfieldSubstrate;
 
   // THE MAP COVERS THE BOX (the RimWorld/CK idiom — no letterbox). The box fills whatever
@@ -429,6 +434,10 @@ export function RegionMap({
                   if (movedRef.current) return;
                   if (!busy) onInspect(n.id);
                 }}
+                onDoubleClick={() => {
+                  if (movedRef.current || busy) return;
+                  onEnter?.(n.id);
+                }}
                 onMouseEnter={enter}
                 onMouseLeave={() => setHover(null)}
               >
@@ -513,6 +522,7 @@ export function RegionMap({
           <strong>{hover.name}</strong>
           {hover.meaning && <span className="tip-meaning">“{hover.meaning}”</span>}
           <span className="muted">{hover.sub}</span>
+          {onEnter && <span className="tip-hint">click its tale · double-click to walk its streets</span>}
         </div>
       )}
     </div>

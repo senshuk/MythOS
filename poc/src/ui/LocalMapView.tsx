@@ -1,0 +1,242 @@
+/**
+ * THE CLOSE VIEW (design/24, phase L1): one settlement four hundred times closer —
+ * the same deterministic world. Terrain is the real Geography sampled over a ~11-unit
+ * frame (paintTerrain's per-pixel fractal detail resolves it crisply); the town plan
+ * is the pack's LocalGenStep pipeline (content/localmap.ts) drawn as an SVG overlay.
+ * Pure presentation: nothing here is stored, and the sim never sees it.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RegionMapView, SettlementView, EventRef } from '../engine/model';
+import { SurfaceSubstrate } from '../engine/substrate';
+import { substrateFor } from './substrateCache';
+import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
+import { buildLocalPlan, type LocalPlanFacts, type PlanItem } from '../content/localmap';
+import { paintTerrain, buildRoads, type TerrainLabel } from './terrain';
+import { featureName } from '../engine/pack';
+import { Icon } from './icons';
+
+const SURF_THEME = (MAP_STYLES.find((s) => s.style.kind === 'surface')?.style as Extract<MapStyle, { kind: 'surface' }> | undefined)?.theme;
+const FRAME = 11; // world units the frame's short side spans (~a town and its hinterland)
+
+export function LocalMapView({
+  settlement,
+  map,
+  seed,
+  currentYear,
+  onExit,
+  onRef,
+}: {
+  settlement: SettlementView;
+  map: RegionMapView;
+  seed: number;
+  currentYear: number;
+  onExit: () => void;
+  onRef: (ref: EventRef) => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [tip, setTip] = useState<{ text: string; cx: number; cy: number } | null>(null);
+
+  const sub = useMemo(() => substrateFor(seed), [seed]);
+  const node = map.nodes.find((n) => n.id === settlement.id);
+
+  // the frame: aspect-matched to the box (same cover idiom as the world map), centred
+  // on the settlement, short side = FRAME world units
+  const [boxSize, setBoxSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const measure = () => {
+      const r = wrap.getBoundingClientRect();
+      setBoxSize((p) => (Math.abs(p.w - r.width) < 1 && Math.abs(p.h - r.height) < 1 ? p : { w: r.width, h: r.height }));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : undefined;
+    ro?.observe(wrap);
+    return () => ro?.disconnect();
+  }, []);
+  const frame = useMemo(() => {
+    const cx = node?.x ?? 0;
+    const cy = node?.y ?? 0;
+    const A = boxSize.w > 1 && boxSize.h > 1 ? boxSize.w / boxSize.h : 1;
+    const w = A >= 1 ? FRAME * A : FRAME;
+    const h = A >= 1 ? FRAME : FRAME / A;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }, [node, boxSize]);
+
+  // road entries: the directions the settlement's real graph-neighbours lie toward —
+  // the world's roads and the town's streets meet at the frame's edge (continuity).
+  const roadEntries = useMemo(() => {
+    if (!node) return [];
+    const byId = new Map(map.nodes.map((n) => [n.id, n]));
+    const angles: number[] = [];
+    for (const e of map.edges) {
+      if (e.relation < -20) continue; // a hostile march has no road
+      const other = e.a === settlement.id ? byId.get(e.b) : e.b === settlement.id ? byId.get(e.a) : undefined;
+      if (other) angles.push(Math.atan2(other.y - node.y, other.x - node.x));
+    }
+    return angles;
+  }, [map, node, settlement.id]);
+
+  // the deterministic town plan — same facts, same town, every time
+  const plan = useMemo(() => {
+    if (!(sub instanceof SurfaceSubstrate) || !node) return null;
+    const facts: LocalPlanFacts = {
+      seed,
+      settlement,
+      pos: { x: node.x, y: node.y },
+      roadEntries,
+      geo: sub.geography,
+      currentYear,
+    };
+    return buildLocalPlan(facts);
+  }, [sub, node, seed, settlement, roadEntries, currentYear]);
+
+  // the world's ROADS pass through the frame (SVG clips them to the viewBox)
+  const roads = useMemo(
+    () => (sub instanceof SurfaceSubstrate ? buildRoads(sub.geography, map.nodes, map.edges) : []),
+    [sub, map.nodes, map.edges],
+  );
+
+  // nearby named features letter themselves (paintTerrain skips out-of-frame ones)
+  const labels = useMemo<TerrainLabel[]>(
+    () =>
+      sub instanceof SurfaceSubstrate
+        ? sub.geography.features.map((f) => ({ x: f.center.x, y: f.center.y, text: featureName(seed, f).name, kind: f.kind }))
+        : [],
+    [sub, seed],
+  );
+
+  // paint the terrain once per frame change — the close view is a composed vista, not
+  // a pannable stage (L1); paintTerrain's per-pixel fractal detail does the amplifying
+  useEffect(() => {
+    if (!(sub instanceof SurfaceSubstrate) || !SURF_THEME) return;
+    const c = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!c || !wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width < 2) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.min(1600, Math.round(rect.width * dpr));
+    c.height = Math.min(1600, Math.round(rect.height * dpr));
+    paintTerrain(c, sub.geography, frame, SURF_THEME, labels);
+  }, [sub, frame, labels]);
+
+  if (!node || !(sub instanceof SurfaceSubstrate)) {
+    // a world without a walkable surface (a starfield) has no close view — pack's call
+    return (
+      <div className="map-wrap local-wrap">
+        <div className="local-head">
+          <button className="local-back" onClick={onExit}><Icon name="back" /> back to the world</button>
+        </div>
+        <p className="local-none muted">This world offers no closer view.</p>
+      </div>
+    );
+  }
+
+  const show = (text: string) => (e: { clientX: number; clientY: number }) => setTip({ text, cx: e.clientX, cy: e.clientY });
+  const hide = () => setTip(null);
+
+  return (
+    <div ref={wrapRef} className="map-wrap local-wrap">
+      <canvas ref={canvasRef} className="map-terrain" />
+      <svg className="map" viewBox={`${frame.x} ${frame.y} ${frame.w} ${frame.h}`} preserveAspectRatio="xMidYMid slice">
+        {/* the world's roads run through — the same lines you saw from orbit */}
+        {roads.map((rd, i) => (
+          <path
+            key={`rd${i}`}
+            d={rd.d}
+            fill="none"
+            stroke={rd.kind === 'sea' ? 'var(--cyan)' : 'var(--neutral)'}
+            strokeWidth={Math.min(0.13, rd.width * 0.35)}
+            strokeDasharray={rd.kind === 'sea' ? '0.22 0.3' : undefined}
+            strokeLinecap="round"
+            opacity={rd.kind === 'sea' ? 0.3 : 0.45}
+          />
+        ))}
+        {plan && plan.items.map((it, i) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} />)}
+      </svg>
+
+      {/* who and where — the breadcrumb back to the world */}
+      <div className="local-head">
+        <button className="local-back" onClick={onExit} title="back to the world (Esc)">
+          <Icon name="back" /> the world
+        </button>
+        <span className="local-title">
+          {settlement.name}
+          {settlement.nameMeaning && <em className="local-gloss"> · “{settlement.nameMeaning}”</em>}
+        </span>
+      </div>
+      <div className="local-foot">
+        {settlement.ruinedYear !== undefined ? (
+          <span className="ruin">a ruin — fell y{settlement.ruinedYear}, {currentYear - settlement.ruinedYear} years silent</span>
+        ) : (
+          <span>
+            {settlement.population.toLocaleString()} souls · {settlement.culture} · {settlement.specialization}
+            {settlement.detailed ? ' · lived in full' : ' · known by chronicle and rumour'}
+          </span>
+        )}
+      </div>
+
+      {tip && (
+        <div className="map-tip" style={{ left: tip.cx + 14, top: tip.cy + 14 }}>
+          <span className="muted">{tip.text}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One plan item as SVG — colours/styling live in CSS classes (Atlas language). */
+function PlanGlyph({
+  it,
+  show,
+  hide,
+  onRef,
+}: {
+  it: PlanItem;
+  show: (text: string) => (e: { clientX: number; clientY: number }) => void;
+  hide: () => void;
+  onRef: (ref: EventRef) => void;
+}) {
+  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall') {
+    const d = it.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ');
+    return <path className={`plan-${it.kind}`} d={d} fill="none" strokeWidth={it.width} strokeLinecap="round" strokeLinejoin="round" />;
+  }
+  if (it.kind === 'tree') {
+    return <circle className="plan-tree" cx={it.x} cy={it.y} r={it.r} />;
+  }
+  if (it.kind === 'field' || it.kind === 'rubble' || it.kind === 'square') {
+    return (
+      <g transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+         onMouseEnter={it.label ? show(it.label) : undefined} onMouseLeave={it.label ? hide : undefined}>
+        <rect className={`plan-${it.kind}`} x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} />
+        {it.kind === 'field' && (
+          // furrow lines — the strip-plot look
+          <>
+            <line className="plan-furrow" x1={-it.w / 2 + 0.04} y1={-it.h / 6} x2={it.w / 2 - 0.04} y2={-it.h / 6} />
+            <line className="plan-furrow" x1={-it.w / 2 + 0.04} y1={it.h / 6} x2={it.w / 2 - 0.04} y2={it.h / 6} />
+          </>
+        )}
+      </g>
+    );
+  }
+  if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
+  const cls = `plan-building tone-${it.tone} role-${it.role}`;
+  return (
+    <g
+      className={cls}
+      transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+      onMouseEnter={show(it.label)}
+      onMouseLeave={hide}
+      onClick={it.ref ? () => onRef(it.ref!) : undefined}
+      role={it.ref ? 'button' : undefined}
+      tabIndex={it.ref ? 0 : undefined}
+      onKeyDown={it.ref ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRef(it.ref!); } } : undefined}
+    >
+      <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={0.012} />
+      {/* the roof ridge — one line makes a rectangle read as a building */}
+      <line x1={-it.w / 2 + 0.015} y1={0} x2={it.w / 2 - 0.015} y2={0} className="plan-ridge" />
+    </g>
+  );
+}

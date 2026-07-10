@@ -29,6 +29,7 @@ export function WorldPanel({
   onFocus,
   onSetStoryteller,
   onPossess,
+  onWalk,
   busy,
 }: {
   stat: Snapshot;
@@ -36,6 +37,8 @@ export function WorldPanel({
   onFocus: (id: number) => void;
   onSetStoryteller: (id: string) => void;
   onPossess: (id: number) => void;
+  /** enter the focused settlement's CLOSE VIEW — walk its streets. */
+  onWalk: (id: number) => void;
   busy: boolean;
 }) {
   const [showAllSettlements, setShowAllSettlements] = useState(false);
@@ -61,6 +64,9 @@ export function WorldPanel({
 
       <section className="focus-panel">
         <h3>{stat.settlementName} · where your gaze rests</h3>
+        <button className="play-inline walk-btn" onClick={() => onWalk(stat.focusedSettlementId)} title="see this place up close">
+          walk its streets
+        </button>
         <div className="stats">
           <Stat label="Souls" value={stat.population} />
           <Stat label="Births" value={stat.totalBorn} />

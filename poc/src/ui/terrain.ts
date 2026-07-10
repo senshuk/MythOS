@@ -345,6 +345,15 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   // the [0,100] settled plane, so the map's margin samples real terrain, never a smear).
   const gOf = (w: number) => Math.max(0, Math.min(N - 1, ((w - GEO_MIN) / GEO_SPAN) * (N - 1)));
 
+  // ZOOM-ADAPTIVE AMPLIFICATION (design/24 §3.2): when the view rectangle is small (the
+  // CLOSE VIEW's ~11-unit frame), the bilinear fields alone read as watercolour blobs.
+  // Scale up the fractal micro-detail and tighten the hillshade radius so nearness
+  // resolves into ground texture — deterministic, so the same hill always looks the same.
+  // The world map (vb.w ≈ 190, max zoom ≈ 32) is left untouched by the ≤30 gate.
+  const zoomK = Math.max(1, Math.min(3, 30 / vb.w));
+  const detailOctaves = zoomK > 2 ? 6 : 4;
+  const shadeDelta = 0.8 / zoomK;
+
   // 1) LAND COLOUR per cell — the biome tint (+ snow) for EVERY cell, even submerged ones.
   //    Water is NOT baked in here: it is decided per-pixel in the loop (see below) so the
   //    coastline stays crisp at any zoom. Computing a land colour for water cells too means
@@ -458,10 +467,10 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
           b = lerp(b, sand[2], beach * 0.7);
         }
         const e = ePlain;
-        const gxp = Math.min(N - 1, gx + 0.8);
-        const gyp = Math.min(N - 1, gy + 0.8);
-        const gxm = Math.max(0, gx - 0.8);
-        const gym = Math.max(0, gy - 0.8);
+        const gxp = Math.min(N - 1, gx + shadeDelta);
+        const gyp = Math.min(N - 1, gy + shadeDelta);
+        const gxm = Math.max(0, gx - shadeDelta);
+        const gym = Math.max(0, gy - shadeDelta);
         const ex = bilinear(E, N, gxp, gy) - e;
         const ey = bilinear(E, N, gx, gyp) - e;
         let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
@@ -476,12 +485,12 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         let d = 0;
         let amp = 0.5;
         let f = 0.9;
-        for (let o = 0; o < 4; o++) {
+        for (let o = 0; o < detailOctaves; o++) {
           d += amp * (vnoise(gx * f + o * 17.3, gy * f + o * 9.1, 5150) - 0.5);
           amp *= 0.5;
           f *= 2.3;
         }
-        const rough = 0.11 + HILL[nci] * 0.05; // mountains are visibly rougher than plains
+        const rough = (0.11 + HILL[nci] * 0.05) * (0.55 + zoomK * 0.45); // rougher up close
         s *= 1 + d * rough * 2;
         r *= s;
         g *= s;

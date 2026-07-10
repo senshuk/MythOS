@@ -915,6 +915,58 @@ button { font-family: inherit; }
 .nav-btn:hover:not(:disabled) { color: var(--gold); border-color: var(--gold-dim); }
 .nav-btn:disabled { opacity: 0.35; cursor: default; }
 
+/* ------------------------------------------------------- the CLOSE VIEW ---- */
+/* two stage layers: the world map stays mounted beneath; the close view fades in */
+.stage-layer { position: absolute; inset: var(--stage-gap); }
+.stage-map-box .stage-layer .map-wrap { width: 100%; height: 100%; margin: 0; aspect-ratio: auto; }
+.stage-layer.beneath { display: none; } /* keeps React state; zero-size guard skips painting */
+.stage-layer.close-enter { animation: close-fade 0.28s ease; }
+@keyframes close-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.local-wrap { cursor: default; }
+.local-head {
+  position: absolute; top: 8px; left: 8px; z-index: 6;
+  display: flex; align-items: center; gap: 10px;
+}
+.local-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(16, 18, 24, 0.92); color: var(--ink-dim);
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  padding: 5px 13px; font: inherit; font-size: var(--fs-xs); cursor: pointer;
+}
+.local-back:hover { color: var(--gold); border-color: var(--gold-dim); }
+.local-title {
+  font-family: var(--serif); font-size: var(--fs-lg); color: var(--ink);
+  background: rgba(16, 18, 24, 0.8); border-radius: var(--radius-pill); padding: 3px 14px;
+}
+.local-gloss { font-size: var(--fs-sm); color: var(--parchment); font-weight: 400; }
+.local-foot {
+  position: absolute; bottom: 8px; left: 8px; z-index: 6;
+  background: rgba(16, 18, 24, 0.9); border: 1px solid var(--line);
+  border-radius: var(--radius-pill); padding: 4px 13px; font-size: var(--fs-xs); color: var(--ink-dim);
+}
+.local-none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+
+/* the town plan's glyphs — the Atlas line-work language, in world units */
+.plan-street { stroke: #b4a682; opacity: 0.75; }
+.plan-pier { stroke: #8a7a5c; opacity: 0.95; }
+.plan-wall { stroke: #6d6154; opacity: 0.95; }
+.plan-square { fill: rgba(180, 166, 130, 0.4); stroke: #b4a682; stroke-width: 0.015; }
+.plan-field { fill: rgba(196, 178, 105, 0.32); stroke: rgba(150, 135, 80, 0.75); stroke-width: 0.014; }
+.plan-furrow { stroke: rgba(150, 135, 80, 0.5); stroke-width: 0.012; }
+.plan-rubble { fill: rgba(120, 118, 112, 0.5); stroke: rgba(90, 88, 84, 0.8); stroke-width: 0.012; }
+.plan-tree { fill: rgba(58, 84, 50, 0.85); stroke: rgba(30, 44, 26, 0.6); stroke-width: 0.008; }
+.plan-building rect { fill: #4a4038; stroke: #241f1a; stroke-width: 0.016; }
+.plan-building .plan-ridge { stroke: rgba(20, 16, 12, 0.55); stroke-width: 0.012; }
+.plan-building.tone-grand rect { fill: #5c4e3a; stroke: var(--gold-dim); stroke-width: 0.022; }
+.plan-building.tone-sacred rect { fill: #4e4456; stroke: var(--violet); stroke-width: 0.02; }
+.plan-building.tone-ruin rect { fill: none; stroke: rgba(140, 130, 120, 0.7); stroke-width: 0.014; stroke-dasharray: 0.05 0.035; }
+.plan-building.tone-ruin .plan-ridge { display: none; }
+.plan-building[role="button"] { cursor: pointer; }
+.plan-building[role="button"]:hover rect { stroke: var(--cyan); }
+.tip-hint { font-size: 10.5px; color: var(--cyan); margin-top: 2px; }
+.walk-btn { display: inline-block; margin-bottom: var(--space-2); }
+
 /* attention lines with a verb on them */
 .att-item .att-act {
   margin-left: auto; flex: none;
@@ -978,6 +1030,9 @@ button { font-family: inherit; }
 
   .stage[data-tab="world"] .stage-map-box { display: block; }
   .stage[data-tab="world"] .hud-chip { display: flex; }
+  /* close-view layers flow in-page on a phone; the world map beneath stays hidden */
+  .stage-layer { position: static; }
+  .stage-layer.close-enter .map-wrap { width: 100%; height: auto; aspect-ratio: 190 / 193; }
   .stage[data-tab="world"] .dock-left { display: block; }
   .stage[data-tab="chronicle"] .dock-right { display: block; }
   .stage[data-tab="inspector"] .inspector-wrap { display: block; }

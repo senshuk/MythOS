@@ -114,6 +114,7 @@ export function Inspector({
   onRef,
   onFocus,
   onPossess,
+  onWalk,
   onClose,
 }: {
   actorDetail: ActorDetail | null;
@@ -132,6 +133,8 @@ export function Inspector({
   onRef: (ref: EventRef) => void;
   onFocus: (id: number) => void;
   onPossess: (id: number) => void;
+  /** enter a settlement's CLOSE VIEW — walk its streets (ruins welcome). */
+  onWalk?: (id: number) => void;
   onClose: () => void;
 }) {
   if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail) {
@@ -508,6 +511,11 @@ export function Inspector({
           {settV && !settV.detailed && settV.ruinedYear === undefined && (
             <button className="play-inline" onClick={() => onFocus(settlementDetail.settlementId)}>
               ◉ turn your gaze here
+            </button>
+          )}
+          {onWalk && (
+            <button className="play-inline" onClick={() => onWalk(settlementDetail.settlementId)} title="see this place up close">
+              walk its streets
             </button>
           )}
           <h4>Local history</h4>

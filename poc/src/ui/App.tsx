@@ -13,6 +13,7 @@ import type { EventRef } from '../engine/model';
 import { useSim } from './useSim';
 import { usePersistentState } from './common';
 import { RegionMap } from './MapView';
+import { LocalMapView } from './LocalMapView';
 import { HistoryFeed } from './Feed';
 import { PlayerPanel } from './PlayerCockpit';
 import { Inspector, type InspectorNav } from './Inspector';
@@ -73,8 +74,15 @@ export default function App() {
   const [onboardDismissed, setOnboardDismissed] = usePersistentState('mythos.onboardDismissed', false);
   const [leftOpen, setLeftOpen] = usePersistentState('mythos.dock.left', true);
   const [rightOpen, setRightOpen] = usePersistentState('mythos.dock.right', true);
+  // THE CLOSE VIEW (design/24 L1): which settlement's streets we're walking, if any
+  const [closeViewId, setCloseViewId] = useState<number | null>(null);
 
   const stat = sim.snapshot;
+  // a reforged/reloaded world may not contain the settlement we were standing in
+  const closeSettlement = closeViewId !== null ? stat?.settlements.find((s) => s.id === closeViewId) : undefined;
+  useEffect(() => {
+    if (closeViewId !== null && stat && !closeSettlement) setCloseViewId(null);
+  }, [closeViewId, stat, closeSettlement]);
 
   // ------------------------------------------------ inspector trail --------
   // Browser-style history over inspections: walk a cause chain three deep and
@@ -142,6 +150,7 @@ export default function App() {
         e.preventDefault();
         setSearchOpen((o) => !o);
       }
+      if (e.key === 'Escape') setCloseViewId(null); // step back out to the world
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -240,17 +249,34 @@ export default function App() {
           <div className="loading">Booting simulation worker…</div>
         ) : (
           <main className="stage" data-tab={tab} data-left={leftOpen} data-right={rightOpen}>
-            {/* THE STAGE — the world itself, everything else floats over it */}
+            {/* THE STAGE — the world itself, everything else floats over it. The world
+                map stays mounted under the close view (its paint guard skips at 0 size),
+                so stepping back out costs nothing. */}
             <div className="stage-map-box">
-              <RegionMap
-                map={stat.map}
-                seed={stat.seed}
-                focusedId={stat.focusedSettlementId}
-                settlements={stat.settlements}
-                onInspect={(id) => inspectRef({ kind: 'settlement', id })}
-                onRef={inspectRef}
-                busy={sim.busy}
-              />
+              <div className={`stage-layer${closeSettlement ? ' beneath' : ''}`}>
+                <RegionMap
+                  map={stat.map}
+                  seed={stat.seed}
+                  focusedId={stat.focusedSettlementId}
+                  settlements={stat.settlements}
+                  onInspect={(id) => inspectRef({ kind: 'settlement', id })}
+                  onRef={inspectRef}
+                  onEnter={(id) => setCloseViewId(id)}
+                  busy={sim.busy}
+                />
+              </div>
+              {closeSettlement && (
+                <div className="stage-layer close-enter">
+                  <LocalMapView
+                    settlement={closeSettlement}
+                    map={stat.map}
+                    seed={stat.seed}
+                    currentYear={stat.year}
+                    onExit={() => setCloseViewId(null)}
+                    onRef={inspectRef}
+                  />
+                </div>
+              )}
             </div>
 
             {/* the world's vitals, at a glance */}
@@ -306,6 +332,7 @@ export default function App() {
                   onFocus={(id) => sim.focusSettlement(id)}
                   onSetStoryteller={(id) => sim.setStoryteller(id)}
                   onPossess={(id) => sim.possess(id)}
+                  onWalk={(id) => setCloseViewId(id)}
                   busy={sim.busy}
                 />
               </div>
@@ -357,6 +384,7 @@ export default function App() {
                 onRef={inspectRef}
                 onFocus={(id) => sim.focusSettlement(id)}
                 onPossess={(id) => sim.possess(id)}
+                onWalk={(id) => setCloseViewId(id)}
                 onClose={closeInspect}
               />
             </div>
