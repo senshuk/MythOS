@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
 
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -65,6 +65,10 @@ export interface SaveFile {
   events: World['events'];
   /** Referenced old events that survived compaction, keyed by event ID. */
   eventArchive: [number, World['events'][number]][];
+  /** settlement → event ids, as recorded live via emit()'s settlementRefs. Optional for
+   *  saves predating v22, which must fall back to name-matching reconstruction (lossy:
+   *  events referenced without their settlement's name in `data` drop out, and vice versa). */
+  eventsBySettlement?: [number, number[]][];
   chronicle: World['chronicle'];
   annals: World['annals'];
   director: World['director'];
@@ -179,6 +183,7 @@ export function serializeWorld(world: World): SaveFile {
     firstEventId: world.firstEventId,
     events: world.events,
     eventArchive: [...world.eventArchive],
+    eventsBySettlement: [...world.eventsBySettlement],
     chronicle: world.chronicle,
     annals: world.annals,
     director: world.director,
@@ -221,7 +226,12 @@ export function serializeWorld(world: World): SaveFile {
 
 /** Rebuild a live World from a SaveFile. Throws on an unsupported version, or when the
  *  save was built by a DIFFERENT universe pack than the one currently bound. */
-export function deserializeWorld(s: SaveFile): World {
+export function deserializeWorld(save: SaveFile): World {
+  // Deep-copy at the boundary: serializeWorld stores live references (cheap, and IDB
+  // structured-clones anyway), so an in-memory round-trip would otherwise return a
+  // "new" world sharing mutable objects with the old one — advancing either would
+  // silently corrupt the other. Cloning here makes load safe by construction.
+  const s = structuredClone(save);
   if (s.version < 5 || s.version > SAVE_VERSION) {
     throw new Error(`unsupported save version ${s.version} (engine expects ${SAVE_VERSION})`);
   }
@@ -418,7 +428,10 @@ export function deserializeWorld(s: SaveFile): World {
       return m;
     })(),
     eventsBySettlement: (() => {
-      // Reconstruct by matching event data string values against the settlement name map.
+      // v22+: the live index (emit()'s settlementRefs) is stored — restore it exactly.
+      if (s.eventsBySettlement) return new Map(s.eventsBySettlement);
+      // Pre-v22 fallback: reconstruct by matching event data string values against the
+      // settlement name map (lossy — refs without a name in data can't be recovered).
       const archiveEvents = ((s as { eventArchive?: [number, World['events'][number]][] }).eventArchive ?? []).map(([, ev]) => ev);
       const nameToId = new Map<string, number>();
       for (const st of s.settlements) nameToId.set(st.name, st.id);

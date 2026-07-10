@@ -1616,7 +1616,6 @@ export interface Snapshot {
   marriages: number;
   feuds: number;
   notable: ActorView[];
-  actors: ActorView[];
   recentEvents: EventView[];
 
   // --- LOD / world-scale ---

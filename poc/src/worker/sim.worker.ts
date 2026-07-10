@@ -86,7 +86,8 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       break;
     }
     case 'release': {
-      if (world) release(world);
+      if (!world) reset(0);
+      release(world!);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -99,12 +100,14 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       break;
     }
     case 'chooseAmbition': {
-      if (world && world.playerId !== undefined) chooseAmbition(world, world.playerId, msg.ambitionId, msg.target);
+      if (!world) reset(0);
+      if (world!.playerId !== undefined) chooseAmbition(world!, world!.playerId, msg.ambitionId, msg.target);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
     case 'abandonAmbition': {
-      if (world) abandonAmbition(world);
+      if (!world) reset(0);
+      abandonAmbition(world!);
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -123,10 +126,11 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     }
     case 'load': {
       const rec = await getSave(msg.name);
-      if (rec) {
-        world = deserializeWorld(rec.data);
-        ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world) });
-      }
+      if (rec) world = deserializeWorld(rec.data);
+      // ALWAYS answer — the UI sets busy=true on load and only a snapshot clears it.
+      // A missing save leaves the current world in place (or a fresh one if none).
+      if (!world) reset(0);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
     case 'listSaves': {

@@ -405,3 +405,189 @@ export function renderBackstory(f: BackstoryFacts, rng: Rng): string {
 
   return (s1 + (s2 ? ' ' + cap(s2) : '')).replace(/\s+/g, ' ').trim();
 }
+
+// ---------------------------------------------------- the player's voice -----
+// Every second-person line the player-view builders speak — story verbs, tensions,
+// threats, cast statuses, beliefs, goal diagnosis. The ENGINE decides WHEN a line
+// fires (thresholds, bands, priorities — all deterministic); the PACK decides how
+// it READS. A sci-fi universe rewrites this table and "You wed" becomes whatever
+// its people say instead. Typed by the explicit interface below (not inferred), so
+// other packs may supply different words without fighting literal string types.
+
+/** A phrase wrapped around the other party's (link-rendered) name in a story beat. */
+export interface AroundName {
+  pre: string;
+  post: string;
+}
+
+/** The full second-person vocabulary of the player view. */
+export interface PlayerVoice {
+  /** MY STORY — first-person milestones of the player's life. */
+  story: {
+    /** annotation on a loss the player witnessed first-hand */
+    witnessed: string;
+    /** annotation on a loss learned from travelling news, `days` after the fact */
+    newsDelay: (days: number) => string;
+    /** relationship milestones — the phrase wraps the other's linked name */
+    bond: {
+      spouse: AroundName; // a marriage
+      feud: AroundName; // an open feud
+      rival: AroundName; // a declared rivalry
+      friend: AroundName; // a declared friendship
+      fond: AroundName; // strong warmth, no flag yet
+      resent: AroundName; // strong dislike, no flag yet
+    };
+  };
+  /** WHAT'S HAPPENING — live, unresolved threads. */
+  tension: {
+    warming: (name: string) => string;
+    souring: (name: string) => string;
+    /** news on the road; `from` is undefined when the source place is unknown */
+    awaitingNews: (from: string | undefined, days: number) => string;
+  };
+  /** OPPORTUNITIES — openings the world is presenting. */
+  opportunity: {
+    court: (name: string) => string;
+    befriend: (name: string) => string;
+  };
+  /** THREATS — narrative worries. */
+  threat: {
+    grudge: (name: string) => string;
+    needLow: (need: string) => string;
+    /** the player's home divided; `place` is undefined when it has no name */
+    divided: (place: string | undefined) => string;
+    aging: string;
+  };
+  /** PEOPLE WHO MATTER — one-line statuses that make a name read as a character. */
+  cast: {
+    /** your feeling toward someone, as a word — five bands, warmest first
+     *  (same banding pattern as NEED_FEELS; the engine picks the band) */
+    moodWords: [string, string, string, string, string];
+    spouseNote: string;
+    courtingNote: string;
+    courtingWarming: string;
+    courtingCold: string;
+    allyNote: string;
+    allySteadfast: string;
+    rivalNote: string;
+    rivalHostile: string;
+    rivalCold: string;
+    rulerNote: string;
+    rulerLongReigning: string;
+    rulerNewlyRisen: string;
+    rulerSeated: string;
+  };
+  /** WHAT YOU BELIEVE — the player's subjective reality, stated as their own truth. */
+  belief: {
+    /** who rules the player's home; `place` is undefined when it has no name */
+    rules: (ruler: string, place: string | undefined) => string;
+    isDead: (name: string) => string;
+    /** subjective absence — news still on the road from `from` (undefined = unknown) */
+    noWord: (from: string | undefined) => string;
+  };
+  /** GOAL AS DIAGNOSIS — obstacle, next step, narrator readings. */
+  goal: {
+    nextStep: {
+      court: (name: string) => string;
+      socializeTarget: (name: string) => string;
+      socialize: string;
+      work: string;
+      rule: string;
+    };
+    rule: {
+      /** narrator reading of your renown — three bands, obscure first */
+      readings: [string, string, string];
+      /** the reading plus the person in the way (holder undefined = open seat) */
+      obstacle: (reading: string, holder: string | undefined) => string;
+    };
+    wed: {
+      noTarget: string;
+      scarcelyKnown: (name: string) => string;
+      growingCloser: (name: string) => string;
+      nearlyWon: (name: string) => string;
+    };
+    reconcile: (name: string) => string;
+    family: string;
+    belonging: string;
+  };
+}
+
+export const PLAYER_VOICE: PlayerVoice = {
+  story: {
+    witnessed: 'you were there',
+    newsDelay: (days) => `word reached you ${days} day${days === 1 ? '' : 's'} later`,
+    bond: {
+      spouse: { pre: 'You wed ', post: '.' },
+      feud: { pre: 'You came to hate ', post: '.' },
+      rival: { pre: 'You fell out with ', post: '.' },
+      friend: { pre: 'You befriended ', post: '.' },
+      fond: { pre: 'You grew fond of ', post: '.' },
+      resent: { pre: 'You came to resent ', post: '.' },
+    },
+  },
+  tension: {
+    warming: (name) => `${name} seems to be warming to you.`,
+    souring: (name) => `${name}'s ill feeling toward you is growing.`,
+    awaitingNews: (from, days) => {
+      const when = days <= 7 ? 'any day now' : days <= 30 ? 'within the month' : 'before long';
+      return `You're waiting on news from ${from ?? 'afar'} — it should reach you ${when}.`;
+    },
+  },
+  opportunity: {
+    court: (name) => `You could court ${name}.`,
+    befriend: (name) => `${name} could become a true friend.`,
+  },
+  threat: {
+    grudge: (name) => `${name} bears you a grudge.`,
+    needLow: (need) => `Your ${need} is running dangerously low.`,
+    divided: (place) => `${place ?? 'Your town'} is divided against itself.`,
+    aging: 'Your years are catching up with you.',
+  },
+  cast: {
+    moodWords: ['devoted', 'content', 'growing distant', 'strained', 'bitter'],
+    spouseNote: 'your spouse',
+    courtingNote: 'you hope to wed',
+    courtingWarming: 'warming to you',
+    courtingCold: 'not yet won',
+    allyNote: 'stands with you',
+    allySteadfast: 'a steadfast friend',
+    rivalNote: 'wishes you ill',
+    rivalHostile: 'openly hostile',
+    rivalCold: 'no love lost',
+    rulerNote: 'rules over you',
+    rulerLongReigning: 'long-reigning',
+    rulerNewlyRisen: 'newly risen',
+    rulerSeated: 'on the throne',
+  },
+  belief: {
+    rules: (ruler, place) => `${ruler} rules ${place ?? 'your home'}.`,
+    isDead: (name) => `${name} is dead.`,
+    noWord: (from) => `No word has reached you from ${from ?? 'afar'}.`,
+  },
+  goal: {
+    nextStep: {
+      court: (name) => `Court ${name} — win their heart.`,
+      socializeTarget: (name) => `Spend time with ${name}.`,
+      socialize: 'Seek out others and make yourself known.',
+      work: 'Work at your trade — it builds your name.',
+      rule: 'Raise your standing — a village follows the renowned.',
+    },
+    rule: {
+      readings: [
+        'Few beyond your own door know your name.',
+        'People know your name, but it has not spread far enough.',
+        'Your name carries real weight now — the seat is nearly within reach.',
+      ],
+      obstacle: (reading, holder) => (holder ? `${reading} ${holder} still holds the seat.` : reading),
+    },
+    wed: {
+      noTarget: 'There is no one you have set your heart on yet.',
+      scarcelyKnown: (name) => `${name} scarcely knows you yet.`,
+      growingCloser: (name) => `You and ${name} are growing closer, but it is not yet love.`,
+      nearlyWon: (name) => `${name}'s heart is nearly yours.`,
+    },
+    reconcile: (name) => `The bad blood with ${name} still festers.`,
+    family: 'You have no children yet.',
+    belonging: 'You feel apart from those around you.',
+  },
+};

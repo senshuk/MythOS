@@ -344,6 +344,10 @@ export function removeActorCompletely(world: World, id: EntityId): void {
   world.memory.delete(id);
   world.reputation.delete(id);
   world.faith.delete(id);
+  world.beliefs.delete(id);
+  world.exiles.delete(id);
+  // fired-reaction guards are keyed `${actor}|...` — drop this actor's
+  for (const key of world.reactions) if (key.startsWith(`${id}|`)) world.reactions.delete(key);
   world.rels.delete(id);
   world.homeSettlement.delete(id);
   world.fidelity.delete(id);

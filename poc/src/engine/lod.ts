@@ -868,7 +868,8 @@ function raidMacro(m: MacroPop, toll: number): void {
  * built by geography are the substrate; goods are the layer on top.
  */
 export function economyYearly(world: World): void {
-  const fullCount = fullActors(world).length;
+  const fullIds = fullActors(world);
+  const fullCount = fullIds.length;
   const popOf = (s: Settlement) => (s.detailed ? fullCount : s.macro.population);
 
   // 1) produce & consume -> stocks; earn/decay wealth; set prices
@@ -963,7 +964,7 @@ export function economyYearly(world: World): void {
       const target = clamp(Math.round(-50 + foodYears * 55 + (s.econ.wealth > 600 ? 15 : 0)), -80, 90);
       s.macro.stability = clamp(Math.round(s.macro.stability + (target - s.macro.stability) * 0.2), -100, 100);
       if (foodYears < 0.5) {
-        for (const id of fullActors(world)) {
+        for (const id of fullIds) {
           const n = world.needs.get(id);
           if (n) n[SUBSISTENCE_NEED] = clamp(n[SUBSISTENCE_NEED] - 80, 0, 1000); // lean years pinch the larder
         }
@@ -1016,11 +1017,12 @@ export function summaryYearly(world: World): void {
 }
 
 /** Pick where an emigrant goes: nearby and friendly settlements are far more
- *  likely than distant or hostile ones — migration follows geography. */
+ *  likely than distant or hostile ones — migration follows geography. Ruins take
+ *  no one in; returns -1 when no living settlement is open to movers. */
 function pickMigrationTarget(world: World, focusedId: number, rng: Rng): number {
   const focused = world.settlements[focusedId];
   const weights = world.settlements.map((s) => {
-    if (s.id === focusedId) return 0;
+    if (s.id === focusedId || s.ruinedYear !== undefined) return 0;
     const d = world.substrate.distance(focused.pos, s.pos);
     const e = edgeBetween(world, focusedId, s.id);
     const rel = e ? e.relation : 0;
@@ -1028,6 +1030,7 @@ function pickMigrationTarget(world: World, focusedId: number, rng: Rng): number 
     const relFactor = clamp(1 + rel / 80, 0.25, 2.2);
     return proximity * relFactor;
   });
+  if (weights.every((w) => w === 0)) return -1;
   return rng.weightedIndex(weights);
 }
 
@@ -1054,6 +1057,7 @@ export function migrationYearly(world: World): void {
     const id = leavers[rng.int(leavers.length)];
     if (world.fidelity.get(id) !== 'full') continue; // already moved this pass
     const target = pickMigrationTarget(world, focusedId, rng); // near + friendly preferred
+    if (target < 0) break; // nowhere living to go (a world of ruins) — no one leaves
     world.fidelity.set(id, 'summary');
     world.homeSettlement.set(id, target);
     world.settlements[target].macro.population += 1;
