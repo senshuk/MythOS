@@ -68,6 +68,40 @@ export function RegionMap({
   const sub = useMemo(() => createSubstrate(seed), [seed]);
   const isStarfield = sub instanceof StarfieldSubstrate;
 
+  // THE MAP COVERS THE BOX (the RimWorld/CK idiom — no letterbox). The box fills whatever
+  // space the stage gives it; the zoom-1 view rect is MAP_VB cover-CROPPED to the box's
+  // aspect (never extended — the geography grid ends just past MAP_VB, and its edge is not
+  // a coastline). The cropped remainder pans back into view, even at minimum zoom.
+  const [boxSize, setBoxSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const measure = () => {
+      const r = wrap.getBoundingClientRect();
+      setBoxSize((p) => (Math.abs(p.w - r.width) < 1 && Math.abs(p.h - r.height) < 1 ? p : { w: r.width, h: r.height }));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : undefined;
+    ro?.observe(wrap);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+  const baseVB = useMemo(() => {
+    const A0 = MAP_VB.w / MAP_VB.h;
+    const A = boxSize.w > 1 && boxSize.h > 1 ? boxSize.w / boxSize.h : A0;
+    if (A >= A0) {
+      // box is wider than the world: full width, a centred vertical slice
+      const h = MAP_VB.w / A;
+      return { x: MAP_VB.x, y: MAP_VB.y + (MAP_VB.h - h) / 2, w: MAP_VB.w, h };
+    }
+    // box is taller: full height, a centred horizontal slice
+    const w = MAP_VB.h * A;
+    return { x: MAP_VB.x + (MAP_VB.w - w) / 2, y: MAP_VB.y, w, h: MAP_VB.h };
+  }, [boxSize]);
+
   // the atlas layer: the generator's named features, each in the world's old tongue
   const mapLabels = useMemo<TerrainLabel[]>(
     () =>
@@ -111,15 +145,15 @@ export function RegionMap({
     // the world rectangle currently visible through the zoom/pan transform
     const v = viewRef.current;
     const vb = {
-      x: MAP_VB.x + (-v.x / v.s) * (MAP_VB.w / rect.width),
-      y: MAP_VB.y + (-v.y / v.s) * (MAP_VB.h / rect.height),
-      w: MAP_VB.w / v.s,
-      h: MAP_VB.h / v.s,
+      x: baseVB.x + (-v.x / v.s) * (baseVB.w / rect.width),
+      y: baseVB.y + (-v.y / v.s) * (baseVB.h / rect.height),
+      w: baseVB.w / v.s,
+      h: baseVB.h / v.s,
     };
     paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
     paintedView.current = { ...v };
     c.style.transform = '';
-  }, [sub, mapLabels]);
+  }, [sub, mapLabels, baseVB]);
 
   useEffect(() => {
     if (!(sub instanceof SurfaceSubstrate)) return;
@@ -159,11 +193,27 @@ export function RegionMap({
   // reset the explored view when the world or skin changes
   useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed]);
 
+  // Clamp the pan so the WORLD's edge never pulls inside the box. A world point w maps to
+  // px = (w − baseVB.x)·(rect.w / baseVB.w)·s + v.x, so bounding px(MAP_VB edges) outside
+  // the box gives the pan range — which, because baseVB is a crop, is non-zero even at
+  // zoom 1 along the cropped axis (that's how the cropped remainder is reached).
   const clampView = (v: { s: number; x: number; y: number }) => {
     const r = wrapRef.current?.getBoundingClientRect();
     if (!r) return v;
-    return { s: v.s, x: Math.min(0, Math.max(r.width * (1 - v.s), v.x)), y: Math.min(0, Math.max(r.height * (1 - v.s), v.y)) };
+    const kx = (r.width / baseVB.w) * v.s;
+    const ky = (r.height / baseVB.h) * v.s;
+    const xMax = -(MAP_VB.x - baseVB.x) * kx;
+    const xMin = r.width - (MAP_VB.x + MAP_VB.w - baseVB.x) * kx;
+    const yMax = -(MAP_VB.y - baseVB.y) * ky;
+    const yMin = r.height - (MAP_VB.y + MAP_VB.h - baseVB.y) * ky;
+    return { s: v.s, x: Math.min(xMax, Math.max(xMin, v.x)), y: Math.min(yMax, Math.max(yMin, v.y)) };
   };
+
+  // a box resize (dock toggle, window resize) changes the crop — keep the view in bounds
+  useEffect(() => {
+    setView((v) => clampView(v));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseVB]);
   const zoomAt = (cx: number, cy: number, factor: number) =>
     setView((v) => {
       const ns = Math.min(6, Math.max(1, v.s * factor));
@@ -212,7 +262,14 @@ export function RegionMap({
       const dy = e.clientY - prev.y;
       if (Math.abs(dx) + Math.abs(dy) > 2) {
         movedRef.current = true;
-        e.currentTarget.setPointerCapture?.(e.pointerId); // keep dragging smoothly past the edge
+        // keep dragging smoothly past the edge. Guarded: capture THROWS if the pointer is
+        // no longer active (released between events, synthetic pointers) — a failed grab
+        // must not abort the pan itself.
+        try {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        } catch {
+          /* pan proceeds uncaptured */
+        }
       }
       if (movedRef.current) setView((v) => clampView({ s: v.s, x: v.x + dx, y: v.y + dy }));
     }
@@ -285,7 +342,7 @@ export function RegionMap({
         style={isStarfield ? { transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' } : undefined}
       />
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
-        <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
+        <svg className="map" viewBox={`${baseVB.x} ${baseVB.y} ${baseVB.w} ${baseVB.h}`} preserveAspectRatio="xMidYMid slice">
           {/* GREAT RIVERS: traced from the drainage as meandering vectors, width ∝ discharge.
               Drawn first so roads and bridges sit on top; the fine tributary web is painted
               into the terrain canvas underneath. */}

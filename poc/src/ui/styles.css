@@ -171,19 +171,18 @@ button { font-family: inherit; }
 }
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 
-/* the map, centred in the free middle between the open docks, aspect preserved —
-   the letterbox margin is the cartographer's table, not wasted space */
+/* the map FILLS the free middle between the open docks — no letterbox (the RimWorld
+   idiom). MapView cover-crops its view rect to whatever aspect this box has, so the
+   terrain and the node overlay always agree regardless of the box's shape. */
 .stage-map-box {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
   padding: var(--stage-gap);
   transition: left 0.18s ease, right 0.18s ease;
 }
 .stage[data-left="true"] .stage-map-box { left: calc(var(--dock-w) + var(--stage-gap)); }
 .stage[data-right="true"] .stage-map-box { right: calc(var(--dock-w) + var(--stage-gap)); }
 .stage-map-box .map-wrap {
-  height: 100%; max-width: 100%; margin: 0;
-  aspect-ratio: 190 / 193; /* MUST match MAP_VB, or terrain and nodes disagree */
+  width: 100%; height: 100%; margin: 0; aspect-ratio: auto;
 }
 
 /* docks — the panels floated over the stage */
