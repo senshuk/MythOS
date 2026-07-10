@@ -5,9 +5,9 @@
  *
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, HouseDetail, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
@@ -1490,6 +1490,52 @@ function HistoryFeed({
   );
 }
 
+type HouseMember = HouseDetail['members'][number];
+
+/** How a member's life reads in the line: role, birth–death, and reign span. */
+function memberDates(m: HouseMember): string {
+  const life = `b.${m.bornYear}${m.deathYear !== undefined ? `–${m.deathYear}` : ''}`;
+  const reign = m.deathYear !== undefined ? `r.${m.reignStart}–${m.deathYear}` : `ruling since y${m.reignStart}`;
+  return `${m.role} · ${life} · ${reign}`;
+}
+
+/**
+ * The line rendered as a GENEALOGY. Roots are members with no parent inside the House; children
+ * nest beneath them via childIds. When a House has no recorded kinship (minted records carry no
+ * ties), every member is a root — so this same renderer degrades naturally to a plain succession
+ * list. A visited set guards against any stray cycle. ⚑ marks the founder, 👑 the living head.
+ */
+function LineageTree({ members, onRef }: { members: HouseMember[]; onRef: (r: EventRef) => void }) {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const roots = members.filter((m) => m.parentIds.length === 0);
+  const seen = new Set<number>();
+  const node = (m: HouseMember): React.ReactNode => {
+    if (seen.has(m.id)) return null;
+    seen.add(m.id);
+    const kids = m.childIds.map((c) => byId.get(c)).filter((c): c is HouseMember => !!c);
+    return (
+      <li key={m.id} className="lineage-node">
+        <span className="lineage-head">
+          {m.isFounder ? <span className="lineage-mark" title="founder of the line">⚑ </span> : m.isSeat ? <span className="lineage-mark" title="the living head — holds the seat">👑 </span> : null}
+          <button className="link" onClick={() => onRef({ kind: 'figure', id: m.id })}>{m.name}</button>
+          {m.spouses.length > 0 && (
+            <span className="muted"> ⚭ {m.spouses.map((s, i) => (
+              <Fragment key={s.id}>
+                {i > 0 ? ', ' : ''}
+                <button className="link" onClick={() => onRef({ kind: 'figure', id: s.id })}>{s.name}</button>
+                {s.houseName && s.houseId !== undefined ? <> of <button className="link" onClick={() => onRef({ kind: 'house', id: s.houseId! })}>House {s.houseName}</button></> : null}
+              </Fragment>
+            ))}</span>
+          )}
+        </span>
+        <span className="muted"> — {memberDates(m)}</span>
+        {kids.length > 0 && <ul className="lineage-kids">{kids.map(node)}</ul>}
+      </li>
+    );
+  };
+  return <ul className="lineage">{roots.map(node)}</ul>;
+}
+
 function Inspector({
   actorDetail,
   eventChain,
@@ -1757,14 +1803,7 @@ function Inspector({
           {houseDetail.members.length > 0 && (
             <>
               <h4>The line</h4>
-              <ul className="rels">
-                {houseDetail.members.map((m) => (
-                  <li key={m.id}>
-                    <button className="link" onClick={() => onRef({ kind: 'figure', id: m.id })}>{m.name}</button>
-                    <span className="muted"> — {m.role}, {m.deathYear !== undefined ? `r.${m.reignStart}–${m.deathYear}` : `since y${m.reignStart}`}</span>
-                  </li>
-                ))}
-              </ul>
+              <LineageTree members={houseDetail.members} onRef={onRef} />
             </>
           )}
           <h4>The House’s saga</h4>

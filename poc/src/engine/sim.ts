@@ -363,11 +363,38 @@ export function inspectHouse(world: World, id: number): HouseDetail | undefined 
   // the line: figures of this House, deduped by id (a re-crowned actor leaves duplicate records),
   // sorted by when they came to prominence.
   const seenM = new Set<number>();
-  const members = world.figures
+  const memberFigs = world.figures
     .filter((f) => f.houseId === id && !seenM.has(f.id) && seenM.add(f.id))
     .sort((a, b) => a.reignStart - b.reignStart)
-    .slice(0, 20)
-    .map((f) => ({ name: f.name, id: f.id, role: f.role, reignStart: f.reignStart, deathYear: f.deathYear }));
+    .slice(0, 20);
+  const memberIds = new Set(memberFigs.map((f) => f.id));
+  // the living head of the line: while the House holds a seat, its latest-reigning member still alive.
+  const headId =
+    house.seatSettlementId !== undefined
+      ? [...memberFigs].filter((f) => f.deathYear === undefined).sort((a, b) => b.reignStart - a.reignStart)[0]?.id
+      : undefined;
+  const members = memberFigs.map((f) => {
+    const t = world.ties.get(f.id);
+    // spouses resolved to figures (any House) so they can be named/linked — genealogy needs marriages.
+    const spouses = (t?.spouses ?? []).flatMap((sid) => {
+      const sf = world.figuresById.get(sid);
+      return sf ? [{ id: sf.id, name: sf.name, houseId: sf.houseId, houseName: houseById(world, sf.houseId)?.name }] : [];
+    });
+    return {
+      name: f.name,
+      id: f.id,
+      role: f.role,
+      bornYear: f.bornYear,
+      deathYear: f.deathYear,
+      reignStart: f.reignStart,
+      reignEnd: f.reignEnd,
+      isFounder: f.id === house.founderId,
+      isSeat: f.id === headId,
+      parentIds: (t?.parents ?? []).filter((p) => memberIds.has(p)), // edges up, within the House
+      childIds: (t?.children ?? []).filter((c) => memberIds.has(c)), // edges down, within the House
+      spouses,
+    };
+  });
   // the House's saga: its members' events + anything naming the House, notable-first-then-chrono.
   const evIds = new Set<number>();
   for (const m of members) for (const e of world.eventsBySubject.get(m.id) ?? []) evIds.add(e);

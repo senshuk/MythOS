@@ -467,6 +467,15 @@ button { font-family: inherit; }
 .cause-arrow { color: var(--ink-faint, var(--ink-dim)); font-size: var(--fs-xs); flex: none; opacity: 0.6; }
 .cause-node .ev-inspect { padding: 2px 0; }
 
+/* a House's line, rendered as a genealogy: each generation nested beneath its parent, with a
+   fading rail marking descent. Degrades to a flat succession list when no kinship is recorded. */
+.lineage, .lineage-kids { list-style: none; margin: 0; padding: 0; }
+.lineage { margin-top: var(--space-1); }
+.lineage-node { padding: 2px 0; }
+.lineage-kids { margin-left: 8px; padding-left: 10px; border-left: 2px solid var(--border); }
+.lineage-head { font-family: var(--serif); }
+.lineage-mark { color: var(--gold); }
+
 /* ----------------------------------------------------------- player panel - */
 .player-panel {
   margin: 14px 20px 0; border: 1px solid rgba(233, 196, 106, 0.4);

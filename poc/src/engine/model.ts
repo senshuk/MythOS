@@ -1334,7 +1334,26 @@ export interface HouseDetail {
   seat?: string; // the settlement it rules now (absent if out of power)
   seatId?: SettlementId;
   founder?: { name: string; id: EntityId };
-  members: { name: string; id: EntityId; role: string; reignStart: number; deathYear?: number }[];
+  /** The line, as a GENEALOGY. Each member carries their dates, their standing in the House
+   *  (founder / current seat-holder), and their kinship WITHIN the House — parentIds/childIds
+   *  restricted to fellow members. Kinship is present only for members who were simulated
+   *  actors (they carry SocialTies); minted records have none, so the tree degrades gracefully
+   *  to a plain succession order (every member a root). Spouses are resolved to figures for
+   *  naming, and may belong to another House. */
+  members: {
+    name: string;
+    id: EntityId;
+    role: string;
+    bornYear: number;
+    deathYear?: number;
+    reignStart: number;
+    reignEnd?: number;
+    isFounder: boolean;
+    isSeat: boolean; // the living head of the line — currently holds the House's seat
+    parentIds: EntityId[]; // parents who are also members of this House (tree edges up)
+    childIds: EntityId[]; // children who are also members of this House (tree edges down)
+    spouses: { id: EntityId; name: string; houseId?: HouseId; houseName?: string }[];
+  }[];
   events: EventView[]; // the House's saga — foundings, ascensions, conquests, its fall
 }
 
