@@ -230,6 +230,7 @@ export function PlayerPanel({
   player,
   onAct,
   onRelease,
+  onInherit,
   onInspect,
   onRef,
   onChooseAmbition,
@@ -239,6 +240,7 @@ export function PlayerPanel({
   player: PlayerView;
   onAct: (intent: Intent) => void;
   onRelease: () => void;
+  onInherit: () => void;
   onInspect: (id: number) => void;
   onRef: (ref: EventRef) => void;
   onChooseAmbition: (id: string, target?: number) => void;
@@ -278,10 +280,35 @@ export function PlayerPanel({
       </div>
 
       {!player.alive ? (
-        <p className="player-dead">
-          You died{player.deathYear !== undefined ? ` in year ${player.deathYear}` : ''}. The
-          world goes on without you — release to keep watching, or advance time.
-        </p>
+        // DEATH AS A TRANSITION — the Dynasty step. If the line has an heir, the story
+        // is theirs to continue; only when no kin remains does it truly end here.
+        <div className="player-dead">
+          <p>
+            You died{player.deathYear !== undefined ? ` in year ${player.deathYear}` : ''}.
+          </p>
+          {player.succession ? (
+            <>
+              <p>
+                {player.succession.offer.pre}
+                <button className="link strong" onClick={() => onInspect(player.succession!.heirId)}>
+                  {player.succession.heirName}
+                </button>
+                {', '}
+                {player.succession.relation}
+                {player.succession.offer.post}
+                {player.succession.awayNote && <span className="muted"> {player.succession.awayNote}</span>}
+              </p>
+              <button className="btn btn-primary" onClick={onInherit} disabled={busy}>
+                Continue as {player.succession.heirName}
+              </button>
+            </>
+          ) : (
+            <p>
+              {player.lineEnds ?? 'The world goes on without you.'}{' '}
+              <span className="muted">Release to keep watching, or advance time.</span>
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <AmbitionBanner

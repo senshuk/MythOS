@@ -1548,6 +1548,21 @@ export interface PlayerView {
   ageYears: number;
   alive: boolean;
   deathYear?: number;
+  /** DEATH AS A TRANSITION (the Dynasty step): present only while dead. The heir who can
+   *  take up the line (eldest child, else spouse, else sibling — see player.heirOf), with
+   *  the pack-voiced offer lines. Absent when no living kin remains: the line has ended. */
+  succession?: {
+    heirId: EntityId;
+    heirName: string;
+    /** pack phrase for how the heir stands to the dead ("your eldest child") */
+    relation: string;
+    /** pack line shown when the heir lives elsewhere (attention will follow the line) */
+    awayNote?: string;
+    /** the offer, wrapping the heir's name (pack voice) */
+    offer: { pre: string; post: string };
+  };
+  /** pack line shown when dead with no heir — the line has truly ended. */
+  lineEnds?: string;
   settlement: string;
   needs: Needs;
   /** each need as a lived word + tone (design/21 §5) — presentation of `needs`, shown in the journal. */

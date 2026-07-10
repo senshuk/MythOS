@@ -21,6 +21,7 @@ import {
   setStoryteller,
   possess,
   release,
+  inheritHeir,
   playerTurn,
   checkPlayerGoal,
   reviewPlayerAmbition,
@@ -88,6 +89,13 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     case 'release': {
       if (!world) reset(0);
       release(world!);
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'inherit': {
+      if (!world) reset(0);
+      inheritHeir(world!); // no-op unless the player is dead and an heir exists
+      checkPlayerGoal(world!); // baseline the heir's goal (no event)
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }

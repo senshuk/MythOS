@@ -45,6 +45,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   claim_pressed: (n, d) => `${n(0)} pressed a claim to lead ${d.settlement}, and the failing ${d.title || 'ruler'} yielded the seat.`,
   dynasty: (n, d) =>
     `${n(0)} of House ${d.house} seized ${d.settlement}${d.old ? `, ending the rule of House ${d.old}` : ''}, founding a new dynasty.`,
+  inherited: (n, d) =>
+    `${d.predecessor} was dead; ${n(0)}${d.house ? ` of House ${d.house}` : ''} took up the line.`,
   house_fallen: (_n, d) => `House ${d.house} fell with ${d.settlement} — its line ended.`,
   ruler_died: (n, d) => `${n(0)}, ${d.title || 'ruler'} of ${d.settlement}, passed away.`,
   prosperity: (_n, d) => `${d.name} enjoyed a prosperous year (now ${d.population} souls).`,
@@ -167,6 +169,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 18; // a new ruler rising is minor news
     case 'claim_pressed':
       return 34; // a bid for power, taken not inherited — notable, below a full dynastic turn
+    case 'inherited':
+      return 30; // a line passing to its heir — a quiet generational turning, kept in memory
     case 'dynasty':
       return 44; // a new dynasty seizing a seat — a turn of the age
     case 'house_fallen':
@@ -477,6 +481,17 @@ export interface PlayerVoice {
     rulerNewlyRisen: string;
     rulerSeated: string;
   };
+  /** THE LINE — death as a transition (the Dynasty step of the gameplay loop). */
+  succession: {
+    /** who the heir was to the one who died — shown beside their name in the handoff */
+    relation: { child: string; spouse: string; sibling: string };
+    /** the heir stands ready; wraps their linked name */
+    continues: AroundName;
+    /** the heir lives elsewhere — following the line will move your attention there */
+    away: (place: string) => string;
+    /** no living kin remains — the story truly ends here */
+    lineEnds: string;
+  };
   /** WHAT YOU BELIEVE — the player's subjective reality, stated as their own truth. */
   belief: {
     /** who rules the player's home; `place` is undefined when it has no name */
@@ -558,6 +573,12 @@ export const PLAYER_VOICE: PlayerVoice = {
     rulerLongReigning: 'long-reigning',
     rulerNewlyRisen: 'newly risen',
     rulerSeated: 'on the throne',
+  },
+  succession: {
+    relation: { child: 'your eldest child', spouse: 'your widowed spouse', sibling: 'your closest sibling' },
+    continues: { pre: 'The line continues: ', post: ' stands ready to take it up.' },
+    away: (place) => `They live in ${place} — your attention will follow the line there.`,
+    lineEnds: 'No kin survives you. The line ends here — the world goes on without it.',
   },
   belief: {
     rules: (ruler, place) => `${ruler} rules ${place ?? 'your home'}.`,

@@ -132,6 +132,12 @@ export function useSim(initialSeed: number) {
     send({ kind: 'release' });
   }, [send]);
 
+  // dead player takes up their heir's life (death as a transition, not a game over)
+  const inherit = useCallback(() => {
+    setBusy(true);
+    send({ kind: 'inherit' });
+  }, [send]);
+
   const playerAct = useCallback((intent: Intent) => {
     setBusy(true);
     send({ kind: 'playerTurn', intent });
@@ -186,6 +192,7 @@ export function useSim(initialSeed: number) {
     clearInspect,
     possess,
     release,
+    inherit,
     playerAct,
     chooseAmbition,
     abandonAmbition,

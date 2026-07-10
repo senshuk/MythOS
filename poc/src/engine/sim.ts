@@ -75,8 +75,8 @@ import { factionYearly, factionOf, civilWarYearly, exileYearly } from './faction
 import { reactToBeliefs } from './reactions';
 
 export { focusSettlement } from './lod';
-export { possess, release, schedulePlayerIntent } from './player';
-import { schedulePlayerIntent } from './player';
+export { possess, release, schedulePlayerIntent, inheritHeir } from './player';
+import { schedulePlayerIntent, heirOf } from './player';
 
 /**
  * Build a world. With `focus` (default) it materializes settlement 0 to full
@@ -1033,6 +1033,29 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
   const threats = buildPlayerThreats(world, id);
   const cast = buildPlayerCast(world, id);
 
+  // DEATH AS A TRANSITION (the Dynasty step): while dead, offer the line's continuation.
+  // Pure read — the handoff itself only happens when the player chooses it (inheritHeir).
+  let succession: PlayerView['succession'];
+  let lineEnds: string | undefined;
+  if (!lc.alive) {
+    const heir = heirOf(world, id);
+    if (heir) {
+      const heirHome = world.homeSettlement.get(heir.heirId);
+      succession = {
+        heirId: heir.heirId,
+        heirName: fullName(world, heir.heirId),
+        relation: PLAYER_VOICE.succession.relation[heir.relation],
+        awayNote:
+          heirHome !== undefined && heirHome !== world.focusedSettlementId
+            ? PLAYER_VOICE.succession.away(world.settlements[heirHome]?.name ?? '?')
+            : undefined,
+        offer: PLAYER_VOICE.succession.continues,
+      };
+    } else {
+      lineEnds = PLAYER_VOICE.succession.lineEnds;
+    }
+  }
+
   return {
     id,
     name: fullName(world, id),
@@ -1041,6 +1064,8 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     ageYears: lc.ageYears,
     alive: lc.alive,
     deathYear: lc.deathTick !== undefined ? Math.floor(lc.deathTick / DAYS_PER_YEAR) : undefined,
+    succession,
+    lineEnds,
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
     needs: { ...world.needs.get(id)! },
     needFeels: buildNeedFeels(world, id),

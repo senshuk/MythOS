@@ -175,6 +175,7 @@ export default function App() {
               player={stat.player}
               onAct={(intent) => sim.playerAct(intent)}
               onRelease={() => sim.release()}
+              onInherit={() => sim.inherit()}
               onInspect={(id) => sim.inspectActor(id)}
               onRef={inspectRef}
               onChooseAmbition={(id, target) => sim.chooseAmbition(id, target)}

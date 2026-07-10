@@ -27,6 +27,7 @@ export type SimRequest =
   // --- player-as-actor control loop ---
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
+  | { kind: 'inherit' } // dead player takes up their heir's life (death as a transition)
   | { kind: 'playerTurn'; intent: Intent }
   | { kind: 'chooseAmbition'; ambitionId: string; target?: number }
   | { kind: 'abandonAmbition' }
