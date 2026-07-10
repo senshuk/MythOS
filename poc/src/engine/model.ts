@@ -771,7 +771,7 @@ export interface Settlement extends Location {
   /** the named geographic feature this settlement sits beside (its sense of place —
    *  "on the shores of the Skarnald"), resolved at founding from the substrate. Absent
    *  for inland sites near nothing notable, and for non-surface worlds. */
-  landmark?: { name: string; kind: string; relation: string };
+  landmark?: { name: string; kind: string; relation: string; featureIndex?: number };
   /** a settlement always has a concrete map position (narrows Location.pos). */
   pos: WorldPosition;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
@@ -1105,6 +1105,7 @@ export interface ActorView {
   nature: string;
   /** this actor's House — their family lineage (surname). */
   house: string;
+  houseId?: HouseId; // the dynasty record, when their surname matches a known House — inspectable
   spouse?: EntityId;
   relationshipCount: number;
   /** public standing in the community (0 = unremarked, − = notorious, + = renowned).
@@ -1126,7 +1127,8 @@ export type EventRef =
   | { kind: 'settlement'; id: SettlementId }
   | { kind: 'house'; id: HouseId }
   | { kind: 'culture'; id: string } // a creed/people (pack culture id)
-  | { kind: 'deity'; id: string }; // a god (pack deity id)
+  | { kind: 'deity'; id: string } // a god (pack deity id)
+  | { kind: 'feature'; id: number }; // a named geographic feature (per-world index)
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {
@@ -1210,7 +1212,7 @@ export interface SettlementView {
   name: string;
   nameMeaning?: string; // "the iron hold" — the name's sense in the founders' tongue
   /** the named landmark it sits beside ("on the shores of the Skarnald") — sense of place. */
-  landmark?: { name: string; kind: string; relation: string };
+  landmark?: { name: string; kind: string; relation: string; featureIndex?: number };
   detailed: boolean;
   population: number;
   foundedYear: number;
@@ -1297,11 +1299,13 @@ export interface TaleView {
   year: number;
   interest: number;
   text: string; // the legend retelling
+  eventId?: number; // the event this legend retells — click to trace it
 }
 
 export interface EraView {
   year: number;
   title: string; // "the Year of Famine in Stonereach"
+  eventId?: number; // the defining event of the age — click to inspect it
 }
 
 export interface FigureView {
@@ -1344,6 +1348,16 @@ export interface CultureDetail {
   patronDeity?: { name: string; id: string; domain: string };
   tongue?: { demonym: string; voice: string };
   settlements: { name: string; id: SettlementId }[]; // living towns that hold this creed
+}
+
+/** Detail for a named geographic FEATURE — a sea, lake, range, or great river made inspectable:
+ *  its name in the old tongue, its kind, and the living towns that sit beside it. */
+export interface FeatureDetail {
+  index: number;
+  name: string;
+  meaning?: string; // the name's sense in the world's dead old tongue ("the cold deep")
+  kind: string; // sea | lake | range | river
+  settlements: { name: string; id: SettlementId }[];
 }
 
 /** Detail for a DEITY — a god made inspectable: its domain, the peoples who venerate it, and

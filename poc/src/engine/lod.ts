@@ -94,7 +94,7 @@ function landmarkFor(world: World, pos: { x: number; y: number }): Settlement['l
   if (!(sub instanceof SurfaceSubstrate)) return undefined;
   const near = nearestFeatureAt(sub.geography, pos.x, pos.y);
   if (!near) return undefined;
-  return { name: featureName(world.seed, near.feature).name, kind: near.feature.kind, relation: LANDMARK_RELATION[near.feature.kind] };
+  return { name: featureName(world.seed, near.feature).name, kind: near.feature.kind, relation: LANDMARK_RELATION[near.feature.kind], featureIndex: near.feature.index };
 }
 
 const MAX_SUMMARIES_PER_SETTLEMENT = 6;

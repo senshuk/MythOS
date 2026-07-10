@@ -409,6 +409,7 @@ export default function App() {
               houseDetail={sim.houseDetail}
               cultureDetail={sim.cultureDetail}
               deityDetail={sim.deityDetail}
+              featureDetail={sim.featureDetail}
               settlements={stat.settlements}
               playerId={stat.player?.id}
               onPickActor={inspectActor}
@@ -1418,7 +1419,10 @@ function HistoryFeed({
               <ul className="eras">
                 {eras.slice(0, 8).map((e, i) => (
                   <li key={i}>
-                    <span className="muted">y{e.year}:</span> {e.title}
+                    <span className="muted">y{e.year}:</span>{' '}
+                    {e.eventId !== undefined ? (
+                      <button className="link" onClick={() => onPickEvent(e.eventId!)} title="trace this age's defining event">{e.title}</button>
+                    ) : e.title}
                   </li>
                 ))}
               </ul>
@@ -1471,7 +1475,10 @@ function HistoryFeed({
               <ul className="legends">
                 {legends.slice(0, 12).map((t, i) => (
                   <li key={i}>
-                    <span className="muted">y{t.year}</span> {t.text}
+                    <span className="muted">y{t.year}</span>{' '}
+                    {t.eventId !== undefined ? (
+                      <button className="link legend-link" onClick={() => onPickEvent(t.eventId!)} title="trace the deed behind the legend">{t.text}</button>
+                    ) : t.text}
                   </li>
                 ))}
               </ul>
@@ -1491,6 +1498,7 @@ function Inspector({
   houseDetail,
   cultureDetail,
   deityDetail,
+  featureDetail,
   settlements,
   playerId,
   onPickActor,
@@ -1507,6 +1515,7 @@ function Inspector({
   houseDetail: ReturnType<typeof useSim>['houseDetail'];
   cultureDetail: ReturnType<typeof useSim>['cultureDetail'];
   deityDetail: ReturnType<typeof useSim>['deityDetail'];
+  featureDetail: ReturnType<typeof useSim>['featureDetail'];
   settlements: SettlementView[];
   playerId?: number;
   onPickActor: (id: number) => void;
@@ -1516,7 +1525,7 @@ function Inspector({
   onPossess: (id: number) => void;
   onClose: () => void;
 }) {
-  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail) {
     return (
       <section className="panel inspector empty">
         <h2>A closer look</h2>
@@ -1570,7 +1579,9 @@ function Inspector({
           </h3>
           <p className="muted">
             {actorDetail.actor.species} {actorDetail.actor.profession} · {actorDetail.actor.ageYears}y ·{' '}
-            {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
+            {actorDetail.actor.sex} · of {actorDetail.actor.houseId !== undefined ? (
+              <button className="link" onClick={() => onRef({ kind: 'house', id: actorDetail.actor.houseId! })}>House {actorDetail.actor.house}</button>
+            ) : `House ${actorDetail.actor.house}`} · traits:{' '}
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}{actorDetail.actor.exiledFrom ? <span className="exile-status"> · exile from {actorDetail.actor.exiledFrom}</span> : null}</p>
@@ -1667,6 +1678,23 @@ function Inspector({
         </div>
       )}
 
+      {featureDetail && (
+        <div>
+          <h3>{featureDetail.name}{featureDetail.meaning ? <span className="house-gloss"> · {featureDetail.meaning}</span> : null}</h3>
+          <p className="muted">a {featureDetail.kind === 'range' ? 'mountain range' : featureDetail.kind}{featureDetail.settlements.length ? '' : ' · no towns sit beside it'}</p>
+          {featureDetail.settlements.length > 0 && (
+            <>
+              <h4>Towns upon it</h4>
+              <ul className="rels">
+                {featureDetail.settlements.map((s) => (
+                  <li key={s.id}><button className="link" onClick={() => onRef({ kind: 'settlement', id: s.id })}>{s.name}</button></li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
       {cultureDetail && (
         <div>
           <h3>{cultureDetail.name}</h3>
@@ -1752,7 +1780,14 @@ function Inspector({
         <div>
           <h3>{settV?.name ?? 'Settlement'}</h3>
           {settV?.nameMeaning && <p className="name-gloss">“{settV.nameMeaning}”, in the founders’ tongue</p>}
-          {settV?.landmark && <p className="name-gloss">{settV.landmark.relation} {settV.landmark.name}</p>}
+          {settV?.landmark && (
+            <p className="name-gloss">
+              {settV.landmark.relation}{' '}
+              {settV.landmark.featureIndex !== undefined ? (
+                <button className="link" onClick={() => onRef({ kind: 'feature', id: settV.landmark!.featureIndex! })}>{settV.landmark.name}</button>
+              ) : settV.landmark.name}
+            </p>
+          )}
           {settV && (
             <p className="muted">
               {settV.ruinedYear !== undefined

@@ -22,6 +22,7 @@ import {
   type HouseDetail,
   type CultureDetail,
   type DeityDetail,
+  type FeatureDetail,
   type PlayerView,
   type PlayerTargetView,
   type StoryBeat,
@@ -37,7 +38,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 export { chooseAmbition, abandonAmbition, reviewPlayerAmbition } from './ambition';
 import { Rng, mixSeed } from './rng';
-import { createSubstrate } from './substrate';
+import { createSubstrate, SurfaceSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeMood, moodWord, moodReasons, pruneSelfThoughts } from './mood';
@@ -53,7 +54,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, ambitionOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, featureName, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest, renderBackstory } from './pack';
 import { backstoryFacts } from './backstory';
@@ -283,6 +284,7 @@ function actorView(world: World, id: EntityId): ActorView {
     traits: world.traits.get(id)!,
     nature: natureOf(personalityOf(world, id)),
     house: idn.family, // their lineage — the surname carried down their family line
+    houseId: world.houses.find((h) => h.name === idn.family)?.id, // link to the dynasty, if any
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
     standing: Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick)),
@@ -424,6 +426,25 @@ export function inspectDeity(world: World, id: string): DeityDetail | undefined 
     domain: d.domain,
     cultures: CULTURES.filter((c) => c.patronDeityId === id).map((c) => ({ name: c.name, id: c.id })),
     faithful,
+  };
+}
+
+/** Inspect a named geographic FEATURE (a sea, range, great river, lake): its name in the old
+ *  tongue and the living towns that sit beside it. Surface worlds only. */
+export function inspectFeature(world: World, index: number): FeatureDetail | undefined {
+  const sub = world.substrate;
+  if (!(sub instanceof SurfaceSubstrate)) return undefined;
+  const feature = sub.geography.features.find((f) => f.index === index);
+  if (!feature) return undefined;
+  const named = featureName(world.seed, feature);
+  return {
+    index,
+    name: named.name,
+    meaning: named.meaning,
+    kind: feature.kind,
+    settlements: world.settlements
+      .filter((s) => s.ruinedYear === undefined && s.landmark?.featureIndex === index)
+      .map((s) => ({ name: s.name, id: s.id })),
   };
 }
 
@@ -1116,9 +1137,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .slice(0, 14)
     .map((t) => {
       const ev = getEvent(world, t.eventId);
-      return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev) } : null;
+      return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev), eventId: t.eventId } : null;
     })
-    .filter((v): v is { year: number; interest: number; text: string } => v !== null);
+    .filter((v): v is { year: number; interest: number; text: string; eventId: number } => v !== null);
 
   // named ages: one defining event per year. Landmark years (foundings, ruins)
   // ALWAYS appear; the rest are filled by the most momentous years. Shown as a
@@ -1142,9 +1163,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => a[0] - b[0]) // chronological — a timeline of ages
     .map(([year, best]) => {
       const ev = getEvent(world, best.eventId);
-      return ev ? { year, title: eraTitle(world, ev) } : null;
+      return ev ? { year, title: eraTitle(world, ev), eventId: best.eventId } : null;
     })
-    .filter((v): v is { year: number; title: string } => v !== null);
+    .filter((v): v is { year: number; title: string; eventId: number } => v !== null);
 
   // renowned figures of history: those who reigned longest (founders & great rulers)
   const curYear = Math.floor(world.tick / DAYS_PER_YEAR);
