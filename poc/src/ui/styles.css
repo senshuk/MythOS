@@ -964,6 +964,18 @@ button { font-family: inherit; }
 .plan-building.tone-ruin .plan-ridge { display: none; }
 .plan-building[role="button"] { cursor: pointer; }
 .plan-building[role="button"]:hover rect { stroke: var(--cyan); }
+
+/* HISTORY MARKS (L3) — the chronicle stamped into the ground, every one a click */
+.plan-scorch { fill: rgba(24, 18, 14, 0.9); stroke: rgba(60, 40, 26, 0.6); stroke-width: 0.012; }
+.plan-mark { cursor: pointer; }
+.plan-mark:hover .plan-scorch { stroke: var(--cyan); stroke-width: 0.02; }
+.plan-barricade { stroke: var(--rose); opacity: 0.85; stroke-dasharray: 0.09 0.05; cursor: help; }
+.plan-building.role-monument rect { fill: #7a705c; stroke: var(--gold-dim); stroke-width: 0.014; }
+.plan-building.role-stone rect { fill: #6b6a66; stroke: #4a4946; stroke-width: 0.012; }
+.plan-building.role-tomb circle { stroke: #8a8578; stroke-width: 0.016; }
+.plan-building.role-tomb rect { fill: #8a8578; stroke: none; }
+.plan-building.role-shell rect { fill: rgba(30, 24, 18, 0.8); stroke: rgba(80, 58, 40, 0.9); stroke-width: 0.012; stroke-dasharray: 0.04 0.03; }
+.plan-building.role-shell .plan-ridge { display: none; }
 .tip-hint { font-size: 10.5px; color: var(--cyan); margin-top: 2px; }
 .walk-btn { display: inline-block; margin-bottom: var(--space-2); }
 

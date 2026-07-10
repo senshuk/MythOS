@@ -6,7 +6,7 @@
  * Pure presentation: nothing here is stored, and the sim never sees it.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RegionMapView, SettlementView, EventRef } from '../engine/model';
+import type { RegionMapView, SettlementView, EventRef, EventView } from '../engine/model';
 import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -23,15 +23,21 @@ export function LocalMapView({
   map,
   seed,
   currentYear,
+  chronicle,
   onExit,
   onRef,
+  onPickEvent,
 }: {
   settlement: SettlementView;
   map: RegionMapView;
   seed: number;
   currentYear: number;
+  /** the settlement's notable history (oldest first) — feeds the HISTORY MARKS. */
+  chronicle?: EventView[];
   onExit: () => void;
   onRef: (ref: EventRef) => void;
+  /** a history mark traces the event it remembers (the burned quarter answers "why?"). */
+  onPickEvent: (id: number) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,9 +94,10 @@ export function LocalMapView({
       roadEntries,
       geo: sub.geography,
       currentYear,
+      chronicle,
     };
     return buildLocalPlan(facts);
-  }, [sub, node, seed, settlement, roadEntries, currentYear]);
+  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle]);
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -154,7 +161,7 @@ export function LocalMapView({
             opacity={rd.kind === 'sea' ? 0.3 : 0.45}
           />
         ))}
-        {plan && plan.items.map((it, i) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} />)}
+        {plan && plan.items.map((it, i) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
       </svg>
 
       {/* who and where — the breadcrumb back to the world */}
@@ -193,24 +200,51 @@ function PlanGlyph({
   show,
   hide,
   onRef,
+  onPickEvent,
 }: {
   it: PlanItem;
   show: (text: string) => (e: { clientX: number; clientY: number }) => void;
   hide: () => void;
   onRef: (ref: EventRef) => void;
+  onPickEvent: (id: number) => void;
 }) {
-  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall') {
+  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall' || it.kind === 'barricade') {
     const d = it.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ');
-    return <path className={`plan-${it.kind}`} d={d} fill="none" strokeWidth={it.width} strokeLinecap="round" strokeLinejoin="round" />;
+    return (
+      <path
+        className={`plan-${it.kind}`}
+        d={d}
+        fill="none"
+        strokeWidth={it.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        onMouseEnter={it.label ? show(it.label) : undefined}
+        onMouseLeave={it.label ? hide : undefined}
+      />
+    );
   }
   if (it.kind === 'tree') {
     return <circle className="plan-tree" cx={it.x} cy={it.y} r={it.r} />;
   }
-  if (it.kind === 'field' || it.kind === 'rubble' || it.kind === 'square') {
+  if (it.kind === 'field' || it.kind === 'rubble' || it.kind === 'square' || it.kind === 'scorch') {
+    const clickable = it.eventId !== undefined;
     return (
-      <g transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
-         onMouseEnter={it.label ? show(it.label) : undefined} onMouseLeave={it.label ? hide : undefined}>
-        <rect className={`plan-${it.kind}`} x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} />
+      <g
+        transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+        onMouseEnter={it.label ? show(it.label) : undefined}
+        onMouseLeave={it.label ? hide : undefined}
+        onClick={clickable ? () => onPickEvent(it.eventId!) : undefined}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPickEvent(it.eventId!); } } : undefined}
+        className={clickable ? 'plan-mark' : undefined}
+      >
+        {it.kind === 'scorch' ? (
+          // a burn scar heals with the years — ellipse, not architecture
+          <ellipse className="plan-scorch" rx={it.w / 2} ry={it.h / 2} style={{ opacity: 0.75 * (1 - (it.age ?? 0) * 0.85) }} />
+        ) : (
+          <rect className={`plan-${it.kind}`} x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} />
+        )}
         {it.kind === 'field' && (
           // furrow lines — the strip-plot look
           <>
@@ -223,20 +257,41 @@ function PlanGlyph({
   }
   if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
   const cls = `plan-building tone-${it.tone} role-${it.role}`;
+  // a history mark traces its event; a civic building inspects its subject
+  const act = it.eventId !== undefined ? () => onPickEvent(it.eventId!) : it.ref ? () => onRef(it.ref!) : undefined;
   return (
     <g
       className={cls}
       transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
       onMouseEnter={show(it.label)}
       onMouseLeave={hide}
-      onClick={it.ref ? () => onRef(it.ref!) : undefined}
-      role={it.ref ? 'button' : undefined}
-      tabIndex={it.ref ? 0 : undefined}
-      onKeyDown={it.ref ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRef(it.ref!); } } : undefined}
+      onClick={act}
+      role={act ? 'button' : undefined}
+      tabIndex={act ? 0 : undefined}
+      onKeyDown={act ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } } : undefined}
     >
-      <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={0.012} />
-      {/* the roof ridge — one line makes a rectangle read as a building */}
-      <line x1={-it.w / 2 + 0.015} y1={0} x2={it.w / 2 - 0.015} y2={0} className="plan-ridge" />
+      {it.role === 'monument' ? (
+        // an obelisk: a tall shaft on a plinth
+        <>
+          <rect x={-it.w / 2} y={it.h / 2 - 0.03} width={it.w} height={0.03} />
+          <rect x={-it.w / 6} y={-it.h / 2} width={it.w / 3} height={it.h} />
+        </>
+      ) : it.role === 'stone' ? (
+        // a memorial stela
+        <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={it.w / 2.4} />
+      ) : it.role === 'tomb' ? (
+        // a barrow ring with a capstone
+        <>
+          <circle r={it.w / 2} fill="none" />
+          <rect x={-it.w / 5} y={-it.h / 5} width={it.w / 2.5} height={it.h / 2.5} />
+        </>
+      ) : (
+        <>
+          <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={0.012} />
+          {/* the roof ridge — one line makes a rectangle read as a building */}
+          <line x1={-it.w / 2 + 0.015} y1={0} x2={it.w / 2 - 0.015} y2={0} className="plan-ridge" />
+        </>
+      )}
     </g>
   );
 }

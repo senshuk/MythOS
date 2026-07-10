@@ -497,6 +497,30 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
 }
 
 /**
+ * The notable events of ONE settlement's recorded history, oldest first — the raw
+ * material the close view's HISTORY MARKS are stamped from (design/24 §3.4: a burned
+ * quarter for a raid, a stone for a famine, a monument for a wonder). Read-only, same
+ * event union as inspectSettlement; filtered by INTEREST (engine-generic — which TYPES
+ * become marks is the pack's call, since the type vocabulary is pack data).
+ */
+const LOCAL_CHRONICLE_FLOOR = 20; // below this an event is routine, never a mark
+const LOCAL_CHRONICLE_CAP = 80;
+export function buildLocalChronicle(world: World, id: SettlementId): EventView[] {
+  const s = world.settlements[id];
+  if (!s) return [];
+  const eventIds = new Set<number>(world.eventsBySettlement.get(id) ?? []);
+  for (const fid of world.figuresBySettlement.get(id) ?? []) {
+    for (const eid of world.eventsBySubject.get(fid) ?? []) eventIds.add(eid);
+  }
+  return [...eventIds]
+    .sort((a, b) => a - b) // event ids are monotonic — ascending = oldest first
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined && eventInterest(ev.type, ev.data) >= LOCAL_CHRONICLE_FLOOR)
+    .slice(-LOCAL_CHRONICLE_CAP) // the most recent notable N (history marks fade anyway)
+    .map((ev) => eventView(world, ev));
+}
+
+/**
  * A tiny at-a-glance card for a HOVERED entity link — who/what something is in a line
  * or three, without the cost (or the commitment) of a full inspection. Deliberately
  * much lighter than the *Detail builders: no event scans, no relationship walks.

@@ -18,6 +18,7 @@ import {
   inspectDeity,
   inspectFeature,
   buildPeek,
+  buildLocalChronicle,
   focusSettlement,
   setStoryteller,
   possess,
@@ -207,6 +208,14 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
         kind: 'peek',
         token: msg.token,
         card: world ? buildPeek(world, msg.ref) ?? null : null,
+      });
+      break;
+    }
+    case 'localChronicle': {
+      ctx.postMessage({
+        kind: 'localChronicle',
+        token: msg.token,
+        events: world ? buildLocalChronicle(world, msg.id) : [],
       });
       break;
     }

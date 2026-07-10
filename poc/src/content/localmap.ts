@@ -10,7 +10,7 @@
  * with domes and landing pads; the UI only renders PlanItems.
  */
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_SEA, WATER_LAKE, WATER_RIVER } from '../engine/geography';
-import { type SettlementView, type EventRef } from '../engine/model';
+import { type SettlementView, type EventRef, type EventView } from '../engine/model';
 import { Rng, mixSeed } from '../engine/rng';
 
 // ------------------------------------------------------------ the plan model --
@@ -20,20 +20,25 @@ export interface PlanBuilding {
   x: number; y: number; // centre, world units
   w: number; h: number; // world units
   rot: number; // radians
-  role: 'house' | 'seat' | 'shrine' | 'workshop' | 'warehouse' | 'boathouse' | 'minehead' | 'mill';
+  role: 'house' | 'seat' | 'shrine' | 'workshop' | 'warehouse' | 'boathouse' | 'minehead' | 'mill' | 'monument' | 'stone' | 'tomb' | 'shell';
   label: string; // hover text, in the pack's voice
   tone: 'plain' | 'grand' | 'sacred' | 'ruin';
   ref?: EventRef; // the shrine inspects its deity, the seat its ruler…
+  eventId?: number; // a HISTORY MARK traces the event it remembers (design/24 §3.4)
 }
 export interface PlanPath {
-  kind: 'street' | 'pier' | 'wall';
+  kind: 'street' | 'pier' | 'wall' | 'barricade';
   pts: { x: number; y: number }[];
   width: number; // world units
+  label?: string;
 }
 export interface PlanPatch {
-  kind: 'field' | 'rubble' | 'square';
+  kind: 'field' | 'rubble' | 'square' | 'scorch';
   x: number; y: number; w: number; h: number; rot: number;
   label?: string;
+  eventId?: number; // a scorch remembers the raid that made it
+  /** 0..1 — how far a scorch has healed (drives its fade) */
+  age?: number;
 }
 export interface PlanTree { kind: 'tree'; x: number; y: number; r: number }
 export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree;
@@ -45,6 +50,9 @@ export interface LocalPlanFacts {
   roadEntries: number[]; // angles (radians) toward its road-graph neighbours
   geo: Geography;
   currentYear: number;
+  /** the settlement's notable recorded history (oldest first) — the history-marks feed.
+   *  Arrives out-of-band; the plan builds without it and re-builds when it lands. */
+  chronicle?: EventView[];
 }
 
 export interface LocalPlan {
@@ -103,6 +111,9 @@ interface TownCtx {
   streets: { angle: number; pts: { x: number; y: number }[]; reach: number }[];
   townRadius: number;
   houses: number; // budget remaining
+  /** fresh burn scars (HistoryMarks) — Houses leaves these lots empty, so a recent
+   *  raid reads as a charred GAP in the town, not a patch painted over roofs. */
+  scars: { x: number; y: number; r: number }[];
 }
 const ctxOf = new WeakMap<LocalPlan, TownCtx>();
 
@@ -149,7 +160,117 @@ const TerrainStreets: LocalGenStep = {
     for (const angle of angles.slice(0, 5)) lay(angle, townRadius + 1.6, 0.07);
     for (const angle of laneAngles) lay(angle, townRadius * 0.75, 0.045);
     plan.radius = townRadius;
-    ctxOf.set(plan, { streets, townRadius, houses });
+    ctxOf.set(plan, { streets, townRadius, houses, scars: [] });
+  },
+};
+
+/**
+ * HISTORY MARKS (design/24 §3.4) — the settlement's own chronicle, stamped into the
+ * ground. Runs BEFORE Houses so a fresh burn is a gap the town hasn't rebuilt yet.
+ * Which event TYPES leave marks is this pack's vocabulary; every mark carries its
+ * eventId, so the town is click-traceable: the burned quarter answers "why?".
+ */
+const HistoryMarks: LocalGenStep = {
+  name: 'history',
+  run(facts, _rng, plan) {
+    const ctx = ctxOf.get(plan)!;
+    const { settlement: s, pos, currentYear, chronicle } = facts;
+    if (!chronicle || chronicle.length === 0) return;
+
+    // --- burned quarters: violence that reached the town itself (most recent few) ---
+    const violent = chronicle.filter((ev) => /^(raid|battle|conquest|civil_war|ruined)$/.test(ev.type)).slice(-5);
+    for (const ev of violent) {
+      // each mark is seeded by ITS OWN event id — stable however the chronicle shifts
+      const r = new Rng(mixSeed(facts.seed, s.id, ev.id, 0x5ca7));
+      const years = Math.max(0, currentYear - ev.year);
+      if (years > 60) continue; // three generations on, the land has forgotten
+      const a = r.next() * Math.PI * 2;
+      const d = 0.25 + r.next() * ctx.townRadius * 0.7;
+      const size = 0.35 + Math.min(0.45, ev.interest / 160);
+      const x = pos.x + Math.cos(a) * d;
+      const y = pos.y + Math.sin(a) * d;
+      const age = Math.min(1, years / 60); // 0 = still smoking, 1 = healed
+      plan.items.push({
+        kind: 'scorch', x, y,
+        w: size * (1.2 + r.next() * 0.4), h: size, rot: r.next() * Math.PI,
+        label: `y${ev.year} — ${ev.text}`,
+        eventId: ev.id,
+        age,
+      });
+      if (age < 0.35) {
+        ctx.scars.push({ x, y, r: size * 0.8 }); // too fresh to rebuild over
+        // charred shells still standing in the scar
+        for (let i = 0; i < 2; i++) {
+          plan.items.push({
+            kind: 'building',
+            x: x + (r.next() - 0.5) * size, y: y + (r.next() - 0.5) * size,
+            w: 0.13, h: 0.1, rot: r.next() * Math.PI,
+            role: 'shell', label: `a burned shell — y${ev.year}`, tone: 'ruin', eventId: ev.id,
+          });
+        }
+      }
+    }
+
+    // --- memorial stones: the hard years, remembered in stone by the roadside ---
+    const griefs = chronicle.filter((ev) => /^(famine|plague|blight)$/.test(ev.type)).slice(-3);
+    griefs.forEach((ev, i) => {
+      const r = new Rng(mixSeed(facts.seed, s.id, ev.id, 0x57e1));
+      const st = ctx.streets[i % Math.max(1, ctx.streets.length)];
+      const along = 0.5 + r.next() * 0.35; // out along the road, where travellers pass
+      const p = st ? st.pts[Math.min(st.pts.length - 1, Math.round(along * (st.pts.length - 1)))] : pos;
+      plan.items.push({
+        kind: 'building',
+        x: p.x + (r.next() - 0.5) * 0.12, y: p.y + (r.next() - 0.5) * 0.12,
+        w: 0.06, h: 0.09, rot: 0,
+        role: 'stone', label: `the ${ev.type} stone, y${ev.year} — ${ev.text}`, tone: 'plain', eventId: ev.id,
+      });
+    });
+
+    // --- a wonder still standing: the proudest thing the town ever raised ---
+    const wonder = chronicle.filter((ev) => ev.type === 'wonder').slice(-1)[0];
+    if (wonder && s.ruinedYear === undefined) {
+      const r = new Rng(mixSeed(facts.seed, s.id, wonder.id, 0x3009));
+      const a = r.next() * Math.PI * 2;
+      plan.items.push({
+        kind: 'building',
+        x: pos.x + Math.cos(a) * 0.3, y: pos.y + Math.sin(a) * 0.3,
+        w: 0.09, h: 0.2, rot: 0,
+        role: 'monument', label: `y${wonder.year} — ${wonder.text}`, tone: 'grand', eventId: wonder.id,
+      });
+    }
+
+    // --- the founder's tomb: an old town keeps its beginning ---
+    const founding = chronicle.find((ev) => ev.type === 'settlement_founded');
+    if (s.founder && currentYear - s.foundedYear > 70) {
+      const r = new Rng(mixSeed(facts.seed, s.id, 0x70b));
+      const a = r.next() * Math.PI * 2;
+      plan.items.push({
+        kind: 'building',
+        x: pos.x + Math.cos(a) * (ctx.townRadius * 0.5), y: pos.y + Math.sin(a) * (ctx.townRadius * 0.5),
+        w: 0.11, h: 0.11, rot: r.next() * Math.PI,
+        role: 'tomb', label: `the tomb of ${s.founder}, who founded ${s.name} in y${s.foundedYear}`,
+        tone: 'sacred', eventId: founding?.id,
+      });
+    }
+
+    // --- a town divided: the barricade line, while the conflict clock runs ---
+    if (s.civilWarYear !== undefined && s.factionSplit) {
+      const r = new Rng(mixSeed(facts.seed, s.id, 0xba22));
+      const a = r.next() * Math.PI * 2;
+      const pts: { x: number; y: number }[] = [];
+      const len = ctx.townRadius * 0.9;
+      for (let t = -1; t <= 1.001; t += 0.25) {
+        // a jagged line THROUGH the town, perpendicular jitter — barricades, not masonry
+        pts.push({
+          x: pos.x + Math.cos(a) * len * t + Math.cos(a + Math.PI / 2) * (r.next() - 0.5) * 0.14,
+          y: pos.y + Math.sin(a) * len * t + Math.sin(a + Math.PI / 2) * (r.next() - 0.5) * 0.14,
+        });
+      }
+      plan.items.push({
+        kind: 'barricade', pts, width: 0.05,
+        label: `barricades — ${s.factionSplit.highName} against ${s.factionSplit.lowName}, since y${s.civilWarYear}`,
+      });
+    }
   },
 };
 
@@ -239,6 +360,8 @@ const Houses: LocalGenStep = {
     for (const lot of lots) {
       if (budget <= 0) break;
       if (!buildable(geo, lot.x, lot.y)) continue;
+      // a fresh burn scar is a gap the town hasn't rebuilt yet (HistoryMarks)
+      if (ctx.scars.some((sc) => (lot.x - sc.x) ** 2 + (lot.y - sc.y) ** 2 < sc.r * sc.r)) continue;
       const sizeBase = 0.11 + rng.next() * 0.07 + wealthTier * 0.03;
       plan.items.push({
         kind: 'building',
@@ -422,11 +545,13 @@ const TreesAndRuin: LocalGenStep = {
   },
 };
 
-/** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3). */
+/** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3).
+ *  HistoryMarks runs BEFORE Houses so fresh burn scars read as gaps, not overlays. */
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   TerrainStreets,
   MarketSquare,
   CivicBuildings,
+  HistoryMarks,
   Houses,
   Livelihood,
   Palisade,

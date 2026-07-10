@@ -3,7 +3,7 @@
  * back as snapshots. React renders snapshots — it never reaches into sim state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard, EventView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 import type { SimRequest, SimResponse } from '../worker/protocol';
@@ -25,6 +25,8 @@ export function useSim(initialSeed: number) {
   // reply settles its promise. Hovering never disturbs the open inspection.
   const peekSeq = useRef(0);
   const peekPending = useRef(new Map<number, (card: PeekCard | null) => void>());
+  // the close view's history-marks fetch rides the same out-of-band pattern
+  const chronPending = useRef(new Map<number, (events: EventView[]) => void>());
 
   // clear every open inspection (used on navigation that invalidates them)
   const clearInspect = useCallback(() => {
@@ -67,6 +69,9 @@ export function useSim(initialSeed: number) {
       } else if (msg.kind === 'peek') {
         peekPending.current.get(msg.token)?.(msg.card);
         peekPending.current.delete(msg.token);
+      } else if (msg.kind === 'localChronicle') {
+        chronPending.current.get(msg.token)?.(msg.events);
+        chronPending.current.delete(msg.token);
       } else if (msg.kind === 'saveList') {
         setSaves(msg.saves);
       }
@@ -135,6 +140,15 @@ export function useSim(initialSeed: number) {
       const token = ++peekSeq.current;
       peekPending.current.set(token, resolve);
       workerRef.current?.postMessage({ kind: 'peek', ref, token } satisfies SimRequest);
+    });
+  }, []);
+
+  /** One settlement's notable history — the close view's history-marks feed. */
+  const localChronicle = useCallback((id: number) => {
+    return new Promise<EventView[]>((resolve) => {
+      const token = ++peekSeq.current; // shared counter; the maps are separate
+      chronPending.current.set(token, resolve);
+      workerRef.current?.postMessage({ kind: 'localChronicle', id, token } satisfies SimRequest);
     });
   }, []);
 
@@ -207,6 +221,7 @@ export function useSim(initialSeed: number) {
     inspectRef,
     clearInspect,
     peek,
+    localChronicle,
     possess,
     release,
     inherit,

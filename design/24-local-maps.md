@@ -7,8 +7,11 @@ Location machinery.
 worldgen — the geography this builds on), `03-entity-world-data-model.md` (Location),
 `14-component-model.md`. Implementation anchors: `engine/geography.ts`,
 `engine/substrate.ts`, `engine/location.ts`, `engine/lod.ts`, `ui/terrain.ts`, `ui/MapView.tsx`.
-**Status:** L1 SHIPPED (2026-07 — `content/localmap.ts`, `ui/LocalMapView.tsx`,
-zoom-adaptive amplification in `ui/terrain.ts`; zero engine changes). L2–L4 open.
+**Status:** L1 + L3 SHIPPED (2026-07 — `content/localmap.ts`, `ui/LocalMapView.tsx`,
+zoom-adaptive amplification in `ui/terrain.ts`; L3 adds one read-only engine builder,
+`buildLocalChronicle`, interest-filtered so the TYPE vocabulary stays the pack's).
+L3 note: growth rings were deferred — the sim keeps no population history to band
+building ages from. L2 (households via the Location tree) and L4 open.
 
 ---
 
