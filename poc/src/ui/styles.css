@@ -101,7 +101,7 @@ body {
 
 h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; line-height: 1.2; }
 
-.app { display: flex; flex-direction: column; min-height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
 /* ----------------------------------------------------------- top bar ------ */
 .topbar {
@@ -162,11 +162,87 @@ button { font-family: inherit; }
 .ctl-sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
 .busy { color: var(--cyan); font-size: 12px; font-style: italic; }
 
-/* ----------------------------------------------------------- layout ------- */
-.grid {
-  display: grid; gap: 14px; padding: 16px 20px; flex: 1;
-  grid-template-columns: 1fr 1.28fr 1.06fr;
-  align-items: start;
+/* ------------------------------------------------- layout: THE STAGE ------ */
+/* The map IS the screen (the CK/Civ idiom); panels dock over it. The stage owns
+   all remaining height; each dock scrolls internally; the inspector floats. */
+:root {
+  --dock-w: 396px;
+  --stage-gap: 10px;
+}
+.stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+
+/* the map, centred in the free middle between the open docks, aspect preserved —
+   the letterbox margin is the cartographer's table, not wasted space */
+.stage-map-box {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--stage-gap);
+  transition: left 0.18s ease, right 0.18s ease;
+}
+.stage[data-left="true"] .stage-map-box { left: calc(var(--dock-w) + var(--stage-gap)); }
+.stage[data-right="true"] .stage-map-box { right: calc(var(--dock-w) + var(--stage-gap)); }
+.stage-map-box .map-wrap {
+  height: 100%; max-width: 100%; margin: 0;
+  aspect-ratio: 190 / 193; /* MUST match MAP_VB, or terrain and nodes disagree */
+}
+
+/* docks — the panels floated over the stage */
+.dock {
+  position: absolute; top: var(--stage-gap); bottom: var(--stage-gap);
+  width: var(--dock-w); z-index: 20;
+}
+.dock-left { left: var(--stage-gap); }
+.dock-right { right: var(--stage-gap); }
+.dock.closed { width: 0; }
+.dock.closed .dock-scroll { display: none; }
+.dock-scroll {
+  height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  scrollbar-width: thin;
+}
+.dock .panel { max-height: none; overflow: visible; flex: none; }
+.dock .player-panel, .dock .onboard { margin: 0; }
+/* a slim grab-tab on the dock's inner edge; when closed it hugs the screen edge */
+.dock-toggle {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 64px; z-index: 21;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(22, 25, 34, 0.94); color: var(--muted);
+  border: 1px solid var(--line); cursor: pointer; padding: 0;
+}
+.dock-toggle:hover { color: var(--gold); border-color: var(--gold-dim); }
+.dock-left .dock-toggle { right: -20px; border-radius: 0 8px 8px 0; border-left: none; }
+.dock-right .dock-toggle { left: -20px; border-radius: 8px 0 0 8px; border-right: none; }
+.dock-left.closed .dock-toggle { right: auto; left: 0; }
+.dock-right.closed .dock-toggle { left: auto; right: 0; }
+
+/* the world's vitals, floating over the top of the stage */
+.hud-chip {
+  position: absolute; top: var(--stage-gap); left: 50%; transform: translateX(-50%);
+  z-index: 15; display: flex; align-items: baseline; gap: 9px;
+  background: rgba(16, 18, 24, 0.92); border: 1px solid var(--line);
+  border-radius: var(--radius-pill); padding: 6px 18px; white-space: nowrap;
+}
+.hud-year { font-family: var(--serif); font-weight: 600; font-size: var(--fs-lg); color: var(--gold); }
+.hud-souls { color: var(--ink-dim); font-size: var(--fs-sm); }
+.hud-place { font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); }
+.hud-sep { width: 1px; align-self: stretch; background: var(--line); }
+.hud-busy { color: var(--cyan); font-size: var(--fs-xs); font-style: italic; }
+
+/* the inspector — a floating window over the stage, beside the chronicle */
+.inspector-wrap {
+  position: absolute; top: var(--stage-gap); bottom: var(--stage-gap);
+  right: calc(var(--dock-w) + var(--stage-gap) * 2 + 16px);
+  width: 420px; max-width: calc(100vw - 2 * var(--dock-w) - 60px);
+  z-index: 25; display: flex;
+  transition: right 0.18s ease;
+}
+.stage[data-right="false"] .inspector-wrap { right: calc(var(--stage-gap) + 26px); }
+.inspector-wrap[data-open="false"] { display: none; }
+.inspector-wrap .panel.inspector {
+  width: 100%; max-height: 100%; overflow: auto;
+  border-color: rgba(233, 196, 106, 0.35);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
 }
 
 .panel {
@@ -294,8 +370,10 @@ button { font-family: inherit; }
   content: ''; position: absolute; inset: 3px; border: 1px solid rgba(233, 196, 106, 0.14);
   border-radius: 7px; pointer-events: none; z-index: 5;
 }
-.map-inner { position: absolute; inset: 0; }
-.map-terrain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* will-change keeps pan/zoom on the compositor: the per-frame transform slides a
+   cached layer instead of repainting the full-screen SVG + canvas every frame */
+.map-inner { position: absolute; inset: 0; will-change: transform; }
+.map-terrain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; transform-origin: 0 0; }
 .map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: none; overflow: visible; }
 
 /* a compass rose + zoom controls, fixed over the explored view */
@@ -306,8 +384,8 @@ button { font-family: inherit; }
 .map-ctl { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 5px; z-index: 6; }
 .map-ctl button {
   width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-  background: rgba(16, 18, 24, 0.78); color: var(--gold); border: 1px solid var(--line);
-  border-radius: 7px; font-size: 16px; line-height: 1; cursor: pointer; backdrop-filter: blur(4px);
+  background: rgba(16, 18, 24, 0.92); color: var(--gold); border: 1px solid var(--line);
+  border-radius: 7px; font-size: 16px; line-height: 1; cursor: pointer;
 }
 .map-ctl button:hover { border-color: var(--gold); }
 .map-tip {
@@ -679,19 +757,187 @@ button { font-family: inherit; }
 .loading { padding: 60px 20px; color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 17px; }
 .foot { padding: 10px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 
+/* ----------------------------------------------------------- icons -------- */
+/* drawn line-art icons ride the text baseline wherever they sit */
+.icon { vertical-align: -0.18em; flex: none; }
+.shield { vertical-align: -0.3em; flex: none; }
+
+/* the topbar's quick-find button */
+.find-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--bg-2); color: var(--muted); border: 1px solid var(--line);
+  border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer; font: inherit; font-size: 13px;
+}
+.find-btn:hover { color: var(--ink); border-color: var(--cyan); }
+.find-btn kbd {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+}
+
+/* ----------------------------------------------------------- peek card ---- */
+/* the hover glance: who/what a name is, without committing to an inspection */
+.peek-card {
+  position: fixed; z-index: 80; pointer-events: none;
+  display: flex; gap: 10px; align-items: flex-start;
+  width: 264px; padding: 10px 13px;
+  background: rgba(16, 18, 24, 0.97); border: 1px solid var(--gold-dim);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.peek-card.peek-dead { border-color: var(--line); opacity: 0.92; }
+.peek-shield { margin-top: 2px; }
+.peek-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.peek-name { font-family: var(--serif); font-size: 15px; color: var(--ink); }
+.peek-dead .peek-name { color: var(--ink-dim); }
+.peek-line { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
+
+/* ----------------------------------------------------------- quick-find --- */
+.palette-veil {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(8, 9, 13, 0.55); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.palette {
+  width: min(620px, calc(100vw - 32px));
+  background: linear-gradient(180deg, var(--panel), var(--panel-deep));
+  border: 1px solid var(--gold-dim); border-radius: var(--radius);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65); overflow: hidden;
+}
+.palette-input {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid var(--line); color: var(--muted);
+}
+.palette-input input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--ink); font: inherit; font-size: 16px;
+}
+.palette-input kbd {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
+}
+.palette-empty { margin: 0; padding: 18px 16px; font-style: italic; }
+.palette-results { list-style: none; margin: 0; padding: 6px; max-height: 46vh; overflow-y: auto; }
+.palette-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: none; color: var(--ink); cursor: pointer; font: inherit;
+  padding: 9px 10px; border-radius: var(--radius-sm); text-align: left;
+}
+.palette-row.sel { background: var(--panel-3); }
+.palette-row.dim .palette-label { color: var(--ink-dim); }
+.palette-kind { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--muted); }
+.palette-kind.pk-settlement { background: var(--gold); }
+.palette-kind.pk-figure { background: var(--violet); }
+.palette-kind.pk-actor { background: var(--cyan); }
+.palette-kind.pk-culture { background: var(--jade); }
+.palette-label { font-weight: 600; white-space: nowrap; }
+.palette-sub { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.palette-group { font-size: var(--fs-2xs); color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.08em; flex: none; }
+
+/* ----------------------------------------------------------- feed tiers --- */
+/* severity tiers (RimWorld's letters): EPIC events get banner treatment, MAJOR a
+   highlighted row — the eye finds the momentous without reading every line */
+.ev.tier-major .ev-row { border-left-width: 4px; background: rgba(255, 255, 255, 0.025); color: var(--ink); }
+.ev.tier-epic .ev-row {
+  border-left-width: 4px; padding: 11px 12px;
+  font-family: var(--serif); font-size: 15px; color: var(--ink); line-height: 1.5;
+  background:
+    radial-gradient(130% 150% at 0% 0%, rgba(233, 196, 106, 0.10), transparent 60%),
+    rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+.ev.tier-epic.bad .ev-row { background: radial-gradient(130% 150% at 0% 0%, rgba(255, 123, 114, 0.10), transparent 60%), rgba(255, 255, 255, 0.02); }
+
+/* coalesced runs — one line for the pattern, expandable to its members */
+.ev-run > summary { list-style: none; }
+.ev-run > summary::-webkit-details-marker { display: none; }
+.run-row { font-style: italic; color: var(--muted); }
+.run-toggle { color: var(--cyan); font-size: 12px; font-style: normal; }
+.ev-run[open] .run-toggle { display: none; }
+.run-members { list-style: none; margin: 0 0 4px; padding: 0 0 0 14px; border-left: 2px solid var(--line-soft); margin-left: 8px; }
+
+/* ----------------------------------------------------------- era strip ---- */
+/* dots on an axis, stretched to the dock's width; titles live in <title> hovers
+   and in the list below (inline SVG labels collided into an unreadable smear) */
+.era-strip-wrap { margin: 2px 0 var(--space-2); }
+.era-strip { display: block; width: 100%; height: 34px; }
+.era-axis { stroke: var(--line); stroke-width: 1; }
+.era-tick { fill: var(--muted); font-size: 9px; font-family: var(--mono); }
+.era-dot .era-dot-mark { fill: var(--gold); stroke: rgba(8, 9, 13, 0.8); stroke-width: 1; }
+.era-dot.clickable { cursor: pointer; }
+.era-dot.clickable:hover .era-dot-mark, .era-dot.clickable:focus-visible .era-dot-mark { fill: var(--cyan); }
+
+/* ----------------------------------------------------------- rankings ----- */
+.rank-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.rank-list li {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 2px; border-bottom: 1px solid var(--line-soft); font-size: var(--fs-sm);
+}
+.rank-n {
+  width: 20px; flex: none; text-align: right;
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
+}
+.rank-n.rank-1 { color: var(--gold); font-weight: 700; }
+.rank-n.rank-2 { color: var(--parchment); font-weight: 600; }
+.rank-n.rank-3 { color: var(--amber); font-weight: 600; }
+.rank-val { margin-left: auto; font-family: var(--mono); font-size: var(--fs-xs); color: var(--gold-dim); }
+
+/* ----------------------------------------------------------- map lenses --- */
+/* NB: no backdrop-filter on anything that sits over the terrain canvas — re-blurring
+   a repainting bitmap is what made the map crawl. Opaque-ish backgrounds instead. */
+.map-lenses { position: absolute; top: 8px; left: 8px; z-index: 6; background: rgba(16, 18, 24, 0.92); }
+.map-legend {
+  position: absolute; left: 8px; bottom: 8px; z-index: 6;
+  display: flex; flex-wrap: wrap; gap: 3px 6px; max-width: 70%;
+}
+.legend-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(16, 18, 24, 0.92); color: var(--ink-dim);
+  border: 1px solid var(--line); border-radius: var(--radius-pill);
+  padding: 3px 10px; font: inherit; font-size: var(--fs-2xs); cursor: pointer;
+}
+.legend-chip:not(.static):hover { border-color: var(--cyan); color: var(--ink); }
+.legend-chip.static, .legend-chip:disabled { cursor: default; }
+
+/* ----------------------------------------------------------- houses w/arms  */
+.houses li { display: flex; gap: 10px; align-items: flex-start; }
+.house-arms { margin-top: 3px; }
+.house-body { min-width: 0; }
+.house-title { display: flex; align-items: center; gap: 10px; }
+
+/* inspector back/forward trail */
+.inspector-head { align-items: center; }
+.inspector-nav { display: inline-flex; gap: 4px; margin-right: 4px; }
+.nav-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0;
+  background: var(--panel-2); color: var(--ink-dim); border: 1px solid var(--line);
+  border-radius: var(--radius-xs); cursor: pointer;
+}
+.nav-btn:hover:not(:disabled) { color: var(--gold); border-color: var(--gold-dim); }
+.nav-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* attention lines with a verb on them */
+.att-item .att-act {
+  margin-left: auto; flex: none;
+  background: var(--panel-3); color: var(--cyan); border: 1px solid var(--line);
+  border-radius: var(--radius-xs); padding: 3px 10px; cursor: pointer; font: inherit; font-size: var(--fs-xs);
+}
+.att-item .att-act:hover:not(:disabled) { border-color: var(--cyan); }
+.att-item .att-act:disabled { opacity: 0.45; cursor: default; }
+
 /* ----------------------------------------------------------- bottom nav --- */
 .bottombar { display: none; }
 
-/* ===================== TABLET (821–1180px): two columns ===================== */
-/* Three columns get cramped below ~1180px (the dense dashboard wraps badly while the
-   inspector sits half-empty). Drop to two: the dashboard down the left, the feed and
-   the on-demand inspector stacked on the right; the page scrolls as one. */
+/* ===================== TABLET (821–1180px): narrower docks ================== */
+/* The stage survives, the docks slim down, and the inspector floats over the
+   middle rather than beside the chronicle (there isn't room for three). */
 @media (min-width: 821px) and (max-width: 1180px) {
-  .grid { grid-template-columns: 1.05fr 0.95fr; gap: var(--space-3); }
-  .grid > .dashboard { grid-column: 1; grid-row: 1 / span 2; }
-  .grid > .feed { grid-column: 2; grid-row: 1; }
-  .grid > .inspector { grid-column: 2; grid-row: 2; }
-  .grid > .panel { max-height: none; }
+  :root { --dock-w: 336px; }
+  .inspector-wrap {
+    right: auto; left: 50%; transform: translateX(-50%);
+    width: min(430px, calc(100vw - 80px)); max-width: none;
+  }
+  .stage[data-right="false"] .inspector-wrap { right: auto; }
 }
 
 /* ============================ MOBILE (<= 820px) ============================ */
@@ -715,14 +961,31 @@ button { font-family: inherit; }
   .controls .btn-primary { order: -1; } /* Forge at the top of the sheet */
   .time-inline, .ctl-sep { display: none; } /* time lives in the bottom bar */
 
-  /* one column; the active tab is the only visible panel */
-  .grid { grid-template-columns: 1fr; padding: 12px 12px 150px; gap: 0; }
-  .grid > .panel { display: none; max-height: none; box-shadow: none; border-radius: var(--radius); }
-  .grid[data-tab="world"] .dashboard,
-  .grid[data-tab="chronicle"] .feed,
-  .grid[data-tab="inspector"] .inspector { display: block; }
+  /* the stage flattens to a scrolling column; the active tab picks what's visible */
+  .stage { position: static; overflow: visible; flex: 1; overflow-y: auto; padding-bottom: 150px; }
+  .stage-map-box { position: static; display: none; padding: 12px 12px 0; transition: none; }
+  .stage-map-box .map-wrap { width: 100%; height: auto; aspect-ratio: 190 / 193; }
+  .hud-chip {
+    position: static; transform: none; display: none;
+    margin: 10px 12px 0; justify-content: center; border-radius: var(--radius-sm);
+  }
+  .dock { position: static; width: auto; display: none; }
+  .dock.closed { width: auto; }
+  .dock.closed .dock-scroll { display: flex; } /* collapse is a desktop affordance */
+  .dock-toggle { display: none; }
+  .dock-scroll { height: auto; overflow: visible; padding: 12px 12px 0; }
+  .inspector-wrap { position: static; width: auto; max-width: none; display: none; padding: 12px 12px 0; transition: none; }
+  .inspector-wrap .panel.inspector { max-height: none; overflow: visible; box-shadow: none; }
 
-  .player-panel, .onboard { margin: 12px 12px 0; }
+  .stage[data-tab="world"] .stage-map-box { display: block; }
+  .stage[data-tab="world"] .hud-chip { display: flex; }
+  .stage[data-tab="world"] .dock-left { display: block; }
+  .stage[data-tab="chronicle"] .dock-right { display: block; }
+  .stage[data-tab="inspector"] .inspector-wrap { display: block; }
+  .stage[data-tab="inspector"] .inspector-wrap[data-open="false"] { display: block; } /* the empty state teaches */
+
+  .player-panel, .onboard { margin: 0; }
+  .find-btn .find-label, .find-btn kbd { display: none; }
   .foot { display: none; }
 
   /* generous tap targets on touch screens */

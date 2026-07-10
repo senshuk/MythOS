@@ -17,6 +17,7 @@ import {
   inspectCulture,
   inspectDeity,
   inspectFeature,
+  buildPeek,
   focusSettlement,
   setStoryteller,
   possess,
@@ -198,6 +199,14 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       ctx.postMessage({
         kind: 'featureDetail',
         detail: world ? inspectFeature(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'peek': {
+      ctx.postMessage({
+        kind: 'peek',
+        token: msg.token,
+        card: world ? buildPeek(world, msg.ref) ?? null : null,
       });
       break;
     }

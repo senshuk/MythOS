@@ -7,6 +7,7 @@ import { useState } from 'react';
 import type { EventRef, PlayerView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { TYPE_TONE, onActivate, EventText } from './common';
+import { Glyph, Icon, TONE_ICON } from './icons';
 
 /** A framed choice with option buttons — shared by the world's decisions and an ambition's next
  *  step. Each option is an Intent taken through the normal player turn. */
@@ -58,7 +59,7 @@ function AmbitionBanner({
       {ambition && (
         <div className={`ambition-active${resolved ? ` amb-${ambition.outcome}` : ''}`}>
           <div className="ambition-head">
-            <span className="amb-tag">⚑ Ambition</span>
+            <span className="amb-tag"><Icon name="flag" size={0.9} /> Ambition</span>
             <span className="amb-label">{ambition.label}</span>
             {!resolved && (
               <button className="link amb-abandon" onClick={onAbandon} disabled={busy} title="let this ambition go">
@@ -80,7 +81,7 @@ function AmbitionBanner({
       )}
       {offered.length > 0 && (
         <div className="ambition-choose">
-          <span className="amb-tag">⚑ {ambition ? 'Set your next ambition' : 'What will you make of this life?'}</span>
+          <span className="amb-tag"><Icon name="flag" size={0.9} /> {ambition ? 'Set your next ambition' : 'What will you make of this life?'}</span>
           <div className="amb-offers">
             {offered.map((o) => (
               <button key={o.id} className="amb-offer" onClick={() => onChoose(o.id, o.target)} disabled={busy} title={o.hint}>
@@ -94,10 +95,8 @@ function AmbitionBanner({
   );
 }
 
-const STORY_ICON: Record<string, string> = {
-  married: '💍', friendship: '🤝', feud: '⚔', rivalry: '⚔', born: '👶', died: '⚰',
-  ascension: '👑', dynasty: '👑', goal_met: '✓', brawl: '⚔', widowed: '🖤', exile: '🚪',
-};
+/** A story beat's icon, from the shared drawn set (used to be emoji). */
+const beatIcon = (tone: string) => <Icon name={TONE_ICON[tone] ?? 'dot'} />;
 
 /** A block of live threads — present tensions, beliefs, opportunities, or worries. Each is a short
  *  line, clickable when it points at a person. Hidden when empty unless an `emptyText` is given. */
@@ -112,7 +111,7 @@ function Threads({ head, items, onRef, emptyText }: { head: string; items: Tensi
       <ul className="tensions">
         {items.map((t, i) => (
           <li key={i} className="tension">
-            <span className="t-icon" aria-hidden="true">{t.icon}</span>{' '}
+            <span className="t-icon" aria-hidden="true"><Glyph glyph={t.icon} /></span>{' '}
             {t.ref ? (
               <span
                 className="ev-inspect"
@@ -145,7 +144,7 @@ function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
       <ul className="wv-list">
         {items.map((t, i) => (
           <li key={i} className={`wv-item c-${t.certainty ?? 'known'}`}>
-            <span className="wv-icon" aria-hidden="true">{t.icon}</span>{' '}
+            <span className="wv-icon" aria-hidden="true"><Glyph glyph={t.icon} /></span>{' '}
             {t.ref ? (
               <span
                 className="ev-inspect"
@@ -167,8 +166,9 @@ function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
 }
 
 /** WHAT DESERVES MY ATTENTION — one feed, sorted by importance, notification-style. People, changes,
- *  openings and worries merged (design/21 §7). Replaces four sections and the cast row. */
-function Attention({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) => void }) {
+ *  openings and worries merged (design/21 §7). Where a line has an obvious response, the verb sits
+ *  ON the notification (CK's action items) and flows through the ordinary player turn. */
+function Attention({ items, onRef, onAct, busy }: { items: Tension[]; onRef: (ref: EventRef) => void; onAct: (i: Intent) => void; busy: boolean }) {
   if (items.length === 0) return null;
   return (
     <div className="attention">
@@ -176,7 +176,7 @@ function Attention({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
       <ul className="att-list">
         {items.map((t, i) => (
           <li key={i} className="att-item">
-            <span className="att-icon" aria-hidden="true">{t.icon}</span>
+            <span className="att-icon" aria-hidden="true"><Glyph glyph={t.icon} /></span>
             {t.ref ? (
               <span
                 className="ev-inspect"
@@ -189,6 +189,16 @@ function Attention({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
               </span>
             ) : (
               <span>{t.text}</span>
+            )}
+            {t.action && (
+              <button
+                className="att-act"
+                onClick={() => onAct(t.action!.intent)}
+                disabled={busy}
+                title={`${t.action.label} — spends your week, like any action`}
+              >
+                {t.action.label} ▸
+              </button>
             )}
           </li>
         ))}
@@ -214,7 +224,7 @@ function Journal({ player, onRef }: { player: PlayerView; onRef: (ref: EventRef)
             <ul className="story-beats">
               {player.story.slice(-12).reverse().map((b, i) => (
                 <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
-                  <span className="beat-icon" aria-hidden="true">{STORY_ICON[b.tone] ?? '•'}</span> <EventText parts={b.parts} onRef={onRef} />
+                  <span className="beat-icon" aria-hidden="true">{beatIcon(b.tone)}</span> <EventText parts={b.parts} onRef={onRef} />
                   {b.note && <span className="muted"> — {b.note}</span>}
                 </li>
               ))}
@@ -266,7 +276,7 @@ export function PlayerPanel({
     <section className="panel player-panel">
       <div className="player-head">
         <div>
-          <span className="player-tag">▶ Playing as</span>{' '}
+          <span className="player-tag"><Icon name="play" size={0.85} /> Playing as</span>{' '}
           <button className="link strong" onClick={() => onInspect(player.id)}>
             {player.name}
           </button>{' '}
@@ -409,7 +419,7 @@ export function PlayerPanel({
           </div>
 
           {/* QUESTION 2 — one feed, people and events merged, sorted by importance. */}
-          <Attention items={player.attention} onRef={onRef} />
+          <Attention items={player.attention} onRef={onRef} onAct={onAct} busy={busy} />
 
           {/* QUESTION 3 — what you currently believe to be true. Everything else is one click away. */}
           <WorldView items={player.belief} onRef={onRef} />
@@ -423,7 +433,7 @@ export function PlayerPanel({
           <ul className="story-beats">
             {player.story.slice(-12).reverse().map((b, i) => (
               <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
-                <span className="beat-icon" aria-hidden="true">{STORY_ICON[b.tone] ?? '•'}</span> <EventText parts={b.parts} onRef={onRef} />
+                <span className="beat-icon" aria-hidden="true">{beatIcon(b.tone)}</span> <EventText parts={b.parts} onRef={onRef} />
                 {b.note && <span className="muted"> — {b.note}</span>}
               </li>
             ))}

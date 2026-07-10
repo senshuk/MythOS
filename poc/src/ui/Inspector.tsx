@@ -7,6 +7,17 @@ import { Fragment } from 'react';
 import type { EventView, EventRef, SettlementView, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail } from '../engine/model';
 import { layoutLineage, LINEAGE_METRICS } from './lineageLayout';
 import { onActivate, EventText } from './common';
+import { HouseShield } from './heraldry';
+import { Icon } from './icons';
+
+/** Browser-style trail through inspections — walk a cause chain three deep and still
+ *  find your way back (every legends browser learned this the hard way). */
+export interface InspectorNav {
+  back: () => void;
+  forward: () => void;
+  canBack: boolean;
+  canForward: boolean;
+}
 
 type HouseMember = HouseDetail['members'][number];
 
@@ -34,7 +45,7 @@ function LineageTree({ members, onRef }: { members: HouseMember[]; onRef: (r: Ev
     return (
       <li key={m.id} className="lineage-node">
         <span className="lineage-head">
-          {m.isFounder ? <span className="lineage-mark" title="founder of the line">⚑ </span> : m.isSeat ? <span className="lineage-mark" title="the living head — holds the seat">👑 </span> : null}
+          {m.isFounder ? <span className="lineage-mark" title="founder of the line"><Icon name="flag" size={0.85} /> </span> : m.isSeat ? <span className="lineage-mark" title="the living head — holds the seat"><Icon name="crown" size={0.85} /> </span> : null}
           <button className="link" onClick={() => onRef({ kind: 'figure', id: m.id })}>{m.name}</button>
           {m.spouses.length > 0 && (
             <span className="muted"> ⚭ {m.spouses.map((s, i) => (
@@ -97,6 +108,7 @@ export function Inspector({
   featureDetail,
   settlements,
   playerId,
+  nav,
   onPickActor,
   onPickEvent,
   onRef,
@@ -114,6 +126,7 @@ export function Inspector({
   featureDetail: FeatureDetail | null;
   settlements: SettlementView[];
   playerId?: number;
+  nav?: InspectorNav;
   onPickActor: (id: number) => void;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
@@ -153,6 +166,16 @@ export function Inspector({
   return (
     <section className="panel inspector">
       <div className="inspector-head">
+        {nav && (
+          <span className="inspector-nav">
+            <button className="nav-btn" onClick={nav.back} disabled={!nav.canBack} title="back" aria-label="back">
+              <Icon name="back" />
+            </button>
+            <button className="nav-btn" onClick={nav.forward} disabled={!nav.canForward} title="forward" aria-label="forward">
+              <Icon name="forward" />
+            </button>
+          </span>
+        )}
         <h2>A closer look</h2>
         <button className="link" onClick={onClose}>
           close
@@ -336,7 +359,10 @@ export function Inspector({
 
       {houseDetail && (
         <div>
-          <h3>House {houseDetail.name}{houseDetail.meaning ? <span className="house-gloss"> · {houseDetail.meaning}</span> : null}</h3>
+          <h3 className="house-title">
+            <HouseShield id={houseDetail.id} name={houseDetail.name} size={30} title={`arms of House ${houseDetail.name}`} />
+            <span>House {houseDetail.name}{houseDetail.meaning ? <span className="house-gloss"> · {houseDetail.meaning}</span> : null}</span>
+          </h3>
           <p className="muted">
             founded y{houseDetail.foundedYear}
             {houseDetail.founder ? <> by <button className="link" onClick={() => onRef({ kind: 'figure', id: houseDetail.founder!.id })}>{houseDetail.founder.name}</button></> : ''}

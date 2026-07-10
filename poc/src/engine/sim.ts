@@ -31,6 +31,8 @@ import {
   type NeedFeel,
   type OrgId,
   type OrgIntentView,
+  type EventRef,
+  type PeekCard,
   DAYS_PER_YEAR,
 } from './model';
 import { type Intent } from './intent';
@@ -492,6 +494,112 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
     .filter((ev): ev is WorldEvent => ev !== undefined)
     .map((ev) => eventView(world, ev));
   return { settlementId: id, events };
+}
+
+/**
+ * A tiny at-a-glance card for a HOVERED entity link — who/what something is in a line
+ * or three, without the cost (or the commitment) of a full inspection. Deliberately
+ * much lighter than the *Detail builders: no event scans, no relationship walks.
+ */
+export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
+  switch (ref.kind) {
+    case 'actor': {
+      if (!world.identity.has(ref.id)) return undefined;
+      const a = actorView(world, ref.id);
+      return {
+        kind: 'actor',
+        name: a.name,
+        lines: [
+          `${a.species} ${a.profession} · ${a.ageYears}y${a.alive ? '' : ` · died y${a.deathYear}`}`,
+          `of House ${a.house} · ${a.nature}`,
+        ],
+        houseId: a.houseId,
+        houseName: a.house,
+        dead: !a.alive,
+      };
+    }
+    case 'figure': {
+      const fig = world.figuresById.get(ref.id);
+      if (!fig) return undefined;
+      const house = houseById(world, fig.houseId);
+      return {
+        kind: 'figure',
+        name: fig.name,
+        lines: [
+          `${fig.role} of ${world.settlements[fig.settlementId]?.name ?? '?'}`,
+          `b.y${fig.bornYear}${fig.deathYear !== undefined ? `–y${fig.deathYear}` : ''} · ${fig.deathYear !== undefined ? `r.y${fig.reignStart}–y${fig.reignEnd ?? fig.deathYear}` : `reigning since y${fig.reignStart}`}`,
+        ],
+        houseId: fig.houseId,
+        houseName: house?.name,
+        dead: fig.deathYear !== undefined,
+      };
+    }
+    case 'house': {
+      const house = world.houses.find((h) => h.id === ref.id);
+      if (!house) return undefined;
+      const meaning = world.houseMeaning.get(house.name);
+      const seat = house.seatSettlementId !== undefined ? world.settlements[house.seatSettlementId]?.name : undefined;
+      return {
+        kind: 'house',
+        name: `House ${house.name}`,
+        lines: [
+          `${meaning ? `“${meaning}” · ` : ''}founded y${house.foundedYear} · ${Math.round(house.prestige)} renown`,
+          house.extinctYear !== undefined ? `fallen, y${house.extinctYear}` : seat ? `rules ${seat}` : 'out of power',
+        ],
+        houseId: house.id,
+        houseName: house.name,
+        dead: house.extinctYear !== undefined,
+      };
+    }
+    case 'settlement': {
+      const s = world.settlements[ref.id];
+      if (!s) return undefined;
+      const pop = s.detailed ? fullActors(world).length : s.macro.population;
+      return {
+        kind: 'settlement',
+        name: s.name,
+        lines: [
+          s.ruinedYear !== undefined
+            ? `a ruin · fell y${s.ruinedYear}`
+            : `${pop.toLocaleString()} souls · ${cultureById(s.cultureId).name}`,
+          `founded y${s.foundedYear}`,
+        ],
+        dead: s.ruinedYear !== undefined,
+      };
+    }
+    case 'culture': {
+      const c = cultureById(ref.id);
+      if (c.id !== ref.id) return undefined;
+      const towns = world.settlements.filter((s) => s.ruinedYear === undefined && s.cultureId === ref.id).length;
+      return {
+        kind: 'culture',
+        name: c.name,
+        lines: [
+          worldviewReading(worldviewFromValues(c.values as Record<ValueAxis, number>)),
+          `${towns} living ${towns === 1 ? 'town' : 'towns'}`,
+        ],
+      };
+    }
+    case 'deity': {
+      const d = deityById(ref.id);
+      if (d.id !== ref.id) return undefined;
+      let faithful = 0;
+      for (const f of world.faith.values()) if (f === ref.id) faithful++;
+      return { kind: 'deity', name: d.name, lines: [`god of ${d.domain}`, `${faithful} faithful`] };
+    }
+    case 'feature': {
+      const sub = world.substrate;
+      if (!(sub instanceof SurfaceSubstrate)) return undefined;
+      const feature = sub.geography.features.find((f) => f.index === ref.id);
+      if (!feature) return undefined;
+      const named = featureName(world.seed, feature);
+      return {
+        kind: 'feature',
+        name: named.name,
+        lines: [`a ${feature.kind === 'range' ? 'mountain range' : feature.kind}${named.meaning ? ` · “${named.meaning}”` : ''}`],
+      };
+    }
+  }
 }
 
 /** Build the legible reasoning view from an org's stored decision — stable factor/fact ids
@@ -1113,7 +1221,16 @@ function buildAttention(
   for (const c of cast) {
     const roleCap = c.role.charAt(0).toUpperCase() + c.role.slice(1);
     const hot = /rival|feud|enemy/.test(c.role) || c.role === 'spouse' || c.role === 'child' || c.role === 'parent';
-    items.push({ t: { icon: c.icon, text: `${roleCap} — ${c.status}`, ref: { kind: c.kind, id: c.id } }, w: hot ? 5 : 3, i: i++ });
+    // when the line has an obvious response, put the verb ON the notification (an
+    // affordance, taken through the ordinary player turn) — living co-residents only.
+    let action: Tension['action'];
+    if (c.kind === 'actor') {
+      const verbs = PLAYER_VOICE.attention;
+      if (/rival|feud|enemy/.test(c.role)) action = { label: verbs.confront, intent: { kind: 'provoke', target: c.id } };
+      else if (c.role === 'courting') action = { label: verbs.court, intent: { kind: 'court', target: c.id } };
+      else if (c.role === 'spouse' || c.role === 'ally') action = { label: verbs.spendTime, intent: { kind: 'socialize', target: c.id } };
+    }
+    items.push({ t: { icon: c.icon, text: `${roleCap} — ${c.status}`, ref: { kind: c.kind, id: c.id }, action }, w: hot ? 5 : 3, i: i++ });
   }
   for (const t of threats) items.push({ t, w: 4, i: i++ }); // worries deserve attention
   for (const t of tensions) items.push({ t, w: 3, i: i++ }); // what's changing

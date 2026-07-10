@@ -481,6 +481,12 @@ export interface PlayerVoice {
     rulerNewlyRisen: string;
     rulerSeated: string;
   };
+  /** ATTENTION VERBS — the obvious response, put on the notification itself. */
+  attention: {
+    confront: string; // a rival's line → provoke
+    spendTime: string; // a spouse's/ally's line → socialize
+    court: string; // the one you hope to wed → court
+  };
   /** THE LINE — death as a transition (the Dynasty step of the gameplay loop). */
   succession: {
     /** who the heir was to the one who died — shown beside their name in the handoff */
@@ -573,6 +579,11 @@ export const PLAYER_VOICE: PlayerVoice = {
     rulerLongReigning: 'long-reigning',
     rulerNewlyRisen: 'newly risen',
     rulerSeated: 'on the throne',
+  },
+  attention: {
+    confront: 'Confront',
+    spendTime: 'Spend time',
+    court: 'Press your suit',
   },
   succession: {
     relation: { child: 'your eldest child', spouse: 'your widowed spouse', sibling: 'your closest sibling' },

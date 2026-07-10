@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import type { EventPart, EventRef } from '../engine/model';
 import { CULTURES } from '../engine/pack';
+import { usePeek } from './peek';
 
 export const TYPE_TONE: Record<string, string> = {
   born: 'good',
@@ -84,8 +85,10 @@ export function usePersistentState<T>(key: string, initial: T): [T, (v: T | ((p:
 export const cultureColor = (id: string) => CULTURES.find((c) => c.id === id)?.color ?? '#8a8f9e';
 export const cultureName = (id: string) => CULTURES.find((c) => c.id === id)?.name ?? id;
 
-/** Renders an event's prose with its named settlements & people as clickable links. */
+/** Renders an event's prose with its named settlements & people as clickable links.
+ *  Hovering a name floats a peek card (via the PeekLayer); clicking inspects. */
 export function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef) => void }) {
+  const peek = usePeek();
   return (
     <>
       {parts.map((p, i) =>
@@ -95,9 +98,11 @@ export function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: E
             className={`ent ent-${p.ref.kind}`}
             onClick={(e) => {
               e.stopPropagation();
+              peek.hide();
               onRef(p.ref!);
             }}
-            title={`inspect this ${p.ref.kind}`}
+            onMouseEnter={(e) => peek.show(p.ref!, e)}
+            onMouseLeave={peek.hide}
           >
             {p.text}
           </button>

@@ -5,7 +5,7 @@
  * keeps the UI a pure function of state, and leaves the door open to replay and
  * (eventually) multiplayer.
  */
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 
@@ -24,6 +24,9 @@ export type SimRequest =
   | { kind: 'inspectCulture'; id: string }
   | { kind: 'inspectDeity'; id: string }
   | { kind: 'inspectFeature'; id: number }
+  // a hover peek — a tiny card, separate from the inspector so hovering never
+  // disturbs what the player has open. `token` pairs the reply with its request.
+  | { kind: 'peek'; ref: EventRef; token: number }
   // --- player-as-actor control loop ---
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
@@ -46,4 +49,5 @@ export type SimResponse =
   | { kind: 'cultureDetail'; detail: CultureDetail | null }
   | { kind: 'deityDetail'; detail: DeityDetail | null }
   | { kind: 'featureDetail'; detail: FeatureDetail | null }
+  | { kind: 'peek'; token: number; card: PeekCard | null }
   | { kind: 'saveList'; saves: SaveMeta[] };

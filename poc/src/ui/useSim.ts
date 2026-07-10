@@ -3,7 +3,7 @@
  * back as snapshots. React renders snapshots — it never reaches into sim state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 import type { SimRequest, SimResponse } from '../worker/protocol';
@@ -21,6 +21,10 @@ export function useSim(initialSeed: number) {
   const [featureDetail, setFeatureDetail] = useState<FeatureDetail | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [busy, setBusy] = useState(false);
+  // hover peeks resolve out-of-band: each request carries a token; the matching
+  // reply settles its promise. Hovering never disturbs the open inspection.
+  const peekSeq = useRef(0);
+  const peekPending = useRef(new Map<number, (card: PeekCard | null) => void>());
 
   // clear every open inspection (used on navigation that invalidates them)
   const clearInspect = useCallback(() => {
@@ -60,6 +64,9 @@ export function useSim(initialSeed: number) {
         setDeityDetail(msg.detail);
       } else if (msg.kind === 'featureDetail') {
         setFeatureDetail(msg.detail);
+      } else if (msg.kind === 'peek') {
+        peekPending.current.get(msg.token)?.(msg.card);
+        peekPending.current.delete(msg.token);
       } else if (msg.kind === 'saveList') {
         setSaves(msg.saves);
       }
@@ -121,6 +128,15 @@ export function useSim(initialSeed: number) {
     else if (ref.kind === 'feature') inspectFeature(ref.id);
     else inspectSettlement(ref.id);
   }, [inspectActor, inspectFigure, inspectSettlement, inspectHouse, inspectCulture, inspectDeity, inspectFeature]);
+
+  /** Ask the worker for a hover card. Resolves null for anything unknown. */
+  const peek = useCallback((ref: EventRef) => {
+    return new Promise<PeekCard | null>((resolve) => {
+      const token = ++peekSeq.current;
+      peekPending.current.set(token, resolve);
+      workerRef.current?.postMessage({ kind: 'peek', ref, token } satisfies SimRequest);
+    });
+  }, []);
 
   const possess = useCallback((actorId: number) => {
     setBusy(true);
@@ -190,6 +206,7 @@ export function useSim(initialSeed: number) {
     inspectFeature,
     inspectRef,
     clearInspect,
+    peek,
     possess,
     release,
     inherit,

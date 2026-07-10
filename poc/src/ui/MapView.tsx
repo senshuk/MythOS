@@ -3,14 +3,27 @@
  * roads, hostile marches and culture-coloured settlement nodes on top. All the
  * canvas painting and pointer gymnastics live here, out of the shell's way.
  */
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { RegionMapView } from '../engine/model';
+import type { RegionMapView, SettlementView, EventRef } from '../engine/model';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
 import { featureName } from '../engine/pack';
-import { cultureColor, cultureName } from './common';
+import { cultureColor, cultureName, usePersistentState } from './common';
+
+/** The map's LENSES (Civ's overlay idiom): one question at a time — whose land is
+ *  this (culture), whose gods (faith), where war smoulders, where trade flows. */
+type Lens = 'culture' | 'faith' | 'war' | 'trade';
+const LENSES: { id: Lens; label: string }[] = [
+  { id: 'culture', label: 'Culture' },
+  { id: 'faith', label: 'Faith' },
+  { id: 'war', label: 'War' },
+  { id: 'trade', label: 'Trade' },
+];
+
+/** A stable, distinct colour per deity — golden-angle hues so any count stays legible. */
+const deityColor = (index: number) => `hsl(${Math.round((index * 137.5) % 360)} 52% 64%)`;
 
 const MAP_VB = { x: -10, y: -12, w: 190, h: 193 };
 // fallbacks so the backdrop always matches the WORLD's substrate, whatever skin is picked:
@@ -22,15 +35,22 @@ export function RegionMap({
   map,
   seed,
   focusedId,
+  settlements,
   onInspect,
+  onRef,
   busy,
 }: {
   map: RegionMapView;
   seed: number;
   focusedId: number;
+  /** full settlement views, for the lenses that need more than the node (faith). */
+  settlements: SettlementView[];
   onInspect: (id: number) => void;
+  /** legend chips inspect what they name (a culture, a deity). */
+  onRef?: (ref: EventRef) => void;
   busy: boolean;
 }) {
+  const [lens, setLens] = usePersistentState<Lens>('mythos.map.lens', 'culture');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
@@ -69,41 +89,72 @@ export function RegionMap({
     if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
   }, [seed, sub]);
 
-  // a SURFACE world re-paints the VISIBLE region at native resolution whenever the view
-  // changes — so zooming reveals real detail instead of upscaling a fixed bitmap (no blur).
-  useEffect(() => {
+  // a SURFACE world re-paints the VISIBLE region at native resolution — but NOT on every
+  // pan/zoom frame (that repainted the full canvas ~60×/s and made the map crawl). During
+  // a gesture the already-painted bitmap just rides a cheap CSS transform; when the view
+  // settles (~160ms quiet) one native-resolution repaint lands and the transform resets.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const paintedView = useRef<{ s: number; x: number; y: number } | null>(null);
+  const repaintTimer = useRef<number | undefined>(undefined);
+
+  const paintSurface = useCallback(() => {
     if (!(sub instanceof SurfaceSubstrate) || !SURF_THEME) return;
-    const paint = () => {
-      const c = canvasRef.current;
-      const wrap = wrapRef.current;
-      if (!c || !wrap) return;
-      const rect = wrap.getBoundingClientRect();
-      if (rect.width < 2) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      c.width = Math.min(1600, Math.round(rect.width * dpr));
-      c.height = Math.min(1600, Math.round(rect.height * dpr));
-      // the world rectangle currently visible through the zoom/pan transform
-      const s = view.s;
-      const vb = {
-        x: MAP_VB.x + (-view.x / s) * (MAP_VB.w / rect.width),
-        y: MAP_VB.y + (-view.y / s) * (MAP_VB.h / rect.height),
-        w: MAP_VB.w / s,
-        h: MAP_VB.h / s,
-      };
-      paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
+    const c = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!c || !wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width < 2) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.min(1600, Math.round(rect.width * dpr));
+    c.height = Math.min(1600, Math.round(rect.height * dpr));
+    // the world rectangle currently visible through the zoom/pan transform
+    const v = viewRef.current;
+    const vb = {
+      x: MAP_VB.x + (-v.x / v.s) * (MAP_VB.w / rect.width),
+      y: MAP_VB.y + (-v.y / v.s) * (MAP_VB.h / rect.height),
+      w: MAP_VB.w / v.s,
+      h: MAP_VB.h / v.s,
     };
-    const id = requestAnimationFrame(paint);
-    window.addEventListener('resize', paint); // keep the bitmap at the box's native size
+    paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
+    paintedView.current = { ...v };
+    c.style.transform = '';
+  }, [sub, mapLabels]);
+
+  useEffect(() => {
+    if (!(sub instanceof SurfaceSubstrate)) return;
+    const id = requestAnimationFrame(paintSurface);
+    window.addEventListener('resize', paintSurface); // keep the bitmap at the box's native size
+    // the stage's docks collapse without a window resize — watch the box itself
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => paintSurface()) : undefined;
+    if (wrapRef.current) ro?.observe(wrapRef.current);
     // repaint when the tab returns to the foreground (rAF is paused while hidden, which
     // would otherwise leave a stale/blank terrain until the next view change)
-    const onVisible = () => document.visibilityState === 'visible' && paint();
+    const onVisible = () => document.visibilityState === 'visible' && paintSurface();
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelAnimationFrame(id);
-      window.removeEventListener('resize', paint);
+      window.removeEventListener('resize', paintSurface);
+      ro?.disconnect();
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [seed, sub, view, mapLabels]);
+  }, [seed, sub, paintSurface]);
+
+  // pan/zoom: slide the painted bitmap now, repaint at native resolution once settled
+  useEffect(() => {
+    if (!(sub instanceof SurfaceSubstrate)) return;
+    const c = canvasRef.current;
+    const p = paintedView.current;
+    if (c && p && (p.s !== view.s || p.x !== view.x || p.y !== view.y)) {
+      // T such that T∘painted = current: scale a = s/pₛ, then translate the residue
+      const a = view.s / p.s;
+      c.style.transformOrigin = '0 0';
+      c.style.transform = `translate(${view.x - a * p.x}px, ${view.y - a * p.y}px) scale(${a})`;
+    }
+    window.clearTimeout(repaintTimer.current);
+    repaintTimer.current = window.setTimeout(paintSurface, 160);
+    return () => window.clearTimeout(repaintTimer.current);
+  }, [view, sub, paintSurface]);
 
   // reset the explored view when the world or skin changes
   useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed]);
@@ -185,7 +236,29 @@ export function RegionMap({
     [sub],
   );
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
-  const radius = (pop: number) => 1.7 + 3.4 * Math.sqrt(pop / maxPop);
+  const radius = (pop: number) => 1.0 + 2.1 * Math.sqrt(pop / maxPop);
+
+  // the FAITH lens joins each node to its settlement's patron deity; deity colours are
+  // assigned in a stable order so the same god keeps its hue across worlds and lenses.
+  const settById = useMemo(() => new Map(settlements.map((s) => [s.id, s])), [settlements]);
+  const deities = useMemo(() => {
+    const seen = new Map<string, string>(); // id -> name
+    for (const s of settlements) if (s.patronDeity && !seen.has(s.patronDeity.id)) seen.set(s.patronDeity.id, s.patronDeity.name);
+    return [...seen.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([id, name], i) => ({ id, name, color: deityColor(i) }));
+  }, [settlements]);
+  const deityColorById = useMemo(() => new Map(deities.map((d) => [d.id, d.color])), [deities]);
+
+  /** a node's fill under the active lens */
+  const nodeColor = (nId: number, cultureId: string): string => {
+    if (lens === 'faith') {
+      const pd = settById.get(nId)?.patronDeity;
+      return (pd && deityColorById.get(pd.id)) || '#8a8f9e';
+    }
+    if (lens === 'war' || lens === 'trade') return '#767c8a'; // the lens's lines carry the story
+    return cultureColor(cultureId);
+  };
+
+  const maxTrade = Math.max(1, ...map.edges.map((e) => e.tradeVolume));
   // on a big, busy map only the GREATEST cities are labelled (others are dots with a
   // hover name) — zoom in to read them all, like a world atlas.
   const labelIds = new Set(
@@ -230,7 +303,8 @@ export function RegionMap({
             />
           ))}
           {/* ROADS: the physical links between peaceful settlements — overland roads hug
-              the valleys, sea lanes cross the water (design: RimWorld draws world roads). */}
+              the valleys, sea lanes cross the water (design: RimWorld draws world roads).
+              Under the war/trade lenses they fade so the lens's own lines carry the story. */}
           {roads.map((rd, i) => (
             <path
               key={`rd${i}`}
@@ -242,23 +316,53 @@ export function RegionMap({
               strokeDasharray={rd.kind === 'sea' ? '0.9 1.3' : undefined}
               strokeLinecap="round"
               strokeLinejoin="round"
-              opacity={rd.kind === 'sea' ? 0.32 : 0.5}
+              opacity={(lens === 'war' || lens === 'trade' ? 0.4 : 1) * (rd.kind === 'sea' ? 0.32 : 0.5)}
             />
           ))}
-          {/* hostile borders stay straight — a contested march, not a road */}
-          {map.edges.filter((e) => e.relation < -20).map((e, i) => {
-            const a = nodeById.get(e.a)!;
-            const b = nodeById.get(e.b)!;
-            return (
-              <line key={`h${i}`} className="edge hostile" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--rose)" strokeWidth={0.5} strokeDasharray="1 1" opacity={0.7} />
-            );
-          })}
-          {/* nodes: coloured by culture, sized by population; hover for a glance, click for its story */}
+          {/* TRADE lens: the flows themselves, width ∝ volume */}
+          {lens === 'trade' &&
+            map.edges.filter((e) => e.tradeVolume > 0).map((e, i) => {
+              const a = nodeById.get(e.a)!;
+              const b = nodeById.get(e.b)!;
+              return (
+                <line
+                  key={`t${i}`}
+                  className="edge trade"
+                  x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke="var(--jade)"
+                  strokeWidth={0.35 + 1.3 * (e.tradeVolume / maxTrade)}
+                  opacity={0.75}
+                />
+              );
+            })}
+          {/* hostile borders stay straight — a contested march, not a road. The war lens
+              turns them up; the trade lens clears them out of the way. */}
+          {lens !== 'trade' &&
+            map.edges.filter((e) => e.relation < -20).map((e, i) => {
+              const a = nodeById.get(e.a)!;
+              const b = nodeById.get(e.b)!;
+              return (
+                <line
+                  key={`h${i}`}
+                  className="edge hostile"
+                  x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke="var(--rose)"
+                  strokeWidth={lens === 'war' ? 0.9 : 0.5}
+                  strokeDasharray="1 1"
+                  opacity={lens === 'war' ? 0.95 : 0.7}
+                />
+              );
+            })}
+          {/* nodes: coloured by the active lens, sized by population; hover for a glance, click for its story */}
           {map.nodes.map((n) => {
             const focused = n.id === focusedId;
-            const r = n.ruined ? 1.9 : radius(n.population);
-            const color = cultureColor(n.cultureId);
-            const sub = n.ruined ? 'a ruin' : `${cultureName(n.cultureId)} · ${n.population} souls`;
+            const r = n.ruined ? 1.3 : radius(n.population);
+            const color = nodeColor(n.id, n.cultureId);
+            const faithNote = lens === 'faith' ? settById.get(n.id)?.patronDeity?.name : undefined;
+            const sub = n.ruined
+              ? 'a ruin'
+              : `${cultureName(n.cultureId)}${faithNote ? ` · sacred to ${faithNote}` : ''} · ${n.population} souls`;
+            // set once on enter (a per-move setState re-rendered the whole SVG while roaming)
             const enter = (e: RMouseEvent) => setHover({ name: n.name, meaning: n.nameMeaning, sub, cx: e.clientX, cy: e.clientY });
             return (
               <g
@@ -268,10 +372,10 @@ export function RegionMap({
                   if (movedRef.current) return;
                   if (!busy) onInspect(n.id);
                 }}
-                onMouseMove={enter}
+                onMouseEnter={enter}
                 onMouseLeave={() => setHover(null)}
               >
-                {focused && <circle className="focus-ring" cx={n.x} cy={n.y} r={r + 1.8} fill="none" stroke="var(--gold)" strokeWidth={0.7} />}
+                {focused && <circle className="focus-ring" cx={n.x} cy={n.y} r={r + 1.3} fill="none" stroke="var(--gold)" strokeWidth={0.6} />}
                 <circle
                   cx={n.x}
                   cy={n.y}
@@ -301,6 +405,38 @@ export function RegionMap({
             );
           })}
         </svg>
+      </div>
+
+      {/* LENSES — one question at a time (Civ's overlay idiom) */}
+      <div className="map-lenses seg" role="group" aria-label="map lens">
+        {LENSES.map((l) => (
+          <button key={l.id} className={lens === l.id ? 'on' : ''} onClick={() => setLens(l.id)}>
+            {l.label}
+          </button>
+        ))}
+      </div>
+
+      {/* the LEGEND adapts to the lens; its chips inspect what they name */}
+      <div className="map-legend">
+        {lens === 'culture' &&
+          [...new Set(map.nodes.map((n) => n.cultureId))].map((id) => (
+            <button key={id} className="legend-chip" onClick={() => onRef?.({ kind: 'culture', id })} disabled={!onRef}>
+              <i className="cdot" style={{ background: cultureColor(id) }} /> {cultureName(id)}
+            </button>
+          ))}
+        {lens === 'faith' &&
+          deities.map((d) => (
+            <button key={d.id} className="legend-chip" onClick={() => onRef?.({ kind: 'deity', id: d.id })} disabled={!onRef}>
+              <i className="cdot" style={{ background: d.color }} /> {d.name}
+            </button>
+          ))}
+        {lens === 'war' && (
+          <span className="legend-chip static"><i className="sw bad" /> a contested march</span>
+        )}
+        {lens === 'trade' && (
+          <span className="legend-chip static"><i className="sw good" /> trade, thick with volume</span>
+        )}
+        <span className="legend-chip static">● size = population</span>
       </div>
 
       {/* atmosphere + controls (fixed — not part of the explored view) */}

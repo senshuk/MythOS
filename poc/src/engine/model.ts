@@ -1136,6 +1136,20 @@ export interface EventPart {
   ref?: EventRef;
 }
 
+/** A tiny at-a-glance card for a hovered entity link — just enough to recognize who or
+ *  what something is without committing to a full inspection (legibility at hover cost).
+ *  Built by the worker on demand; deliberately much lighter than the *Detail views. */
+export interface PeekCard {
+  kind: EventRef['kind'];
+  name: string;
+  /** one to three short meta lines ("Tamar trader · 42y", "of House Vrihi"). */
+  lines: string[];
+  /** the House whose arms the card can bear (the subject itself, or its lineage). */
+  houseId?: HouseId;
+  houseName?: string;
+  dead?: boolean;
+}
+
 export interface EventView {
   id: EventId;
   year: number;
@@ -1464,6 +1478,10 @@ export interface Tension {
    *  KNOWN for certain, an absence of knowledge (news not yet arrived), a CONTESTED claim, or a
    *  RUMOR. Lets presentation separate certainty from uncertainty (design/21 §4). */
   certainty?: 'known' | 'unknown' | 'contested' | 'rumor';
+  /** an obvious response, when the line has one — the attention feed puts the verb ON the
+   *  notification ("Rival — gaining on you · Confront"). Taken through the ordinary player
+   *  turn like any other intent; purely an affordance, never an obligation. */
+  action?: { label: string; intent: Intent };
 }
 
 /** How one need FEELS right now — the lived word ("Lonely", "Comfortable") plus a coarse tone,
