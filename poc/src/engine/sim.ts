@@ -52,7 +52,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, ambitionOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
 import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest, renderBackstory } from './pack';
@@ -1066,14 +1066,45 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     summariesByHome.set(h, arr);
   }
 
-  const notable = [...full]
-    .sort(
-      (a, b) =>
-        relCount(world, b) - relCount(world, a) ||
-        world.lifecycle.get(b)!.ageYears - world.lifecycle.get(a)!.ageYears,
-    )
-    .slice(0, 8)
-    .map((id) => actorView(world, id));
+  // "Notable folk" = the most PROMINENT residents, not merely the oldest. Prominence blends
+  // renown (deeds make you known — for good or ill), social centrality, holding power, and raw
+  // ambition; age is only a final tiebreak, so elders no longer dominate the list.
+  const prominence = (id: EntityId): number => {
+    const home = world.homeSettlement.get(id);
+    const isRuler = home !== undefined && world.settlements[home]?.currentRulerId === id;
+    return (
+      Math.abs(standingOf(world, id)) + // renown OR notoriety — both make you notable
+      Math.min(relCount(world, id), 12) * 5 + // a touch of social centrality, tightly capped so
+      //                                          the most-connected trade families don't own the list
+      (isRuler ? 200 : 0) + // holding the seat is inherently notable
+      ambitionOf(world.traits.get(id) ?? []) * 45 // the strivers — a hungry youth outranks a placid elder
+    );
+  };
+  const ranked = [...full].sort(
+    (a, b) =>
+      prominence(b) - prominence(a) ||
+      world.lifecycle.get(b)!.ageYears - world.lifecycle.get(a)!.ageYears ||
+      a - b,
+  );
+  // keep the roster VARIED: cap any single trade so a market town's merchants (who accrue the
+  // most renown & ties) don't fill every slot — the player should see a mix of lives. Backfill
+  // past the cap only if too few distinct folk remain.
+  const NOTABLE_N = 8;
+  const PROF_CAP = 3;
+  const chosen: EntityId[] = [];
+  const perProf = new Map<string, number>();
+  for (const id of ranked) {
+    if (chosen.length >= NOTABLE_N) break;
+    const prof = world.profession.get(id) ?? '';
+    if ((perProf.get(prof) ?? 0) >= PROF_CAP) continue;
+    chosen.push(id);
+    perProf.set(prof, (perProf.get(prof) ?? 0) + 1);
+  }
+  for (const id of ranked) {
+    if (chosen.length >= NOTABLE_N) break;
+    if (!chosen.includes(id)) chosen.push(id);
+  }
+  const notable = chosen.map((id) => actorView(world, id));
 
   const recent = world.events.slice(-feedSize).map((ev) => eventView(world, ev)).reverse();
 
