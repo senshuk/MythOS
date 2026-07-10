@@ -6,10 +6,25 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
-import { type Language, coinWord } from '../engine/language';
 import { DAYS_PER_YEAR } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization } from '../engine/model';
 import { biomeOf } from './biomes';
+
+// ------------------------------------------------------------ identity -------
+/** This universe's identity — stamped into every save, so a world is only ever loaded
+ *  under the pack that built it (a Tolkien save must not open under a sci-fi pack). */
+export const PACK_ID: string = 'fantasy'; // typed wide — every pack supplies its OWN id
+/** Bumped when this pack's DATA changes shape enough that old saves need care. */
+export const PACK_VERSION: number = 1;
+/** Which OPTIONAL engine systems this universe runs (CLAUDE.md: packs choose modules).
+ *  Core systems — lifecycle, economy, organizations, the director — always run; these
+ *  gate the genre-flavoured layers a universe may not want (a secular sci-fi pack turns
+ *  religion off; a static-world pack turns vehicle travel off). */
+export const MODULES = {
+  religion: true, // faith bonds & friction, conversion/apostasy, state precepts
+  factions: true, // creed factionalism: splits, civil wars, exile & return
+  travel: true, // vehicle transit (mobile locations move with duration)
+};
 
 /**
  * How a species reproduces — SPECIES DATA the engine dispatches on, so the sim does
@@ -424,6 +439,9 @@ export interface StatePrecept {
 export interface Culture {
   id: string;
   name: string;
+  /** the culture's map/legend colour — presentation, but PACK data (a universe knows
+   *  its factions' banners; the engine and UI stay colour-blind). */
+  color: string;
   /** The deity whose domain mirrors this culture's highest value. */
   patronDeityId: string;
   /** esteem (−50..50) for each value axis; omitted axes are 0 (indifferent). */
@@ -437,7 +455,7 @@ export interface Culture {
 
 export const CULTURES: Culture[] = [
   {
-    id: 'martial', name: 'the Iron Creed',
+    id: 'martial', name: 'the Iron Creed', color: '#e0685f',
     patronDeityId: 'iron_father',
     values: { war: 40, honor: 30, tradition: 10, freedom: -10, nature: -20 },
     // warriors: killing in conflict is expected — bloodshed barely stings standing and
@@ -459,7 +477,7 @@ export const CULTURES: Culture[] = [
     ],
   },
   {
-    id: 'sylvan', name: 'the Green Way',
+    id: 'sylvan', name: 'the Green Way', color: '#6cc08a',
     patronDeityId: 'rootmother',
     values: { nature: 40, freedom: 25, craft: 10, war: -25, tradition: -10 },
     // peace-keepers: killing PROFANES the living world (sacred outrage; the killer is
@@ -477,7 +495,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'hoarding', self: 'disquiet', sacred: true, label: 'hoarding', holds: (s) => s.wealth >= 880 }],
   },
   {
-    id: 'artisan', name: 'the Maker Folk',
+    id: 'artisan', name: 'the Maker Folk', color: '#e0b25e',
     patronDeityId: 'forge_spirit',
     values: { craft: 40, tradition: 25, honor: 10, war: -15, freedom: -5 },
     // civic builders: violence disrupts ORDER (civic wrong, not divine — felt by all,
@@ -494,7 +512,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'prosperous', self: 'at_peace', label: 'honest prosperity', holds: (s) => s.wealth >= 780 }],
   },
   {
-    id: 'free', name: 'the Free Companies',
+    id: 'free', name: 'the Free Companies', color: '#6fb6d6',
     patronDeityId: 'windwalker',
     values: { freedom: 40, craft: 10, nature: 10, honor: -10, tradition: -25 },
     // mercenaries: pragmatic about violence (no conscience toll); generosity is rare and
@@ -511,7 +529,7 @@ export const CULTURES: Culture[] = [
     statePrecepts: [{ id: 'beholden', self: 'disquiet', label: 'destitution', holds: (s) => s.wealth <= 130 }],
   },
   {
-    id: 'devout', name: 'the Old Faith',
+    id: 'devout', name: 'the Old Faith', color: '#b79be0',
     patronDeityId: 'ancestors',
     values: { tradition: 40, honor: 25, war: 5, nature: -5, freedom: -25 },
     // sacred law governs life: killing is a profound PROFANITY, brawling stains one's
@@ -747,7 +765,7 @@ export function worldviewFromValues(valueMean: Record<ValueAxis, number>): World
     let s = 0;
     const weights = WORLDVIEW_WEIGHTS[axis];
     for (const v of VALUES) s += (weights[v] ?? 0) * (valueMean[v] ?? 0);
-    wv[axis] = Math.round(s);
+    wv[axis] = Math.round(s) + 0; // + 0 collapses -0 → 0 so in-memory == JSON round-trip
   }
   return wv;
 }
@@ -1168,20 +1186,6 @@ export const INTENT_TO_INTERACTION: Record<string, string> = {
 
 export function speciesById(id: string): Species {
   return SPECIES.find((s) => s.id === id)!;
-}
-
-export function generateGiven(rng: Rng, speciesId: string): string {
-  const sp = speciesById(speciesId);
-  const parts = [rng.pick(sp.onset), rng.pick(sp.nucleus)];
-  if (rng.chance(0.45)) parts.push(rng.pick(sp.nucleus));
-  parts.push(rng.pick(sp.coda));
-  return parts.join('');
-}
-
-/** A lineage surname, coined in a people's own tongue (see engine/language) — so houses
- *  and families of one culture share a sound. The caller resolves the culture's Language. */
-export function generateFamily(rng: Rng, lang: Language): string {
-  return coinWord(lang, rng, 'person');
 }
 
 export function pickSex(rng: Rng, speciesId: string): Sex {

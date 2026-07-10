@@ -23,7 +23,7 @@ import { type World, type LocationId, type WorldPosition, type Transit, type Eve
 import { Rng } from './rng';
 import { getLocation, getAncestors } from './location';
 import { emit } from './world';
-import { TRAVEL_SPEED, HAZARD_DELAY_TICKS } from '../content/fixture';
+import { TRAVEL_SPEED, HAZARD_DELAY_TICKS } from './pack';
 
 /** Where a Location actually IS in the world: its own position, or — for a contained
  *  location with none — the nearest ancestor that has one (it moves with its container).

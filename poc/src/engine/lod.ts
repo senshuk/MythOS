@@ -49,8 +49,6 @@ import {
   SPECIES,
   speciesById,
   macroFertilityOf,
-  generateGiven,
-  generateFamily,
   pickSex,
   pickTraits,
   pickProfession,
@@ -73,9 +71,9 @@ import {
   CONSUMPTION,
   BASE_PRICE,
   SETTLEMENT_LOCATION_TYPE,
-} from '../content/fixture';
-import { biomeOf } from '../content/biomes';
-import { tongueFor, placeName, featureName } from '../content/languages';
+} from './pack';
+import { biomeOf } from './pack';
+import { placeName, featureName, givenName, houseName } from './pack';
 import { SurfaceSubstrate } from './substrate';
 import { nearestFeatureAt, type GeoFeature } from './geography';
 import { deathProbability } from '../systems/lifecycle';
@@ -165,11 +163,29 @@ export function createSettlements(world: World): void {
   // doomed interior colonies that just become ruins — harsh worlds end up sparse but alive.
   const viable = (site: Site) => terrainYields(site.attributes).food >= 0.8;
   const usedNames = new Set<string>();
-  // a settlement is named in the TONGUE OF ITS PEOPLE — so a region's towns share a sound,
-  // and you can hear a culture's border on the map (see engine/language).
-  const mkName = (cultureId: string, attributes: Record<string, number>): { name: string; meaning: string } => {
-    let nm = placeName(cultureId, world.seed, attributes, gen);
-    for (let guard = 0; usedNames.has(nm.name) && guard < 24; guard++) nm = placeName(cultureId, world.seed, attributes, gen);
+  // the named landmark a site sits beside, if any — raw material for hydronym-style naming
+  // (a town on the Skarnald can be "the mouth of the Skarnald", like Exmouth on the Exe).
+  const lmFor = (pos: { x: number; y: number }): { name: string; kind: GeoFeature['kind'] } | undefined => {
+    if (!(sub instanceof SurfaceSubstrate)) return undefined;
+    const near = nearestFeatureAt(sub.geography, pos.x, pos.y);
+    if (!near) return undefined;
+    return { name: featureName(world.seed, near.feature).name, kind: near.feature.kind };
+  };
+  // a settlement is named in the TONGUE OF ITS PEOPLE, from what its founders KNEW — the
+  // landmark beside it, the mother city (for a colony), the founder, or the land itself
+  // (see content/languages.placeName). Retries on a name collision (each retry re-rolls
+  // the template, so towns along one river don't all become its "ford").
+  const mkName = (
+    cultureId: string,
+    site: Site,
+    parent?: { name: string; pos: { x: number; y: number } },
+  ): { name: string; meaning: string } => {
+    const ctx = {
+      landmark: lmFor(site.pos),
+      parent: parent ? { name: parent.name, dx: site.pos.x - parent.pos.x, dy: site.pos.y - parent.pos.y } : undefined,
+    };
+    let nm = placeName(cultureId, world.seed, site.attributes, gen, ctx);
+    for (let guard = 0; usedNames.has(nm.name) && guard < 24; guard++) nm = placeName(cultureId, world.seed, site.attributes, gen, ctx);
     usedNames.add(nm.name);
     return nm;
   };
@@ -182,7 +198,7 @@ export function createSettlements(world: World): void {
     const site = cands.find((c) => !occupied(c.pos, 55) && viable(c)); // origins: viable, far apart
     if (!site) break;
     const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
-    const nm = mkName(culture, site.attributes);
+    const nm = mkName(culture, site);
     protos.push({
       name: nm.name,
       nameMeaning: nm.meaning,
@@ -214,7 +230,8 @@ export function createSettlements(world: World): void {
       if (yr - parent.foundedYear < 12 || parent.pop < 120 || !gen.chance(0.03)) continue;
       const site = colonySite(cands, protos, parent, sub);
       if (!site) continue;
-      const nm = mkName(parent.people.culture, site.attributes);
+      // a colony knows its mother city — it may commemorate her ("new X") or orient by her
+      const nm = mkName(parent.people.culture, site, { name: parent.name, pos: parent.site.pos });
       protos.push({ name: nm.name, nameMeaning: nm.meaning, site, people: { ...parent.people }, pop: gen.range(22, 38), foundedYear: yr });
       parent.pop = Math.max(60, parent.pop - 24); // colonists depart
     }
@@ -226,7 +243,7 @@ export function createSettlements(world: World): void {
     if (!c) break;
     const liv = living();
     const near = liv.reduce((a, b) => (sub.distance(b.site.pos, c.pos) < sub.distance(a.site.pos, c.pos) ? b : a));
-    const fnm = mkName(near.people.culture, c.attributes);
+    const fnm = mkName(near.people.culture, c, { name: near.name, pos: near.site.pos }); // a late daughter of the nearest people
     protos.push({ name: fnm.name, nameMeaning: fnm.meaning, site: c, people: { ...near.people }, pop: gen.range(30, 50), foundedYear: PREHISTORY_YEARS });
   }
 
@@ -489,10 +506,12 @@ export function promote(world: World, s: Settlement): void {
   for (let i = 0; i < remaining; i++) {
     const species = rng.chance(0.7) ? m.dominantSpecies : SPECIES[rng.int(SPECIES.length)].id;
     const [lo, hi] = bandRanges(species)[rng.weightedIndex(weights)];
+    const house = houseName(s.cultureId, world.seed, rng);
+    world.houseMeaning.set(house.name, house.meaning);
     made.push(
       createActor(world, {
-        given: generateGiven(rng, species),
-        family: generateFamily(rng, tongueFor(s.cultureId, world.seed)),
+        given: givenName(s.cultureId, world.seed, rng),
+        family: house.name,
         sex: pickSex(rng, species),
         speciesId: species,
         profession: pickProfession(rng),

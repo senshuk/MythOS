@@ -6,7 +6,7 @@
  * place it occupies. The "first make things exist" milestone for the social spine.
  */
 import { describe, it, expect } from 'vitest';
-import { createWorld, runYears, hashWorld, buildSnapshot } from './sim';
+import { createWorld, runYears, hashWorld, buildSnapshot, focusSettlement } from './sim';
 import { serializeWorld, deserializeWorld } from './persistence';
 import {
   getOrganization,
@@ -19,6 +19,7 @@ import {
   membersWithRole,
   roleHistory,
   currentMembers,
+  dissolve,
   ROLE_LEADER,
   ROLE_FOUNDER,
 } from './organization';
@@ -50,6 +51,11 @@ let fixture: OrgFixture | undefined;
 function orgFixture(): OrgFixture {
   if (!fixture) {
     const w = createWorld(ORG_FIXTURE_SEED);
+    // the default focused settlement may be leaderless (no polity) in some worlds — focus a
+    // governed one that hosts a polity, so the snapshot's focused polity view is populated.
+    if (w.settlements[w.focusedSettlementId].polityId === undefined) {
+      focusSettlement(w, w.settlements.find((s) => s.polityId !== undefined)!.id);
+    }
     const orgId = w.settlements[w.focusedSettlementId].polityId!;
     const org = getOrganization(w, orgId)!;
     fixture = { w, orgId, id0: org.id, seat0: org.seatId, leader0: org.leaderId };
@@ -242,11 +248,14 @@ describe('Organizations remember (Phase 2B: membership & roles)', () => {
   });
 
   it('dissolving an org closes its whole roster but keeps the records', () => {
-    const { w } = orgFixture();
-    const dissolved = w.organizations.find((o) => o.dissolvedYear !== undefined)!;
-    const open = currentMembers(w, dissolved.id);
-    expect(open.length).toBe(0); // nothing currently held
-    expect((w.orgMembers.get(dissolved.id) ?? []).length).toBeGreaterThan(0); // but remembered
+    // a FRESH world (not the shared fixture) so dissolving doesn't pollute other tests;
+    // dissolve an org explicitly rather than relying on a natural collapse at this seed.
+    const w = createWorld(ORG_FIXTURE_SEED);
+    const org = w.organizations.find((o) => o.dissolvedYear === undefined && (w.orgMembers.get(o.id)?.length ?? 0) > 0)!;
+    expect(org).toBeDefined();
+    dissolve(w, org.id, 1);
+    expect(currentMembers(w, org.id).length).toBe(0); // roster closed…
+    expect((w.orgMembers.get(org.id) ?? []).length).toBeGreaterThan(0); // …but remembered
   });
 
   it('surfaces founder and leader-count in the snapshot polity view', () => {

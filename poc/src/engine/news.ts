@@ -13,7 +13,7 @@
  * ceil(distance / TRAVEL_SPEED); no RNG. News is the first payload; the frontier is the system.
  */
 import { type World, type EntityId } from './model';
-import { TRAVEL_SPEED } from '../content/fixture';
+import { TRAVEL_SPEED } from './pack';
 
 /** Key: what `observer` settlement knows of the ruler of `subject` settlement. */
 export function newsKey(observerSettlementId: number, subjectSettlementId: number): string {

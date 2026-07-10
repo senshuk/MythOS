@@ -23,9 +23,9 @@ import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
 import { addSelfThought, computeMood, MOOD_NEUTRAL } from '../engine/mood';
-import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, BINGE_COST, GIFT_COST } from '../content/fixture';
+import { pairAffinity, valueAlignment, temperamentAffinity, professionIncomeOf, unionViable, REPUTATION_EFFECTS, SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED, BINGE_COST, GIFT_COST } from '../engine/pack';
 import { personalityOf } from '../engine/social';
-import { resolveExtraAction } from '../content/actions';
+import { resolveExtraAction } from '../engine/pack';
 
 // Opinion thresholds that escalate a relationship. Tuned to the diminishing-returns
 // opinion scale produced by the thought model (see opinion.ts). The NEGATIVE

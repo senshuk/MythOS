@@ -897,6 +897,10 @@ export interface World {
    * would prune this to names still referenced by retained events.)
    */
   names: Map<EntityId, string>;
+  /** the MEANING of each House/lineage surname in its founders' tongue ("Korthan" → "the Iron
+   *  Hand"), keyed by the surname. Derived flavour like a settlement's nameMeaning — serialized
+   *  (it's cheap world data) but NOT in the determinism hash. */
+  houseMeaning: Map<string, string>;
   lifecycle: Map<EntityId, Lifecycle>;
   needs: Map<EntityId, Needs>;
   /** per-actor SELF-THOUGHTS: sourced, decaying marks about one's OWN life (grief, joy,
@@ -1299,12 +1303,25 @@ export interface FigureView {
 /** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */
 export interface HouseView {
   name: string;
+  meaning?: string; // the surname's sense in the founders' tongue ("the Iron Hand")
   foundedYear: number;
   prestige: number;
   origin: string; // the settlement where the line began
   seat?: string; // the settlement it rules now (absent if out of power)
   rulers: number; // how many of its members have held a seat — the depth of the dynasty
   extinctYear?: number; // the year it fell with its seat
+}
+
+/** A living culture's TONGUE, made explorable — its self-name, its sound, its kin (the
+ *  language family it drifted from), a sample of its lexicon, and towns that carry it.
+ *  Pure presentation of the pack's philology (content/languages); nothing here is stored. */
+export interface TongueView {
+  cultureId: string;
+  demonym: string; // the people's own name for themselves ("the Rodadra")
+  voice: string; // the character of its sound ("guttural", "flowing", …)
+  kin: string[]; // culture ids that share its mother tongue (empty = an isolate)
+  lexicon: { root: string; gloss: string }[]; // a learnable sample: root = meaning
+  towns: { name: string; meaning?: string }[]; // living settlements that speak it
 }
 
 export interface DirectorView {
@@ -1524,6 +1541,7 @@ export interface Snapshot {
   director: DirectorView; // the storyteller's current state
   historicalFigures: FigureView[]; // renowned people of history (founders, rulers)
   houses: HouseView[]; // the great Houses, ranked by prestige — dynasties as family sagas
+  tongues: TongueView[]; // the living cultures' languages, explorable (sound, kin, lexicon)
   player?: PlayerView; // the controlled actor's actionable state, if any
 }
 

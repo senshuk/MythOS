@@ -19,7 +19,7 @@ import { type World, type FactionSplit, type EntityId, type Settlement, type Set
 import { fullActors, getRel, emit } from './world';
 import { addThought } from './opinion';
 import { Rng, mixSeed } from './rng';
-import { VALUES, type ValueAxis, factionNames } from '../content/fixture';
+import { VALUES, type ValueAxis, factionNames } from './pack';
 
 const SAMPLE_N = 3; // opposing-faction neighbor samples per actor per year
 const MIN_ACTORS = 20; // minimum settlement size for a split to be meaningful

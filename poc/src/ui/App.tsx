@@ -7,12 +7,12 @@
  */
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
-import { paintTerrain, paintStarfield, type TerrainLabel } from './terrain';
-import { featureName } from '../content/languages';
+import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
+import { featureName, CULTURES } from '../engine/pack';
 import { useSim } from './useSim';
 
 const TYPE_TONE: Record<string, string> = {
@@ -103,22 +103,10 @@ function subsistenceClass(security: number): string {
   return 'muted';
 }
 
-// settlements on the map are coloured by their culture (presentation only)
-const CULTURE_COLOR: Record<string, string> = {
-  martial: '#e0685f', // the Iron Creed
-  sylvan: '#6cc08a', // the Green Way
-  artisan: '#e0b25e', // the Maker Folk
-  free: '#6fb6d6', // the Free Companies
-  devout: '#b79be0', // the Old Faith
-};
-const cultureColor = (id: string) => CULTURE_COLOR[id] ?? '#8a8f9e';
-const CULTURE_NAMES: Record<string, string> = {
-  martial: 'Iron Creed',
-  sylvan: 'Green Way',
-  artisan: 'Maker Folk',
-  free: 'Free Companies',
-  devout: 'Old Faith',
-};
+// culture names & colours come from the PACK (a universe knows its factions' banners) —
+// read through the engine's pack boundary, so a different universe recolours the map for free.
+const cultureColor = (id: string) => CULTURES.find((c) => c.id === id)?.color ?? '#8a8f9e';
+const cultureName = (id: string) => CULTURES.find((c) => c.id === id)?.name ?? id;
 
 /** Renders an event's prose with its named settlements & people as clickable links. */
 function EventText({ parts, onRef }: { parts: EventPart[]; onRef: (ref: EventRef) => void }) {
@@ -408,6 +396,7 @@ export default function App() {
               legends={stat.chronicle}
               figures={stat.historicalFigures}
               houses={stat.houses}
+              tongues={stat.tongues}
               focusedName={stat.settlementName}
               onPickEvent={inspectEvent}
               onRef={inspectRef}
@@ -492,26 +481,62 @@ function RegionMap({
   const sub = useMemo(() => createSubstrate(seed), [seed]);
   const isStarfield = sub instanceof StarfieldSubstrate;
 
+  // the atlas layer: the generator's named features, each in the world's old tongue
+  const mapLabels = useMemo<TerrainLabel[]>(
+    () =>
+      sub instanceof SurfaceSubstrate
+        ? sub.geography.features.map((f) => ({ x: f.center.x, y: f.center.y, text: featureName(seed, f).name, kind: f.kind }))
+        : [],
+    [seed, sub],
+  );
+
+  // a STARFIELD is painted once (it rides the CSS zoom transform — space has no per-zoom detail).
   useEffect(() => {
     const c = canvasRef.current;
-    if (!c) return;
-    c.width = 540;
-    c.height = 549;
-    if (sub instanceof StarfieldSubstrate) {
-      if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
-    } else if (sub instanceof SurfaceSubstrate) {
-      if (SURF_THEME) {
-        // the atlas layer: the generator's named features, each in the world's old tongue
-        const labels: TerrainLabel[] = sub.geography.features.map((f) => ({
-          x: f.center.x,
-          y: f.center.y,
-          text: featureName(seed, f).name,
-          kind: f.kind,
-        }));
-        paintTerrain(c, sub.geography, MAP_VB, SURF_THEME, labels);
-      }
-    }
+    const wrap = wrapRef.current;
+    if (!c || !wrap || !(sub instanceof StarfieldSubstrate)) return;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.max(2, Math.round(rect.width * dpr));
+    c.height = Math.max(2, Math.round(rect.height * dpr));
+    if (STAR_FIELD) paintStarfield(c, seed, STAR_FIELD);
   }, [seed, sub]);
+
+  // a SURFACE world re-paints the VISIBLE region at native resolution whenever the view
+  // changes — so zooming reveals real detail instead of upscaling a fixed bitmap (no blur).
+  useEffect(() => {
+    if (!(sub instanceof SurfaceSubstrate) || !SURF_THEME) return;
+    const paint = () => {
+      const c = canvasRef.current;
+      const wrap = wrapRef.current;
+      if (!c || !wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      if (rect.width < 2) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.width = Math.min(1600, Math.round(rect.width * dpr));
+      c.height = Math.min(1600, Math.round(rect.height * dpr));
+      // the world rectangle currently visible through the zoom/pan transform
+      const s = view.s;
+      const vb = {
+        x: MAP_VB.x + (-view.x / s) * (MAP_VB.w / rect.width),
+        y: MAP_VB.y + (-view.y / s) * (MAP_VB.h / rect.height),
+        w: MAP_VB.w / s,
+        h: MAP_VB.h / s,
+      };
+      paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
+    };
+    const id = requestAnimationFrame(paint);
+    window.addEventListener('resize', paint); // keep the bitmap at the box's native size
+    // repaint when the tab returns to the foreground (rAF is paused while hidden, which
+    // would otherwise leave a stale/blank terrain until the next view change)
+    const onVisible = () => document.visibilityState === 'visible' && paint();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener('resize', paint);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [seed, sub, view, mapLabels]);
 
   // reset the explored view when the world or skin changes
   useEffect(() => setView({ s: 1, x: 0, y: 0 }), [seed]);
@@ -580,6 +605,18 @@ function RegionMap({
   };
 
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
+  // roads follow the region graph across the real terrain — recomputed only when the
+  // world (nodes/edges) changes, not on pan/zoom. Surface worlds only (a galaxy has none).
+  const roads = useMemo(
+    () => (sub instanceof SurfaceSubstrate ? buildRoads(sub.geography, map.nodes, map.edges) : []),
+    [sub, map.nodes, map.edges],
+  );
+  // great rivers, traced from the drainage tree as meandering vectors (width ∝ discharge).
+  // Depends only on the world, not nodes/edges — recomputed when the world changes.
+  const rivers = useMemo(
+    () => (sub instanceof SurfaceSubstrate ? buildRivers(sub.geography) : []),
+    [sub],
+  );
   const maxPop = Math.max(1, ...map.nodes.map((n) => n.population));
   const radius = (pop: number) => 1.7 + 3.4 * Math.sqrt(pop / maxPop);
   // on a big, busy map only the GREATEST cities are labelled (others are dots with a
@@ -598,27 +635,55 @@ function RegionMap({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
+      {/* The terrain canvas is DECOUPLED from the zoom transform: instead of stretching a
+          fixed bitmap (which blurred when zoomed), it re-paints the VISIBLE region at native
+          resolution as the view changes (see the paint effect). A starfield has no per-zoom
+          detail to gain, so it keeps the cheap CSS-transform path. */}
+      <canvas
+        ref={canvasRef}
+        className="map-terrain"
+        style={isStarfield ? { transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' } : undefined}
+      />
       <div className="map-inner" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transformOrigin: '0 0' }}>
-        <canvas ref={canvasRef} className="map-terrain" />
         <svg className="map" viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`} preserveAspectRatio="xMidYMid meet">
-          {/* edges: trade routes (jade, thicker with volume) vs hostile borders (rose, dashed) */}
-          {map.edges.map((e, i) => {
+          {/* GREAT RIVERS: traced from the drainage as meandering vectors, width ∝ discharge.
+              Drawn first so roads and bridges sit on top; the fine tributary web is painted
+              into the terrain canvas underneath. */}
+          {rivers.map((rv, i) => (
+            <path
+              key={`rv${i}`}
+              className="river"
+              d={rv.d}
+              fill="none"
+              stroke="var(--cyan)"
+              strokeWidth={rv.width}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.5}
+            />
+          ))}
+          {/* ROADS: the physical links between peaceful settlements — overland roads hug
+              the valleys, sea lanes cross the water (design: RimWorld draws world roads). */}
+          {roads.map((rd, i) => (
+            <path
+              key={`rd${i}`}
+              className={`road ${rd.kind}`}
+              d={rd.d}
+              fill="none"
+              stroke={rd.kind === 'sea' ? 'var(--cyan)' : 'var(--neutral)'}
+              strokeWidth={rd.width}
+              strokeDasharray={rd.kind === 'sea' ? '0.9 1.3' : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={rd.kind === 'sea' ? 0.32 : 0.5}
+            />
+          ))}
+          {/* hostile borders stay straight — a contested march, not a road */}
+          {map.edges.filter((e) => e.relation < -20).map((e, i) => {
             const a = nodeById.get(e.a)!;
             const b = nodeById.get(e.b)!;
-            const trade = e.relation > 15;
-            const hostile = e.relation < -20;
             return (
-              <line
-                key={i}
-                className={`edge ${hostile ? 'hostile' : trade ? 'trade' : 'quiet'}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={hostile ? 'var(--rose)' : trade ? 'var(--jade)' : 'var(--line)'}
-                strokeWidth={hostile ? 0.5 : trade ? 0.5 + Math.min(1.7, e.tradeVolume / 6) : 0.35}
-                opacity={hostile ? 0.7 : trade ? 0.9 : 0.4}
-              />
+              <line key={`h${i}`} className="edge hostile" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--rose)" strokeWidth={0.5} strokeDasharray="1 1" opacity={0.7} />
             );
           })}
           {/* nodes: coloured by culture, sized by population; hover for a glance, click for its story */}
@@ -626,7 +691,7 @@ function RegionMap({
             const focused = n.id === focusedId;
             const r = n.ruined ? 1.9 : radius(n.population);
             const color = cultureColor(n.cultureId);
-            const sub = n.ruined ? 'a ruin' : `${CULTURE_NAMES[n.cultureId] ?? n.cultureId} · ${n.population} souls`;
+            const sub = n.ruined ? 'a ruin' : `${cultureName(n.cultureId)} · ${n.population} souls`;
             const enter = (e: RMouseEvent) => setHover({ name: n.name, meaning: n.nameMeaning, sub, cx: e.clientX, cy: e.clientY });
             return (
               <g
@@ -746,7 +811,7 @@ function Dashboard({
       <div className="legend cultures">
         {[...new Set(stat.map.nodes.map((n) => n.cultureId))].map((id) => (
           <span key={id}>
-            <i className="cdot" style={{ background: cultureColor(id) }} /> {CULTURE_NAMES[id] ?? id}
+            <i className="cdot" style={{ background: cultureColor(id) }} /> {cultureName(id)}
           </span>
         ))}
       </div>
@@ -1228,6 +1293,7 @@ function HistoryFeed({
   legends,
   figures,
   houses,
+  tongues,
   focusedName,
   onPickEvent,
   onRef,
@@ -1237,11 +1303,12 @@ function HistoryFeed({
   legends: TaleView[];
   figures: FigureView[];
   houses: HouseView[];
+  tongues: TongueView[];
   focusedName: string;
   onPickEvent: (id: number) => void;
   onRef: (ref: EventRef) => void;
 }) {
-  const [view, setView] = usePersistentState<'recent' | 'legends'>('mythos.feed.view', 'recent');
+  const [view, setView] = usePersistentState<'recent' | 'legends' | 'tongues'>('mythos.feed.view', 'recent');
   const [scope, setScope] = usePersistentState<'world' | 'place'>('mythos.feed.scope', 'world');
   const [mode, setMode] = usePersistentState<'notable' | 'all'>('mythos.feed.mode', 'notable');
   const items = useMemo(() => processFeed(events, scope, mode), [events, scope, mode]);
@@ -1253,6 +1320,7 @@ function HistoryFeed({
       <div className="seg view-tabs" role="group" aria-label="history view">
         <button className={view === 'recent' ? 'on' : ''} onClick={() => setView('recent')}>Recent</button>
         <button className={view === 'legends' ? 'on' : ''} onClick={() => setView('legends')}>Legends &amp; Ages</button>
+        <button className={view === 'tongues' ? 'on' : ''} onClick={() => setView('tongues')}>Tongues</button>
       </div>
 
       {view === 'recent' ? (
@@ -1304,6 +1372,39 @@ function HistoryFeed({
             </ul>
           )}
         </>
+      ) : view === 'tongues' ? (
+        tongues.length === 0 ? (
+          <p className="muted">No living tongues — this world has no peoples to speak them.</p>
+        ) : (
+          <div className="tongues">
+            {tongues.map((t) => (
+              <div key={t.cultureId} className="tongue">
+                <h3>
+                  {cultureName(t.cultureId)} — <span className="tongue-demonym">the {t.demonym}</span>
+                  <span className="tongue-voice"> · a {t.voice} tongue</span>
+                </h3>
+                {t.kin.length > 0 && (
+                  <p className="tongue-kin muted">
+                    kin to {t.kin.map((k) => cultureName(k)).join(' and ')} — one mother tongue, long divided
+                  </p>
+                )}
+                {t.kin.length === 0 && <p className="tongue-kin muted">an isolate — kin to no living tongue</p>}
+                <p className="tongue-lexicon">
+                  {t.lexicon.map((w, i) => (
+                    <span key={i} className="lex">
+                      <b>{w.root}</b> {w.gloss}
+                    </span>
+                  ))}
+                </p>
+                {t.towns.length > 0 && (
+                  <p className="tongue-towns muted">
+                    their towns: {t.towns.map((tw) => (tw.meaning ? `${tw.name} “${tw.meaning}”` : tw.name)).join(' · ')}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )
       ) : eras.length === 0 && legends.length === 0 && figures.length === 0 && houses.length === 0 ? (
         <p className="muted">No legends yet — the great deeds of this age are still being written.</p>
       ) : (
@@ -1326,7 +1427,7 @@ function HistoryFeed({
               <ul className="houses">
                 {houses.slice(0, 8).map((h, i) => (
                   <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                    <span className="house-name">House {h.name}</span>
+                    <span className="house-name">House {h.name}{h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}</span>
                     <span className="house-status">
                       {h.extinctYear !== undefined
                         ? `fell with its seat, y${h.extinctYear}`

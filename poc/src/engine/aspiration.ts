@@ -16,7 +16,7 @@
  */
 import { type World, type EntityId, type Aspiration } from './model';
 import { emit } from './world';
-import { ASPIRATIONS, DEFAULT_ASPIRATION } from '../content/aspirations';
+import { ASPIRATIONS, DEFAULT_ASPIRATION } from './pack';
 
 /**
  * The actor's current aspiration: the first rung of the pack's ladder whose condition

@@ -151,6 +151,53 @@ describe('geography', () => {
     expect(other.join()).not.toBe(g.features.map((f) => featureName(42, f).name).join());
   });
 
+  it('a single map spans a range of climate bands (RimWorld-like latitude gradient)', () => {
+    // temperature must run cold→hot across the map, so one world holds many biomes
+    const g = generateGeography(42, 208, 0.46, 0.05, 0, 0);
+    const N = g.size;
+    // sample the coldest and hottest land bands (top vs bottom rows, away from the poles' edge)
+    let coldMin = 1;
+    let hotMax = 0;
+    for (let k = 0; k < N * N; k++) {
+      if (g.water[k] !== WATER_NONE) continue;
+      const y = (k / N) | 0;
+      if (y < N * 0.2) coldMin = Math.min(coldMin, g.temperature[k]);
+      if (y > N * 0.8) hotMax = Math.max(hotMax, g.temperature[k]);
+    }
+    // the far pole is genuinely cold and the far tropics genuinely warm — a real gradient
+    expect(hotMax - coldMin).toBeGreaterThan(0.4);
+  });
+
+  it('roads route between peaceful settlements, classifying overland vs sea links', async () => {
+    const { buildRoads } = await import('../ui/terrain');
+    const g = generateGeography(42);
+    // find two land points and one land + one across water, to exercise both classes
+    const N = g.size;
+    const wOf = (i: number) => GEO_MIN + (i / (N - 1)) * GEO_SPAN;
+    let landA = -1;
+    let landB = -1;
+    let seaCell = -1;
+    for (let k = 0; k < N * N && (landA < 0 || landB < 0 || seaCell < 0); k++) {
+      if (g.water[k] === WATER_NONE) {
+        if (landA < 0) landA = k;
+        else if (landB < 0 && Math.abs(k - landA) > N * 3) landB = k;
+      } else if (g.water[k] === WATER_SEA && seaCell < 0) seaCell = k;
+    }
+    const node = (id: number, k: number) => ({ id, x: wOf(k % N), y: wOf((k / N) | 0), ruined: false });
+    const nodes = [node(0, landA), node(1, landB), node(2, seaCell >= 0 ? seaCell : landB)];
+    const roads = buildRoads(g, nodes, [
+      { a: 0, b: 1, relation: 20, tradeVolume: 5 },
+      { a: 0, b: 2, relation: 10, tradeVolume: 0 },
+      { a: 0, b: 1, relation: -50, tradeVolume: 0 }, // hostile — NOT a road
+    ]);
+    expect(roads.length).toBe(2); // the hostile edge produced no road
+    for (const rd of roads) {
+      expect(rd.d.startsWith('M ')).toBe(true); // a valid svg path
+      expect(['road', 'sea']).toContain(rd.kind);
+      expect(rd.width).toBeGreaterThan(0);
+    }
+  });
+
   it('hilliness tracks relief: mountains sit on high or steep ground, flats on gentle ground', () => {
     const g = generateGeography(11);
     const N = g.size;

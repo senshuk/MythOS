@@ -26,7 +26,7 @@ import { addThought } from './opinion';
 import { addSelfThought } from './mood';
 import { standingOf } from './reputation';
 import { Rng, mixSeed } from './rng';
-import { patronDeityOf, deityById, cultureById, elderhoodOf, WEALTH_NEED, type ActorLifeState } from '../content/fixture';
+import { patronDeityOf, deityById, cultureById, elderhoodOf, WEALTH_NEED, type ActorLifeState } from './pack';
 
 /** Neighbours each faithful actor samples per year for faith affinity thoughts. */
 const SAMPLE_N = 4;

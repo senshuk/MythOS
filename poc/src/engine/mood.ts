@@ -29,7 +29,7 @@ import {
   NEED_FEELS_GENERIC,
   BREAKS,
   BREAK_CHANCE_MAX,
-} from '../content/fixture';
+} from './pack';
 
 /** Neutral mood — the centre of the 0..1000 scale (same convention as needs). */
 export const MOOD_NEUTRAL = 500;

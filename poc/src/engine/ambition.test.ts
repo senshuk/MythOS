@@ -34,6 +34,9 @@ function feuding(seed: number, years = 8): { w: ReturnType<typeof createWorld>; 
   for (let i = 0; i < 10; i++) addThought(edge, 'slighted', w.tick);
   for (let i = 0; i < 3; i++) addThought(edge, 'feared', w.tick);
   edge.flags.feud = true;
+  // make this the player's ONLY feud, so strongestFeud (the 'rival' offer) points here no
+  // matter what enmities the seed dealt organically.
+  for (const [other, e] of w.rels.get(player)!) if (other !== foe) e.flags.feud = false;
   return { w, player, foe };
 }
 
@@ -71,6 +74,11 @@ describe('ambitions', () => {
   it('resolves as FULFILLED when the deed is done, then offers fresh ambitions', () => {
     const { w, player, foe } = feuding(4);
     chooseAmbition(w, player, 'rival', foe);
+    // isolate the "you OUTLIVED them" path this test exercises: make the rival clearly the
+    // better-regarded so the alternate "out-rank them" fulfilment can't fire (a reshaped
+    // world may otherwise already rank the player above them at setup).
+    w.reputation.set(player, { marks: [] });
+    w.reputation.set(foe, { marks: [{ kind: 'valor', value: 900, sinceTick: w.tick, witnesses: 12 }] });
     reviewPlayerAmbition(w);
     expect(w.playerAmbition?.completedTick).toBeUndefined(); // not yet
 

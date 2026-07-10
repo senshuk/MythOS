@@ -11,7 +11,7 @@
  */
 import { type World, type WorldEvent, type EventPart, type EventRef } from './model';
 import { fullName } from './world';
-import { EVENT_RENDER } from '../content/narrative';
+import { EVENT_RENDER } from './pack';
 
 export function renderEvent(world: World, ev: WorldEvent): string {
   const n = (i: number) => (ev.subjects[i] !== undefined ? fullName(world, ev.subjects[i]) : '?');

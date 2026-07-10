@@ -19,7 +19,7 @@ import { isAlive } from '../engine/world';
 import { maybeBreak } from '../engine/mood';
 import { computeOpinion } from '../engine/opinion';
 import { personalityOf } from '../engine/social';
-import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED, GIFT_WEALTH_FLOOR, giveInclination } from '../content/fixture';
+import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED, GIFT_WEALTH_FLOOR, giveInclination } from '../engine/pack';
 
 /** The living soul this actor holds dearest — the warmest of their bonds (spouse, friend,
  *  or kin they are closest to). A pure scan (no RNG), so a gift goes to someone who

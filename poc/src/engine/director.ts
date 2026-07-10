@@ -19,7 +19,7 @@ import { killActor } from './world';
 import { addSelfThought } from './mood';
 import { standAgainst } from './perception';
 import { expand } from './grammar';
-import { WONDER_GRAMMAR, BEAST_GRAMMAR, OMEN_GRAMMAR, BOONS } from '../content/narrative';
+import { WONDER_GRAMMAR, BEAST_GRAMMAR, OMEN_GRAMMAR, BOONS } from './pack';
 
 interface DirectorDef {
   id: string;

@@ -35,7 +35,7 @@ import {
   worldviewFromValues,
   INTENTS,
   EVALUATOR_VERSION,
-} from '../content/fixture';
+} from './pack';
 import { getOrganization } from './organization';
 import { getEvent, clamp } from './world';
 
@@ -251,13 +251,17 @@ export function evaluateIntent(world: World, orgId: OrgId): OrgIntent {
     if (!best || score > best.score) best = { kind: def.id, score, factors };
   }
 
+  // collapse any -0 (e.g. Math.round of a tiny negative) → 0 so the stored intent is IDENTICAL
+  // in memory and after a JSON save/load (JSON normalises -0 to 0; toEqual would otherwise
+  // distinguish them). One boundary, covering every scored field.
+  const n0 = (x: number) => x + 0;
   return {
     kind: best!.kind,
-    score: best!.score,
+    score: n0(best!.score),
     worldview,
-    perception,
-    factors: best!.factors,
-    alternatives,
+    perception: perception.map((f) => ({ ...f, value: n0(f.value) })),
+    factors: best!.factors.map((f) => ({ ...f, value: n0(f.value) })),
+    alternatives: alternatives.map((a) => ({ ...a, score: n0(a.score) })),
     sinceTick: world.tick,
     evaluatorVersion: EVALUATOR_VERSION,
   };

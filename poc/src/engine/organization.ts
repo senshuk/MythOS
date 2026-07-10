@@ -43,7 +43,7 @@ import {
 import { emit, getRel } from './world';
 import { getLocation } from './location';
 import { addThought, computeOpinion, pruneThoughts } from './opinion';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, baselineOperational } from '../content/fixture';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, ORG_ECONOMY, baselineOperational } from './pack';
 
 // ---- registry --------------------------------------------------------------
 

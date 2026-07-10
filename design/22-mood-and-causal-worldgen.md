@@ -139,3 +139,135 @@ nothing — not every place is famous). Coverage: ~75–100% of settlements on m
 (optional, no migration), excluded from the hash (derived flavour, stable per seed),
 surfaced in the settlement inspector. This is "geography is the prime mover" reaching the
 story text, not just the sim numbers.
+
+## Part 4 — Mapgen v2 (make it read like a RimWorld planet)
+
+The causal spine (Parts 2–3) was right but a single map read as *one* climate. This pass
+makes a map look like a RimWorld world — a slice of planet spanning many biomes — and adds
+the two things that most sell that look: roads, and terrain the renderer does justice to.
+(The aspect ratio was already square like RimWorld's play map, so no ratio change.)
+
+1. **Climate bands.** Temperature is now a FULL latitude gradient — cold at one pole, hot
+   at the other — so one map runs tundra → boreal → temperate → savanna → jungle. `baseTemp`
+   still shifts the whole band (icier/hotter worlds), so worlds differ in overall warmth
+   while each keeps a rich spread. Measured: 5–8 biomes above 2% land per map (was ~2–3).
+   Settlement *placement* is unaffected (it reads fresh-water/fertility/elevation, not
+   temperature) — only biomes/yields shift.
+2. **Richer coastlines & islands.** The base elevation is now DOMAIN-WARPED (a low-frequency
+   offset bends the sampling space) for organic bays, capes and fjords, plus a
+   high-frequency coastal wobble that breaks smooth shores into inlets and offshore isles.
+3. **Roads.** `buildRoads` (ui/terrain.ts) routes a path along each peaceful region edge,
+   nudging interior points perpendicular toward lower LAND elevation so a road hugs the
+   valleys and bends around hills; a pair mostly separated by water becomes a dashed `sea`
+   lane instead. Pure function of geography + node positions — computed once per snapshot in
+   a `useMemo`, never stored, no determinism/persistence impact. Hostile borders stay
+   straight rose lines (a contested march, not a road).
+4. **Render polish** (paintTerrain): coastal SHALLOWS (sea brightens toward the shore via
+   `seaDist`, with a turquoise kiss on the shallowest), SNOW on cold high ground (white
+   peaks near the poles and on tall ranges), and a stronger HILLSHADE amplified by
+   `hilliness` so ranges read as real ridges.
+
+Costs: the elevation change reshapes fixed-seed worlds (one seed-luck ambition test was
+re-anchored). geography is still pure-from-seed and never serialized, so no save/hash impact.
+12 geography tests (added: climate-band span, road classification); 260 total green.
+Browser-verified: snow-capped northern band, roads threading between settlements, varied
+coastlines, named features — a recognisably RimWorld-like world map.
+
+### Part 4b — roads + fidelity (after "still janky" feedback)
+
+The first roads (perpendicular per-point nudges + straight segments) came out sawtoothed,
+and the 208-grid read blocky when zoomed. Both are render-only fixes — no generation change,
+so no determinism/seed impact:
+
+- **Roads are now a least-cost A\* path** over a terrain cost field (open water near-impassable,
+  high/steep ground dear, gentle low land cheap), so a road threads the passes, hugs the
+  valleys and runs the coast; the cell path is downsampled and drawn as a **Catmull-Rom
+  cubic-bezier** — a flowing curve, not a zigzag. A water-separated pair is a gently-bowed
+  `sea` lane instead. A* uses generation-stamped scratch buffers (no per-search N² clear);
+  computed once per snapshot in a `useMemo`.
+- **Terrain is bilinear-blended.** The painter precomputes a base colour per cell (biome or
+  water, with coast shallows + snow) once, then **bilinear-blends the four surrounding cells
+  per pixel** — smooth coasts and biome transitions instead of blocky squares — with hillshade
+  applied per-pixel on top and rivers pulled back crisp (a one-cell river would otherwise blur
+  away). Canvas renders at ~1.5× the display box so it stays sharp when zoomed. (Follow-up fix:
+  hillshade is applied to LAND ONLY — shading the sea-floor relief made open water read as
+  mountains.)
+
+## Part 5 — Mapgen v3 (geological realism)
+
+A deep pass on the terrain's physics, driven by "improve fidelity/realism." Each generation
+step is pure-from-seed (no save/hash impact) but reshapes worlds, so seed-luck tests were
+re-anchored as they surfaced.
+
+- **v3-A — 300-cell grid + priority-flood drainage.** Grid 208→300 (finer everything), river
+  thresholds scaled by (N/REF_N)². Replaced the O(N·N²) iterative depression fill (1.6s and
+  under-draining at N=300) with **priority-flood** (Barnes 2014, ~150ms) that records a
+  **drainage tree** — each cell's downstream — so flow accumulates to the sea along a real tree
+  instead of dispersing via local steepest-descent on the flat filled surface. Site-suitability
+  cell-distance thresholds (fresh-water reach) scaled by resolution, else founding starves.
+- **v3-B — tectonic mountain belts.** `computeTectonics` scatters 5–8 drifting plates (Voronoi
+  with a noise-warped wandering boundary); where two plates CONVERGE, a ridge is raised that
+  falls off with distance — a **cordillera**. Replaces the old scattered ridged noise. ~5 coherent
+  ranges per world. (Uplift tuned down after it over-mountained worlds and cut settlement counts.)
+- **v3-C — hydraulic erosion.** `hydraulicErosion` runs 4 stream-power passes on the raw
+  elevation: route drainage, then lower each land cell by ~K·√flux·slope so rivers **incise
+  V-valleys** and dissect the ranges. Temperature is computed *after* so the lapse term reflects
+  the carved terrain. Side benefit: the carved valleys create fresh-water sites that **recover the
+  habitability** the uplift cost (seed 123456: 12→35 settlements).
+- **v3-E — render polish.** Sandy **beaches** at warm waterlines, **valley ambient-occlusion**
+  (concave ground sits in shadow), a low-frequency **detail-noise grain** so broad biome fills
+  aren't flat, and rivers rendered a touch **wider** (nearest + adjacent cells pulled toward the
+  river colour). Render-only.
+- **v3-F — fidelity pass (kill the blur).** Two failure modes were showing at zoom: *soft/smudgy*
+  (the canvas lived inside the CSS zoom transform, so the browser was stretching a fixed bitmap)
+  and *blocky/pixelated* (the 300-grid was still coarse relative to the pixels). Fixes: (1) the
+  terrain canvas is **decoupled from the CSS transform** and re-paints the *visible* world region
+  at native device resolution (cap 1600px) on a rAF-debounced pan/zoom/resize/visibility loop —
+  no more stretch-blur; (2) grid **300 → 450** (`GEO_SIZE`), the definitive detail bump; (3) a
+  screen-space **fractal micro-detail** shade (4 octaves) so even sub-cell pixels carry texture.
+  To keep generation affordable at N=450, `fillDepressions`' binary min-heap swaps were hand-inlined
+  (temp vars over array-destructuring) and erosion trimmed to 3 passes (K_E 0.07) — gen ~520ms warm.
+  Settlement habitability held (mean ≈ 19.9 at both 300 and 450). The reshaped worlds re-anchored
+  three org seed-luck tests, and exposed a latent **`-0` round-trip bug** in `worldviewFromValues`
+  (`Math.round(-0.3)` → `-0`, which JSON normalises to `0`); fixed with `Math.round(s) + 0`.
+
+Result: snow-capped linear ranges dissected by river valleys, textured biome bands from tundra
+to jungle, smooth coasts with beaches, A*-routed roads, named features — crisp at every zoom.
+260 tests green. (Deferred, v3-D: river deltas + endorheic salt lakes — heavier generation for
+marginal payoff on the current arid-leaning worlds; left as future work.)
+
+- **v3-G — crisp per-pixel coastline.** The shore still read as both blocky and blurry because
+  `paintTerrain` bilinear-blended per-cell *colours*, ramping land→sea over many pixels. Now the
+  land/water boundary is decided **per pixel**: a land colour is precomputed for every cell (even
+  submerged), then each pixel picks water vs land by `bilinear(elevation) + fractal-noise < seaLevel`,
+  the noise gated to a thin band around the waterline → a fractally-detailed shoreline at any zoom,
+  no muddy ramp, no inland puddles. Render-only.
+
+## Part 6 — Mapgen v4 (drainage speed + rivers & lakes)
+
+Paired one performance slice and one fidelity slice, both around the drainage code.
+
+- **v4 perf — pop-order accumulation + typed heap.** Generation ran four priority-floods (3 in
+  erosion + 1 for rivers), and each `accumulateFlow` **sorted** ~200k cells by elevation. But the
+  flood already *visits* cells in ascending spill order — its reverse is a valid topological order
+  of the drainage tree, so `fillDepressions` now returns that `order` and accumulate iterates it
+  with **no sort**. The flood's min-heap also moved from `number[]` push/pop to **preallocated
+  typed arrays** (`Int32Array`/`Float32Array` + a length pointer; every cell is pushed once, so NN
+  slots suffice). Together: generation **~520ms → ~250–350ms** warm. (The tie-order shift reshapes
+  worlds slightly, like any drainage change; no tests broke this round.)
+- **v4 fidelity — highland lakes.** Every lake used to sit at the global sea level. But the flood
+  already computes each basin's spill level (`filled`); where `filled - elevation` exceeds a real
+  depth AND enough drainage gathers (`flux` gate, so dry desert pans don't flood), the basin holds
+  a **lake at its own — possibly upland — level**. Marked before the river pass (a filled basin is
+  standing water, not a channel) and before the distance fields (so lakeshores read as fresh water →
+  fertile). ~60–340 lake cells per world. The renderer paints them via the water classification
+  (they're above sea, so the `eP<sea` coastline test can't find them) with a crisp bilinear-fraction
+  shore.
+- **v4 fidelity — splined, flux-scaled rivers.** `geo.flowTo` (the drainage tree) is now kept on the
+  Geography so the renderer can trace each **great river** downstream from a headwater to its mouth as
+  one polyline, Catmull-Rom–smoothed and stroked in the SVG overlay (like roads) with **width ∝
+  √discharge** — a trunk reads broader than a headwater, and it meanders crisply at any zoom instead
+  of stair-stepping. Tributaries stop where they merge into an already-traced trunk, so the set is
+  dendritic with no overdraw. The fine tributary web stays in the canvas paint underneath.
+
+260 tests green; typecheck clean; browser-verified (rivers meander, lakes render, gen ~2× faster).

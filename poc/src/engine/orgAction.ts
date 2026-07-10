@@ -22,7 +22,7 @@ import {
   type OperationalState,
   DAYS_PER_YEAR,
 } from './model';
-import { INTENT_TO_ACTION, actionById, baselineOperational } from '../content/fixture';
+import { INTENT_TO_ACTION, actionById, baselineOperational } from './pack';
 import { emit, clamp } from './world';
 import { recordDeed } from './reputation';
 import { adjustTreasury } from './organization';

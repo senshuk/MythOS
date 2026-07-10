@@ -20,7 +20,9 @@ import { fullName, isAlive, canTakeSpouse } from '../engine/world';
 import { computeOpinion } from '../engine/opinion';
 import { bestSuitor, strongestFeud, isRuler, canSeekRule } from '../engine/social';
 import { standingOf } from '../engine/reputation';
-import { maturityOf, pairBondsFor } from './fixture';
+// through the PACK BOUNDARY, not './fixture' — this module is reusable mechanism, so its
+// species lookups must follow whichever universe is bound (see aspirations.ts).
+import { maturityOf, pairBondsFor } from '../engine/pack';
 
 // Narrative warmth thresholds for the courtship step's progress note (pack's own prose gates, not
 // the engine's escalation thresholds — those live in systems/resolve.ts).

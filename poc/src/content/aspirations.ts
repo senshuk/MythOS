@@ -18,16 +18,12 @@
 import { type World, type EntityId, type Aspiration, type AspirationDef } from '../engine/model';
 import { fullName, isWed, primarySpouse, canTakeSpouse } from '../engine/world';
 import { bestSuitor, strongestFeud, isRuler, canSeekRule, personalityOf } from '../engine/social';
-import {
-  maturityOf,
-  elderhoodOf,
-  fertileWindowOf,
-  ambitionOf,
-  pairBondsFor,
-  SUBSISTENCE_NEED,
-  WEALTH_NEED,
-  SOCIAL_NEED,
-} from './fixture';
+// species/trait accessors come through the PACK BOUNDARY (live bindings), NOT './fixture':
+// this module is reusable MECHANISM, so it must consult whichever universe is bound — a
+// pack with its own species would otherwise crash these lookups (found by the aeon proof
+// pack). The need KEYS below are shared vocabulary, safe to take from the reference pack.
+import { maturityOf, elderhoodOf, fertileWindowOf, ambitionOf, pairBondsFor } from '../engine/pack';
+import { SUBSISTENCE_NEED, WEALTH_NEED, SOCIAL_NEED } from './fixture';
 
 const need = (w: World, id: EntityId, key: string): number => w.needs.get(id)?.[key] ?? 0;
 
