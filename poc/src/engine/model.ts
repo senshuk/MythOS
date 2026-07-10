@@ -1163,6 +1163,9 @@ export interface FigureDetail {
   reignStart: number;
   reignEnd?: number;
   house?: string; // the lineage this figure belongs to
+  /** a life-story, when this figure is a simulated actor (a crowned local) with the personality
+   *  and home a backstory needs; absent for purely minted historical records. */
+  backstory?: string;
   lifeEvents: EventView[];
 }
 
@@ -1550,6 +1553,9 @@ export interface Snapshot {
 
 export interface ActorDetail {
   actor: ActorView;
+  /** a life-story assembled from the actor's REAL history — lineage, birthplace fate, the era
+   *  that shaped them, their bent (engine/backstory + the pack's voice). Presentation only. */
+  backstory: string;
   relationships: RelationView[];
   lifeEvents: EventView[];
   /** this actor's mood + the reasons behind it (mood.ts); absent below full fidelity. */

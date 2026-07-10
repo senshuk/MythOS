@@ -459,6 +459,8 @@ button { font-family: inherit; }
 .chain { padding-left: 18px; }
 .chain li { padding: 3px 0; }
 .ev-root { background: var(--panel-2); padding: 10px 12px; border-radius: var(--radius-sm); border-left: 3px solid var(--gold); }
+/* a character's world-grounded life-story — set apart, in the chronicle's serif voice */
+.backstory { font-family: var(--serif); font-style: italic; color: var(--parchment, var(--ink)); border-left: 2px solid var(--gold); padding: 4px 0 4px 10px; margin: var(--space-2) 0; line-height: 1.55; }
 /* the causal ancestry, indented into a tree; a fading rail marks descent into deeper causes */
 .cause-tree { list-style: none; margin: var(--space-1) 0 0; padding: 0; border-left: 2px solid var(--border); margin-left: 4px; }
 .cause-node { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }

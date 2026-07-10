@@ -167,6 +167,7 @@ export let BIOMES = FANTASY_PACK.BIOMES;
 export let biomeOf = FANTASY_PACK.biomeOf;
 export let EVENT_RENDER = FANTASY_PACK.EVENT_RENDER;
 export let eventInterest = FANTASY_PACK.eventInterest;
+export let renderBackstory = FANTASY_PACK.renderBackstory;
 export let LANDMARK_TYPES = FANTASY_PACK.LANDMARK_TYPES;
 export let LEGEND_GRAMMAR = FANTASY_PACK.LEGEND_GRAMMAR;
 export let ERA_GRAMMAR = FANTASY_PACK.ERA_GRAMMAR;
@@ -311,6 +312,7 @@ export function setPack(p: UniversePack): void {
   biomeOf = p.biomeOf;
   EVENT_RENDER = p.EVENT_RENDER;
   eventInterest = p.eventInterest;
+  renderBackstory = p.renderBackstory;
   LANDMARK_TYPES = p.LANDMARK_TYPES;
   LEGEND_GRAMMAR = p.LEGEND_GRAMMAR;
   ERA_GRAMMAR = p.ERA_GRAMMAR;

@@ -1564,6 +1564,8 @@ function Inspector({
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}{actorDetail.actor.exiledFrom ? <span className="exile-status"> · exile from {actorDetail.actor.exiledFrom}</span> : null}</p>
+          {/* a life-story assembled from their REAL history — who they are, and why */}
+          {actorDetail.backstory && <p className="backstory">{actorDetail.backstory}</p>}
 
           {actorDetail.mood && (
             <>

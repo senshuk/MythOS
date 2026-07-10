@@ -52,7 +52,8 @@ export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
 import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
-import { eventInterest } from './pack';
+import { eventInterest, renderBackstory } from './pack';
+import { backstoryFacts } from './backstory';
 import { PLAYER_ACTIONS } from './pack';
 import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
@@ -342,6 +343,7 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
     reignStart: fig.reignStart,
     reignEnd: fig.reignEnd,
     house: houseById(world, fig.houseId)?.name,
+    backstory: backstoryFor(world, id), // present for crowned actors; absent for minted records
     lifeEvents,
   };
 }
@@ -1186,7 +1188,14 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   // every soul's inner weather is inspectable, per Legibility)
   const mood = world.selfThoughts.has(id) ? buildMoodView(world, id) : undefined;
 
-  return { actor: actorView(world, id), relationships, lifeEvents, reputation, mood };
+  return { actor: actorView(world, id), backstory: backstoryFor(world, id) ?? '', relationships, lifeEvents, reputation, mood };
+}
+
+/** A life-story for an actor, rendered from their real history in the pack's voice. Stable per
+ *  actor (a fixed rng salt), so the same soul always reads the same. Presentation only. */
+function backstoryFor(world: World, id: EntityId): string | undefined {
+  const facts = backstoryFacts(world, id);
+  return facts ? renderBackstory(facts, new Rng(mixSeed(world.seed, id, 0xba57))) : undefined;
 }
 
 /** Walk the causal ancestry of an event (breadth-first, de-duplicated), recording each
