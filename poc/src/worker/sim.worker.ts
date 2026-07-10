@@ -14,6 +14,8 @@ import {
   inspectFigure,
   inspectSettlement,
   inspectHouse,
+  inspectCulture,
+  inspectDeity,
   focusSettlement,
   setStoryteller,
   possess,
@@ -162,6 +164,20 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       ctx.postMessage({
         kind: 'houseDetail',
         detail: world ? inspectHouse(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'inspectCulture': {
+      ctx.postMessage({
+        kind: 'cultureDetail',
+        detail: world ? inspectCulture(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'inspectDeity': {
+      ctx.postMessage({
+        kind: 'deityDetail',
+        detail: world ? inspectDeity(world, msg.id) ?? null : null,
       });
       break;
     }

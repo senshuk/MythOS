@@ -3,7 +3,7 @@
  * founder, its line of members, and its saga; and "House X" in event prose links to it.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { createWorld, runYears, inspectHouse } from './sim';
+import { createWorld, runYears, inspectHouse, inspectCulture, inspectDeity } from './sim';
 import { renderEventParts } from './render';
 import { getEvent } from './world';
 import type { World } from './model';
@@ -47,5 +47,28 @@ describe('inspectHouse — the dynasty made inspectable', () => {
       }
     }
     void getEvent; // (kept: archive-aware fetch, if a future assertion needs it)
+  });
+});
+
+describe('inspectCulture / inspectDeity — creeds and gods made inspectable', () => {
+  it('a culture reports its towns, creed, and patron god', () => {
+    const d = inspectCulture(w, 'martial')!;
+    expect(d).toBeDefined();
+    expect(d.name).toContain('Iron'); // the Iron Creed
+    expect(d.patronDeity?.id).toBeTruthy();
+    // every town it lists actually holds this creed
+    for (const t of d.settlements) expect(w.settlements[t.id]?.cultureId).toBe('martial');
+    expect(inspectCulture(w, 'martial')).toEqual(d); // deterministic
+    expect(inspectCulture(w, 'no-such-culture')).toBeUndefined();
+  });
+
+  it('a deity reports its domain and the creeds that venerate it', () => {
+    const culture = inspectCulture(w, 'martial')!;
+    const deityId = culture.patronDeity!.id;
+    const d = inspectDeity(w, deityId)!;
+    expect(d.domain.length).toBeGreaterThan(0);
+    expect(d.cultures.some((c) => c.id === 'martial')).toBe(true); // martial venerates it
+    expect(inspectDeity(w, deityId)).toEqual(d); // deterministic
+    expect(inspectDeity(w, 'no-such-god')).toBeUndefined();
   });
 });

@@ -407,6 +407,8 @@ export default function App() {
               figureDetail={sim.figureDetail}
               settlementDetail={sim.settlementDetail}
               houseDetail={sim.houseDetail}
+              cultureDetail={sim.cultureDetail}
+              deityDetail={sim.deityDetail}
               settlements={stat.settlements}
               playerId={stat.player?.id}
               onPickActor={inspectActor}
@@ -1381,7 +1383,7 @@ function HistoryFeed({
             {tongues.map((t) => (
               <div key={t.cultureId} className="tongue">
                 <h3>
-                  {cultureName(t.cultureId)} — <span className="tongue-demonym">the {t.demonym}</span>
+                  <button className="link" onClick={() => onRef({ kind: 'culture', id: t.cultureId })}>{cultureName(t.cultureId)}</button> — <span className="tongue-demonym">the {t.demonym}</span>
                   <span className="tongue-voice"> · a {t.voice} tongue</span>
                 </h3>
                 {t.kin.length > 0 && (
@@ -1487,6 +1489,8 @@ function Inspector({
   figureDetail,
   settlementDetail,
   houseDetail,
+  cultureDetail,
+  deityDetail,
   settlements,
   playerId,
   onPickActor,
@@ -1501,6 +1505,8 @@ function Inspector({
   figureDetail: ReturnType<typeof useSim>['figureDetail'];
   settlementDetail: ReturnType<typeof useSim>['settlementDetail'];
   houseDetail: ReturnType<typeof useSim>['houseDetail'];
+  cultureDetail: ReturnType<typeof useSim>['cultureDetail'];
+  deityDetail: ReturnType<typeof useSim>['deityDetail'];
   settlements: SettlementView[];
   playerId?: number;
   onPickActor: (id: number) => void;
@@ -1510,7 +1516,7 @@ function Inspector({
   onPossess: (id: number) => void;
   onClose: () => void;
 }) {
-  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail) {
     return (
       <section className="panel inspector empty">
         <h2>A closer look</h2>
@@ -1661,6 +1667,49 @@ function Inspector({
         </div>
       )}
 
+      {cultureDetail && (
+        <div>
+          <h3>{cultureDetail.name}</h3>
+          <p className="muted">
+            {cultureDetail.tongue ? `the ${cultureDetail.tongue.demonym} · a ${cultureDetail.tongue.voice} tongue · ` : ''}
+            {cultureDetail.leanings}
+            {cultureDetail.patronDeity ? (
+              <> · venerate <button className="link" onClick={() => onRef({ kind: 'deity', id: cultureDetail.patronDeity!.id })}>{cultureDetail.patronDeity.name}</button></>
+            ) : ''}
+          </p>
+          {(cultureDetail.creed.reveres.length > 0 || cultureDetail.creed.abhors.length > 0) && (
+            <p className="muted">
+              {cultureDetail.creed.reveres.length > 0 ? <>reveres {cultureDetail.creed.reveres.join(', ')}. </> : ''}
+              {cultureDetail.creed.abhors.length > 0 ? <>abhors {cultureDetail.creed.abhors.join(', ')}.</> : ''}
+            </p>
+          )}
+          {cultureDetail.settlements.length > 0 && (
+            <>
+              <h4>Its towns</h4>
+              <ul className="rels">
+                {cultureDetail.settlements.slice(0, 20).map((s) => (
+                  <li key={s.id}><button className="link" onClick={() => onRef({ kind: 'settlement', id: s.id })}>{s.name}</button></li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {deityDetail && (
+        <div>
+          <h3>{deityDetail.name}</h3>
+          <p className="muted">god of {deityDetail.domain} · {deityDetail.faithful} {deityDetail.faithful === 1 ? 'soul holds' : 'souls hold'} this faith</p>
+          {deityDetail.cultures.length > 0 && (
+            <p className="muted">
+              venerated by {deityDetail.cultures.map((c, i) => (
+                <span key={c.id}>{i > 0 ? ', ' : ''}<button className="link" onClick={() => onRef({ kind: 'culture', id: c.id })}>{c.name}</button></span>
+              ))}
+            </p>
+          )}
+        </div>
+      )}
+
       {houseDetail && (
         <div>
           <h3>House {houseDetail.name}{houseDetail.meaning ? <span className="house-gloss"> · {houseDetail.meaning}</span> : null}</h3>
@@ -1710,7 +1759,7 @@ function Inspector({
                 ? `a ruin · fell y${settV.ruinedYear}`
                 : `${settV.population} souls · ${settV.dominantSpecies} · ${settV.specialization}`}
               {' · '}
-              {settV.culture}
+              <button className="link" onClick={() => onRef({ kind: 'culture', id: settV.cultureId })}>{settV.culture}</button>
               {settV.leaderTitle && settV.ruler ? (
                 <>
                   {' · '}{settV.leaderTitle}{' '}
@@ -1785,7 +1834,7 @@ function Inspector({
             </p>
           )}
           {settV?.patronDeity && (
-            <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
+            <p className="patron-deity">sacred to: <button className="link" onClick={() => onRef({ kind: 'deity', id: settV.patronDeity.id })}><em>{settV.patronDeity.name}</em></button> · {settV.patronDeity.domain}</p>
           )}
           {settV?.creed && (settV.creed.reveres.length > 0 || settV.creed.abhors.length > 0) && (
             <p className="creed">

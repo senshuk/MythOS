@@ -1124,7 +1124,9 @@ export type EventRef =
   | { kind: 'actor'; id: EntityId }
   | { kind: 'figure'; id: EntityId }
   | { kind: 'settlement'; id: SettlementId }
-  | { kind: 'house'; id: HouseId };
+  | { kind: 'house'; id: HouseId }
+  | { kind: 'culture'; id: string } // a creed/people (pack culture id)
+  | { kind: 'deity'; id: string }; // a god (pack deity id)
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {
@@ -1219,10 +1221,11 @@ export interface SettlementView {
   government: string; // the polity's government (display label, e.g. 'Lord'/'Speaker'/'free folk')
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   culture: string; // the people's culture name (e.g. 'the Iron Creed')
+  cultureId: string; // the pack culture id — so the name can be inspected
   culturalTaboos: string[]; // deed labels this culture especially abhors (ethics weight ≥ 1.5)
   /** the creed's moral character (design/23): the deeds & lives it reveres / abhors. */
   creed: { reveres: string[]; abhors: string[] };
-  patronDeity: { name: string; domain: string }; // the culture's patron deity
+  patronDeity: { name: string; domain: string; id: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
   rulerId?: EntityId; // the ruler as a figure, so the name can be inspected
@@ -1329,6 +1332,28 @@ export interface HouseDetail {
   founder?: { name: string; id: EntityId };
   members: { name: string; id: EntityId; role: string; reignStart: number; deathYear?: number }[];
   events: EventView[]; // the House's saga — foundings, ascensions, conquests, its fall
+}
+
+/** Detail for a CULTURE/creed — a people made inspectable: what it holds dear, its moral
+ *  character, its patron god, its tongue, and the settlements that keep it. */
+export interface CultureDetail {
+  id: string;
+  name: string;
+  leanings: string; // its worldview in a phrase (top values)
+  creed: { reveres: string[]; abhors: string[] };
+  patronDeity?: { name: string; id: string; domain: string };
+  tongue?: { demonym: string; voice: string };
+  settlements: { name: string; id: SettlementId }[]; // living towns that hold this creed
+}
+
+/** Detail for a DEITY — a god made inspectable: its domain, the peoples who venerate it, and
+ *  how many souls presently hold its faith. */
+export interface DeityDetail {
+  id: string;
+  name: string;
+  domain: string;
+  cultures: { name: string; id: string }[]; // creeds whose patron this is
+  faithful: number; // simulated souls presently of this faith
 }
 
 /** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */

@@ -20,6 +20,8 @@ import {
   type FigureDetail,
   type SettlementDetail,
   type HouseDetail,
+  type CultureDetail,
+  type DeityDetail,
   type PlayerView,
   type PlayerTargetView,
   type StoryBeat,
@@ -50,7 +52,7 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
 import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest, renderBackstory } from './pack';
@@ -390,6 +392,41 @@ export function inspectHouse(world: World, id: number): HouseDetail | undefined 
   };
 }
 
+/** Inspect a CULTURE/creed: what it holds dear, its moral character, its god, its tongue, and
+ *  the living settlements that keep it. Pure read of pack data + world state. */
+export function inspectCulture(world: World, id: string): CultureDetail | undefined {
+  const c = cultureById(id);
+  if (c.id !== id) return undefined; // cultureById falls back to CULTURES[0]; reject an unknown id
+  const deity = patronDeityOf(id);
+  return {
+    id,
+    name: c.name,
+    leanings: worldviewReading(worldviewFromValues(c.values as Record<ValueAxis, number>)),
+    creed: creedOf(id),
+    patronDeity: deity ? { name: deity.name, id: deity.id, domain: deity.domain } : undefined,
+    tongue: { demonym: peopleName(id, world.seed), voice: voiceOf(id) },
+    settlements: world.settlements
+      .filter((s) => s.ruinedYear === undefined && s.cultureId === id)
+      .map((s) => ({ name: s.name, id: s.id })),
+  };
+}
+
+/** Inspect a DEITY: its domain, the creeds whose patron it is, and how many souls hold its
+ *  faith right now. */
+export function inspectDeity(world: World, id: string): DeityDetail | undefined {
+  const d = deityById(id);
+  if (d.id !== id) return undefined; // deityById falls back; reject an unknown id
+  let faithful = 0;
+  for (const f of world.faith.values()) if (f === id) faithful++;
+  return {
+    id,
+    name: d.name,
+    domain: d.domain,
+    cultures: CULTURES.filter((c) => c.patronDeityId === id).map((c) => ({ name: c.name, id: c.id })),
+    faithful,
+  };
+}
+
 /** Inspect a SETTLEMENT's whole recorded history: every event that names it (its
  *  founding, ruler line, wars, famines, ruin), newest first. */
 export function inspectSettlement(world: World, id: SettlementId): SettlementDetail | undefined {
@@ -447,9 +484,10 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       government: governmentById(s.governmentId).title || 'free folk',
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
+      cultureId: s.cultureId,
       culturalTaboos: ethicsTaboos(s.cultureId),
       creed: creedOf(s.cultureId),
-      patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
+      patronDeity: (({ name, domain, id }) => ({ name, domain, id }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
       rulerId: getFigure(world, s.currentRulerId) ? s.currentRulerId : undefined,
