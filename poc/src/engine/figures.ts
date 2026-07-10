@@ -134,30 +134,69 @@ export function getFigure(world: World, id: FigureId | undefined): HistoricalFig
   return world.figuresById.get(id);
 }
 
-/** The local heir to a focused settlement's rule: the most PROMINENT living adult —
- *  weighing ambition (do they want it), RENOWN (public standing), and ties (their
- *  place in the community). Ambition still dominates, but a celebrated soul can now be
- *  raised to lead — the renown→opportunity loop (HEIR_WEIGHTS, pack data). With nobody
- *  renowned this reduces to the old ambition-first, ties-tiebreak order. Deterministic —
- *  no RNG (fullActors is id-order; strict `>` keeps the lowest-id winner on ties). */
-export function chooseHeir(world: World, settlementId: number): EntityId | undefined {
-  let best: EntityId | undefined;
-  let bestProminence = -Infinity;
-  let bestTies = -1;
+/** A contender for a settlement's seat, with the standing the polity weighs. */
+export interface Claimant {
+  id: EntityId;
+  prominence: number; // ambition (do they want it) + renown (how the town regards them)
+  ties: number; // their place in the community — the tiebreak
+}
+
+/** The living adults who could inherit a settlement's rule, ranked as the polity would rank them:
+ *  by PROMINENCE (ambition + renown), ties breaking a tie, lowest id breaking that. This is the
+ *  succession race, made a first-class read so it can be both DECIDED (chooseHeir) and SHOWN (the
+ *  'rise' ambition surfaces where the player stands). Deterministic — no RNG, total ordering. */
+export function rankClaimants(world: World, settlementId: number): Claimant[] {
+  const out: Claimant[] = [];
   for (const id of fullActors(world)) {
     if (world.homeSettlement.get(id) !== settlementId) continue;
     if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
-    // prominence = ambition + renown (these compete); ties only break a tie. With no
-    // renown this is exactly the old ambition-first, ties-tiebreak order.
     const prominence = ambitionOf(world.traits.get(id)!) * HEIR_WEIGHTS.ambition + standingOf(world, id) * HEIR_WEIGHTS.renown;
-    const ties = relCount(world, id);
-    if (prominence > bestProminence || (prominence === bestProminence && ties > bestTies)) {
-      bestProminence = prominence;
-      bestTies = ties;
-      best = id;
-    }
+    out.push({ id, prominence, ties: relCount(world, id) });
   }
-  return best;
+  // prominence desc, then ties desc, then id asc — identical to the old strict-`>` scan over the
+  // id-ordered actors (so heir selection, and the determinism hash, are unchanged).
+  out.sort((a, b) => b.prominence - a.prominence || b.ties - a.ties || a.id - b.id);
+  return out;
+}
+
+/** The local heir to a settlement's rule: the front-runner of the succession race (see
+ *  rankClaimants). With nobody renowned this reduces to the old ambition-first, ties-tiebreak
+ *  order. Deterministic — no RNG. */
+export function chooseHeir(world: World, settlementId: number): EntityId | undefined {
+  return rankClaimants(world, settlementId)[0]?.id;
+}
+
+/** Years before a ruler's fated end that the seat counts as "failing" — the peaceful window in
+ *  which the acclaimed front-runner may press a claim and the succession comes early. Shared with
+ *  the 'rise' ambition so what the player is TOLD and what pressClaim ALLOWS never drift. */
+export const CLAIM_RIPE_WINDOW = 6;
+
+/**
+ * A proactive, PEACEFUL bid for a seat. When the claimant is the one the town would raise (the
+ * front-runner) AND the sitting ruler is failing (near the end of their days or term), the polity
+ * turns to them and the succession comes early — the old ruler yields, and lives on. Any other
+ * press is premature and does nothing (the forceful, contested path — challenging firm power into a
+ * civil war — is a later stage). ONE RULE SET: an ambitious NPC noble presses a claim by this very
+ * verb; there is no player branch. Randomness (the new reign's span) comes from the caller's stream.
+ */
+export function pressClaim(world: World, claimant: EntityId, rng: Rng): void {
+  const h = world.homeSettlement.get(claimant);
+  if (h === undefined) return;
+  const s = world.settlements[h];
+  if (!s || s.ruinedYear !== undefined || s.macro.population <= 0) return;
+  if (s.currentRulerId === claimant) return; // already yours
+  if (governmentById(s.governmentId).succession === 'none') return; // a leaderless polity has no seat
+  if (rankClaimants(world, h)[0]?.id !== claimant) return; // you must be the one they'd raise
+  const year = Math.floor(world.tick / DAYS_PER_YEAR);
+  const ruler = getFigure(world, s.currentRulerId);
+  if (ruler && year < ruler.reignEnd - CLAIM_RIPE_WINDOW) return; // the moment is not yet ripe
+
+  const oldHouse = houseById(world, ruler?.houseId);
+  const title = leaderTitleOf(s.governmentId);
+  const claimEv = emit(world, 'claim_pressed', [claimant], { settlement: s.name, title }, [], [s.id]);
+  if (ruler && ruler.deathYear === undefined) ruler.reignEnd = year; // the old ruler yields, and lives on
+  const heir = crownActor(world, s, claimant, year, rng);
+  installRuler(world, s, heir, oldHouse, year, title, [claimEv]); // seats them; the ascension cites the claim
 }
 
 /** Crown a simulated actor: mint a figure record sharing the actor's id (FigureId

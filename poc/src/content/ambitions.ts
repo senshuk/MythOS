@@ -15,11 +15,12 @@
  * All steps are composed from the six generic verbs the engine already resolves, so an ambition
  * needs no new resolver code. A richer pack points a step at a pack-specific verb (EXTRA_ACTIONS).
  */
-import { type World, type EntityId, type AmbitionDef, type DecisionView } from '../engine/model';
+import { type World, type EntityId, type AmbitionDef, type DecisionView, DAYS_PER_YEAR } from '../engine/model';
 import { fullName, isAlive, canTakeSpouse } from '../engine/world';
 import { computeOpinion } from '../engine/opinion';
 import { bestSuitor, strongestFeud, isRuler, canSeekRule } from '../engine/social';
 import { standingOf } from '../engine/reputation';
+import { rankClaimants, getFigure, CLAIM_RIPE_WINDOW } from '../engine/figures';
 // through the PACK BOUNDARY, not './fixture' — this module is reusable mechanism, so its
 // species lookups must follow whichever universe is bound (see aspirations.ts).
 import { maturityOf, pairBondsFor } from '../engine/pack';
@@ -30,6 +31,15 @@ const WARM = 240;
 const READY = 310;
 // How decisively the player must out-rank a rival to count as having "bested" them.
 const ECLIPSE_MARGIN = 60;
+// English ordinals for the succession standing note ("second of four to inherit").
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
+const ordinal = (n: number): string => ORDINALS[n - 1] ?? `${n}th`;
+/** The seat is within a front-runner's grasp: the sitting ruler is failing (near their fated end),
+ *  or the seat already stands open. Mirrors pressClaim's ripeness so the offer never lies. */
+function claimRipe(w: World, settlementId: number): boolean {
+  const ruler = getFigure(w, w.settlements[settlementId]?.currentRulerId);
+  return !ruler || Math.floor(w.tick / DAYS_PER_YEAR) >= ruler.reignEnd - CLAIM_RIPE_WINDOW;
+}
 
 const spousesOf = (w: World, id: EntityId): EntityId[] => w.ties.get(id)?.spouses ?? [];
 
@@ -128,17 +138,41 @@ export const AMBITIONS: AmbitionDef[] = [
       return `Rise to lead ${place}`;
     },
     hint: () => 'make your name until the seat is yours',
-    note: (w, id) => (isRuler(w, id) ? 'The seat is yours.' : 'You are not yet the one they look to.'),
+    // The succession race, made legible: where the player stands among named rivals, and whether the
+    // moment to press is at hand. (rankClaimants is the same read chooseHeir decides by.)
+    note(w, id) {
+      if (isRuler(w, id)) return 'The seat is yours.';
+      const h = w.homeSettlement.get(id);
+      if (h === undefined) return 'You have no home to rise in.';
+      const ranked = rankClaimants(w, h);
+      const rank = ranked.findIndex((c) => c.id === id);
+      if (rank < 0) return 'You are not yet counted among those who could lead.';
+      const place = w.settlements[h]?.name ?? 'your home';
+      if (rank > 0) return `You stand ${ordinal(rank + 1)} of ${ranked.length} to inherit ${place}, behind ${fullName(w, ranked[0].id)}.`;
+      // the player is the one the town would raise — is the moment ripe?
+      if (claimRipe(w, h)) return `You are the one ${place} would raise, and its lord is failing. Press your claim.`;
+      const ruler = getFigure(w, w.settlements[h]?.currentRulerId);
+      const soon = ruler && Math.floor(w.tick / DAYS_PER_YEAR) >= ruler.reignEnd - CLAIM_RIPE_WINDOW * 2;
+      return `You are the one ${place} would raise${soon ? ' — the seat will open before long.' : ', but its lord holds firm for now.'}`;
+    },
     nextStep(w, id): DecisionView {
       const h = w.homeSettlement.get(id);
-      const ruler = h !== undefined ? w.settlements[h]?.currentRulerId : undefined;
-      const options: DecisionView['options'] = [
-        { label: 'Serve the town', hint: 'plain work builds a good name', intent: { kind: 'work' }, tone: 'neutral' },
-      ];
-      if (ruler !== undefined && ruler !== id && isAlive(w, ruler)) {
-        options.push({ label: `Court ${fullName(w, ruler)}'s favor`, hint: 'win over the one who holds the seat', intent: { kind: 'socialize', target: ruler }, tone: 'good' });
+      const rulerId = h !== undefined ? w.settlements[h]?.currentRulerId : undefined;
+      const frontRunner = h !== undefined && rankClaimants(w, h)[0]?.id === id;
+      const ripe = h !== undefined && frontRunner && claimRipe(w, h);
+      const options: DecisionView['options'] = [];
+      // the lever: offered only when it will actually take the seat, so the affordance never lies.
+      if (ripe) options.push({ label: 'Press your claim', hint: 'the seat is within reach — take it', intent: { kind: 'press_claim' }, tone: 'good' });
+      options.push({ label: 'Serve the town', hint: 'plain work builds a good name', intent: { kind: 'work' }, tone: 'neutral' });
+      if (!ripe && rulerId !== undefined && rulerId !== id && isAlive(w, rulerId)) {
+        options.push({ label: `Court ${fullName(w, rulerId)}'s favor`, hint: 'win over the one who holds the seat', intent: { kind: 'socialize', target: rulerId }, tone: 'good' });
       }
-      return { id: 'amb:rise', urgency: 90, prompt: [{ text: 'To rise, make yourself known.' }], options };
+      return {
+        id: 'amb:rise',
+        urgency: ripe ? 100 : 90,
+        prompt: [{ text: ripe ? 'The seat is within your grasp — make your move.' : 'To rise, make yourself known.' }],
+        options,
+      };
     },
     fulfilled: (w, id) => isRuler(w, id),
   },

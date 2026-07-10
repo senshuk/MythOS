@@ -42,6 +42,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
   ascension: (n, d) =>
     `${n(0)}${d.house ? ` of House ${d.house}` : ''} became ${d.title || 'ruler'} of ${d.settlement}.`,
+  claim_pressed: (n, d) => `${n(0)} pressed a claim to lead ${d.settlement}, and the failing ${d.title || 'ruler'} yielded the seat.`,
   dynasty: (n, d) =>
     `${n(0)} of House ${d.house} seized ${d.settlement}${d.old ? `, ending the rule of House ${d.old}` : ''}, founding a new dynasty.`,
   house_fallen: (_n, d) => `House ${d.house} fell with ${d.settlement} — its line ended.`,
@@ -164,6 +165,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 40; // a ruler's passing is remembered
     case 'ascension':
       return 18; // a new ruler rising is minor news
+    case 'claim_pressed':
+      return 34; // a bid for power, taken not inherited — notable, below a full dynastic turn
     case 'dynasty':
       return 44; // a new dynasty seizing a seat — a turn of the age
     case 'house_fallen':
