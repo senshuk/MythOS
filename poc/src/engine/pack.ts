@@ -29,7 +29,7 @@ import * as decisions from '../content/decisions';
 export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec } from '../content/fixture';
 export type { PlaceContext } from '../content/languages';
 export type { Biome } from '../content/biomes';
-export type { RenderFn } from '../content/narrative';
+export type { RenderFn, PlayerVoice } from '../content/narrative';
 export type { ActionResolver } from '../content/actions';
 
 /** The COMPLETE surface a universe pack must supply — every function, table and constant
@@ -168,6 +168,7 @@ export let biomeOf = FANTASY_PACK.biomeOf;
 export let EVENT_RENDER = FANTASY_PACK.EVENT_RENDER;
 export let eventInterest = FANTASY_PACK.eventInterest;
 export let renderBackstory = FANTASY_PACK.renderBackstory;
+export let PLAYER_VOICE = FANTASY_PACK.PLAYER_VOICE;
 export let LANDMARK_TYPES = FANTASY_PACK.LANDMARK_TYPES;
 export let LEGEND_GRAMMAR = FANTASY_PACK.LEGEND_GRAMMAR;
 export let ERA_GRAMMAR = FANTASY_PACK.ERA_GRAMMAR;
@@ -313,6 +314,7 @@ export function setPack(p: UniversePack): void {
   EVENT_RENDER = p.EVENT_RENDER;
   eventInterest = p.eventInterest;
   renderBackstory = p.renderBackstory;
+  PLAYER_VOICE = p.PLAYER_VOICE;
   LANDMARK_TYPES = p.LANDMARK_TYPES;
   LEGEND_GRAMMAR = p.LEGEND_GRAMMAR;
   ERA_GRAMMAR = p.ERA_GRAMMAR;
