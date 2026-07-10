@@ -19,6 +19,7 @@ import {
   type SettlementId,
   type FigureDetail,
   type SettlementDetail,
+  type HouseDetail,
   type PlayerView,
   type PlayerTargetView,
   type StoryBeat,
@@ -343,8 +344,49 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
     reignStart: fig.reignStart,
     reignEnd: fig.reignEnd,
     house: houseById(world, fig.houseId)?.name,
+    houseId: fig.houseId,
     backstory: backstoryFor(world, id), // present for crowned actors; absent for minted records
     lifeEvents,
+  };
+}
+
+/** Inspect a HOUSE (dynasty): its founder, seat, the line of members who held power, and its
+ *  saga — assembled from the House record + its members' events. */
+export function inspectHouse(world: World, id: number): HouseDetail | undefined {
+  const house = world.houses.find((h) => h.id === id);
+  if (!house) return undefined;
+  const founderFig = getFigure(world, house.founderId);
+  // the line: figures of this House, deduped by id (a re-crowned actor leaves duplicate records),
+  // sorted by when they came to prominence.
+  const seenM = new Set<number>();
+  const members = world.figures
+    .filter((f) => f.houseId === id && !seenM.has(f.id) && seenM.add(f.id))
+    .sort((a, b) => a.reignStart - b.reignStart)
+    .slice(0, 20)
+    .map((f) => ({ name: f.name, id: f.id, role: f.role, reignStart: f.reignStart, deathYear: f.deathYear }));
+  // the House's saga: its members' events + anything naming the House, notable-first-then-chrono.
+  const evIds = new Set<number>();
+  for (const m of members) for (const e of world.eventsBySubject.get(m.id) ?? []) evIds.add(e);
+  const events = [...evIds]
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined)
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 24)
+    .map((ev) => eventView(world, ev));
+  return {
+    id: house.id,
+    name: house.name,
+    meaning: world.houseMeaning.get(house.name),
+    foundedYear: house.foundedYear,
+    extinctYear: house.extinctYear,
+    prestige: Math.round(house.prestige),
+    origin: world.settlements[house.originSettlementId]?.name,
+    originId: house.originSettlementId,
+    seat: house.seatSettlementId !== undefined ? world.settlements[house.seatSettlementId]?.name : undefined,
+    seatId: house.seatSettlementId,
+    founder: founderFig ? { name: founderFig.name, id: founderFig.id } : undefined,
+    members,
+    events,
   };
 }
 
@@ -1067,7 +1109,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => b.prestige - a.prestige || a.id - b.id)
     .slice(0, 12)
     .map((h) => ({
+      id: h.id,
       name: h.name,
+      founder: getFigure(world, h.founderId)?.name,
       meaning: world.houseMeaning.get(h.name),
       foundedYear: h.foundedYear,
       prestige: Math.round(h.prestige),

@@ -1123,7 +1123,8 @@ export interface ActorView {
 export type EventRef =
   | { kind: 'actor'; id: EntityId }
   | { kind: 'figure'; id: EntityId }
-  | { kind: 'settlement'; id: SettlementId };
+  | { kind: 'settlement'; id: SettlementId }
+  | { kind: 'house'; id: HouseId };
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {
@@ -1163,6 +1164,7 @@ export interface FigureDetail {
   reignStart: number;
   reignEnd?: number;
   house?: string; // the lineage this figure belongs to
+  houseId?: HouseId; // so "of House X" links to the dynasty
   /** a life-story, when this figure is a simulated actor (a crowned local) with the personality
    *  and home a backstory needs; absent for purely minted historical records. */
   backstory?: string;
@@ -1311,9 +1313,29 @@ export interface FigureView {
   house?: string; // the lineage this figure belongs to
 }
 
+/** Detail for a HOUSE (dynasty): the lineage made a first-class, inspectable thing — its
+ *  founder, seat, the line of members who held power, and its history from founding to fall. */
+export interface HouseDetail {
+  id: HouseId;
+  name: string;
+  meaning?: string;
+  foundedYear: number;
+  extinctYear?: number;
+  prestige: number;
+  origin?: string; // the settlement where the line began
+  originId?: SettlementId;
+  seat?: string; // the settlement it rules now (absent if out of power)
+  seatId?: SettlementId;
+  founder?: { name: string; id: EntityId };
+  members: { name: string; id: EntityId; role: string; reignStart: number; deathYear?: number }[];
+  events: EventView[]; // the House's saga — foundings, ascensions, conquests, its fall
+}
+
 /** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */
 export interface HouseView {
+  id: HouseId; // so the dynasties panel (and "of House X" in prose) can inspect the lineage
   name: string;
+  founder?: string; // the name of the line's founder
   meaning?: string; // the surname's sense in the founders' tongue ("the Iron Hand")
   foundedYear: number;
   prestige: number;

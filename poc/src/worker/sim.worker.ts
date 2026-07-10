@@ -13,6 +13,7 @@ import {
   inspectEvent,
   inspectFigure,
   inspectSettlement,
+  inspectHouse,
   focusSettlement,
   setStoryteller,
   possess,
@@ -154,6 +155,13 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       ctx.postMessage({
         kind: 'settlementDetail',
         detail: world ? inspectSettlement(world, msg.id) ?? null : null,
+      });
+      break;
+    }
+    case 'inspectHouse': {
+      ctx.postMessage({
+        kind: 'houseDetail',
+        detail: world ? inspectHouse(world, msg.id) ?? null : null,
       });
       break;
     }

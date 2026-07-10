@@ -406,6 +406,7 @@ export default function App() {
               eventChain={sim.eventChain}
               figureDetail={sim.figureDetail}
               settlementDetail={sim.settlementDetail}
+              houseDetail={sim.houseDetail}
               settlements={stat.settlements}
               playerId={stat.player?.id}
               onPickActor={inspectActor}
@@ -1427,7 +1428,8 @@ function HistoryFeed({
               <ul className="houses">
                 {houses.slice(0, 8).map((h, i) => (
                   <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                    <span className="house-name">House {h.name}{h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}</span>
+                    <button className="link house-name" onClick={() => onRef({ kind: 'house', id: h.id })}>House {h.name}</button>
+                    {h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}
                     <span className="house-status">
                       {h.extinctYear !== undefined
                         ? `fell with its seat, y${h.extinctYear}`
@@ -1484,6 +1486,7 @@ function Inspector({
   eventChain,
   figureDetail,
   settlementDetail,
+  houseDetail,
   settlements,
   playerId,
   onPickActor,
@@ -1497,6 +1500,7 @@ function Inspector({
   eventChain: ReturnType<typeof useSim>['eventChain'];
   figureDetail: ReturnType<typeof useSim>['figureDetail'];
   settlementDetail: ReturnType<typeof useSim>['settlementDetail'];
+  houseDetail: ReturnType<typeof useSim>['houseDetail'];
   settlements: SettlementView[];
   playerId?: number;
   onPickActor: (id: number) => void;
@@ -1506,7 +1510,7 @@ function Inspector({
   onPossess: (id: number) => void;
   onClose: () => void;
 }) {
-  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail) {
     return (
       <section className="panel inspector empty">
         <h2>A closer look</h2>
@@ -1639,7 +1643,9 @@ function Inspector({
           <h3>{figureDetail.name}</h3>
           <p className="muted">
             {figureDetail.role}
-            {figureDetail.house ? ` of House ${figureDetail.house}` : ''} of{' '}
+            {figureDetail.house ? (
+              <> of {figureDetail.houseId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'house', id: figureDetail.houseId! })}>House {figureDetail.house}</button> : `House ${figureDetail.house}`}</>
+            ) : ''} of{' '}
             <button className="link" onClick={() => onRef({ kind: 'settlement', id: figureDetail.settlementId })}>
               {figureDetail.settlement}
             </button>{' '}
@@ -1651,6 +1657,44 @@ function Inspector({
             <p className="muted">Nothing recorded.</p>
           ) : (
             <ul className="rels">{figureDetail.lifeEvents.map(eventLine)}</ul>
+          )}
+        </div>
+      )}
+
+      {houseDetail && (
+        <div>
+          <h3>House {houseDetail.name}{houseDetail.meaning ? <span className="house-gloss"> · {houseDetail.meaning}</span> : null}</h3>
+          <p className="muted">
+            founded y{houseDetail.foundedYear}
+            {houseDetail.founder ? <> by <button className="link" onClick={() => onRef({ kind: 'figure', id: houseDetail.founder!.id })}>{houseDetail.founder.name}</button></> : ''}
+            {houseDetail.originId !== undefined ? <> in <button className="link" onClick={() => onRef({ kind: 'settlement', id: houseDetail.originId! })}>{houseDetail.origin}</button></> : houseDetail.origin ? ` in ${houseDetail.origin}` : ''}
+            {` · ${houseDetail.prestige} renown`}
+          </p>
+          <p className="muted">
+            {houseDetail.extinctYear !== undefined ? (
+              `a fallen line — ended y${houseDetail.extinctYear}`
+            ) : houseDetail.seatId !== undefined ? (
+              <>rules <button className="link" onClick={() => onRef({ kind: 'settlement', id: houseDetail.seatId! })}>{houseDetail.seat}</button></>
+            ) : 'out of power, its dynasty enduring in name'}
+          </p>
+          {houseDetail.members.length > 0 && (
+            <>
+              <h4>The line</h4>
+              <ul className="rels">
+                {houseDetail.members.map((m) => (
+                  <li key={m.id}>
+                    <button className="link" onClick={() => onRef({ kind: 'figure', id: m.id })}>{m.name}</button>
+                    <span className="muted"> — {m.role}, {m.deathYear !== undefined ? `r.${m.reignStart}–${m.deathYear}` : `since y${m.reignStart}`}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <h4>The House’s saga</h4>
+          {houseDetail.events.length === 0 ? (
+            <p className="muted">Nothing recorded.</p>
+          ) : (
+            <ul className="rels">{houseDetail.events.map(eventLine)}</ul>
           )}
         </div>
       )}

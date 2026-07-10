@@ -5,7 +5,7 @@
  * keeps the UI a pure function of state, and leaves the door open to replay and
  * (eventually) multiplayer.
  */
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 
@@ -20,6 +20,7 @@ export type SimRequest =
   | { kind: 'inspectEvent'; id: number }
   | { kind: 'inspectFigure'; id: number }
   | { kind: 'inspectSettlement'; id: number }
+  | { kind: 'inspectHouse'; id: number }
   // --- player-as-actor control loop ---
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
@@ -37,4 +38,5 @@ export type SimResponse =
   | { kind: 'eventChain'; chain: EventChain | null }
   | { kind: 'figureDetail'; detail: FigureDetail | null }
   | { kind: 'settlementDetail'; detail: SettlementDetail | null }
+  | { kind: 'houseDetail'; detail: HouseDetail | null }
   | { kind: 'saveList'; saves: SaveMeta[] };

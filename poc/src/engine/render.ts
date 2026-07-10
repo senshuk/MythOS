@@ -41,6 +41,9 @@ export function renderEventParts(world: World, ev: WorldEvent): EventPart[] {
     }
   }
   for (const s of world.settlements) tokens.push({ name: s.name, ref: { kind: 'settlement', id: s.id } });
+  // "House X" mentions link to the lineage — matched as "House {name}" so the whole phrase
+  // becomes one clickable ref (longest-first below keeps it from being split by a settlement match).
+  for (const h of world.houses) tokens.push({ name: `House ${h.name}`, ref: { kind: 'house', id: h.id } });
   tokens.sort((a, b) => b.name.length - a.name.length);
 
   // claim non-overlapping ranges, longest tokens first

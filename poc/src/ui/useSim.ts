@@ -3,7 +3,7 @@
  * back as snapshots. React renders snapshots — it never reaches into sim state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, EventRef } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, EventRef } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 import type { SimRequest, SimResponse } from '../worker/protocol';
@@ -15,6 +15,7 @@ export function useSim(initialSeed: number) {
   const [eventChain, setEventChain] = useState<EventChain | null>(null);
   const [figureDetail, setFigureDetail] = useState<FigureDetail | null>(null);
   const [settlementDetail, setSettlementDetail] = useState<SettlementDetail | null>(null);
+  const [houseDetail, setHouseDetail] = useState<HouseDetail | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -24,6 +25,7 @@ export function useSim(initialSeed: number) {
     setEventChain(null);
     setFigureDetail(null);
     setSettlementDetail(null);
+    setHouseDetail(null);
   }, []);
 
   useEffect(() => {
@@ -44,6 +46,8 @@ export function useSim(initialSeed: number) {
         setFigureDetail(msg.detail);
       } else if (msg.kind === 'settlementDetail') {
         setSettlementDetail(msg.detail);
+      } else if (msg.kind === 'houseDetail') {
+        setHouseDetail(msg.detail);
       } else if (msg.kind === 'saveList') {
         setSaves(msg.saves);
       }
@@ -87,31 +91,37 @@ export function useSim(initialSeed: number) {
 
   // each inspection clears the others, so the panel shows exactly one thing
   const inspectActor = useCallback((id: number) => {
-    setEventChain(null); setFigureDetail(null); setSettlementDetail(null);
+    setEventChain(null); setFigureDetail(null); setSettlementDetail(null); setHouseDetail(null);
     send({ kind: 'inspectActor', id });
   }, [send]);
 
   const inspectEvent = useCallback((id: number) => {
-    setActorDetail(null); setFigureDetail(null); setSettlementDetail(null);
+    setActorDetail(null); setFigureDetail(null); setSettlementDetail(null); setHouseDetail(null);
     send({ kind: 'inspectEvent', id });
   }, [send]);
 
   const inspectFigure = useCallback((id: number) => {
-    setActorDetail(null); setEventChain(null); setSettlementDetail(null);
+    setActorDetail(null); setEventChain(null); setSettlementDetail(null); setHouseDetail(null);
     send({ kind: 'inspectFigure', id });
   }, [send]);
 
   const inspectSettlement = useCallback((id: number) => {
-    setActorDetail(null); setEventChain(null); setFigureDetail(null);
+    setActorDetail(null); setEventChain(null); setFigureDetail(null); setHouseDetail(null);
     send({ kind: 'inspectSettlement', id });
+  }, [send]);
+
+  const inspectHouse = useCallback((id: number) => {
+    setActorDetail(null); setEventChain(null); setFigureDetail(null); setSettlementDetail(null);
+    send({ kind: 'inspectHouse', id });
   }, [send]);
 
   /** Dispatch a clicked entity reference to the right inspector. */
   const inspectRef = useCallback((ref: EventRef) => {
     if (ref.kind === 'actor') inspectActor(ref.id);
     else if (ref.kind === 'figure') inspectFigure(ref.id);
+    else if (ref.kind === 'house') inspectHouse(ref.id);
     else inspectSettlement(ref.id);
-  }, [inspectActor, inspectFigure, inspectSettlement]);
+  }, [inspectActor, inspectFigure, inspectSettlement, inspectHouse]);
 
   const possess = useCallback((actorId: number) => {
     setBusy(true);
@@ -154,6 +164,7 @@ export function useSim(initialSeed: number) {
     eventChain,
     figureDetail,
     settlementDetail,
+    houseDetail,
     saves,
     busy,
     reset,
@@ -165,6 +176,7 @@ export function useSim(initialSeed: number) {
     inspectEvent,
     inspectFigure,
     inspectSettlement,
+    inspectHouse,
     inspectRef,
     clearInspect,
     possess,
