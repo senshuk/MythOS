@@ -834,7 +834,7 @@ export function fluxAt(geo: Geography, x: number, y: number): number {
  */
 /** cell-distance thresholds are tuned in REF_N cells; scale them to the actual grid so a
  *  "within N cells" reach is the same WORLD distance at any resolution. */
-function cellScale(geo: Geography): number {
+export function cellScale(geo: Geography): number {
   return geo.size / REF_N;
 }
 export function terrainCapacity(geo: Geography, x: number, y: number): number {
