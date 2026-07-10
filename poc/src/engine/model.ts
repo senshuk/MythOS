@@ -1559,7 +1559,14 @@ export interface ActorDetail {
   reputation: { standing: number; reasons: { label: string; value: number }[] };
 }
 
+/** A causal ancestor + how many hops it sits from the root — so the UI can INDENT the
+ *  chain into a tree ("war ← raids ← a broken pact ← the feud") instead of a flat list. */
+export interface CauseNode {
+  event: EventView;
+  depth: number; // 1 = a direct cause of the root, 2 = a cause of that, …
+}
+
 export interface EventChain {
   root: EventView;
-  ancestors: EventView[]; // flattened causal ancestors, newest cause first
+  ancestors: CauseNode[]; // causal ancestors, breadth-first (shallowest cause first)
 }

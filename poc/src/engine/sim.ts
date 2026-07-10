@@ -13,6 +13,7 @@ import {
   type ActorDetail,
   type RelationView,
   type EventChain,
+  type CauseNode,
   type WorldEvent,
   type SettlementView,
   type SettlementId,
@@ -1188,24 +1189,27 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   return { actor: actorView(world, id), relationships, lifeEvents, reputation, mood };
 }
 
-/** Walk the causal ancestry of an event (breadth-first, de-duplicated).
- *  getEvent() handles both the recent buffer and the archive transparently. */
+/** Walk the causal ancestry of an event (breadth-first, de-duplicated), recording each
+ *  ancestor's DEPTH from the root so the UI can indent the chain into a tree. getEvent()
+ *  handles both the recent buffer and the archive transparently. Bounded so a densely-caused
+ *  event can't produce a runaway wall. */
+const MAX_CAUSE_NODES = 24;
 export function inspectEvent(world: World, id: number): EventChain | undefined {
   const root = getEvent(world, id);
   if (!root) return undefined;
 
-  const ancestors: EventView[] = [];
+  const ancestors: CauseNode[] = [];
   const seen = new Set<number>([id]);
-  let frontier = [...root.causes];
-  while (frontier.length) {
-    const next: number[] = [];
-    for (const cid of frontier) {
-      if (seen.has(cid)) continue;
+  let frontier = root.causes.map((cid) => ({ cid, depth: 1 }));
+  while (frontier.length && ancestors.length < MAX_CAUSE_NODES) {
+    const next: { cid: number; depth: number }[] = [];
+    for (const { cid, depth } of frontier) {
+      if (seen.has(cid) || ancestors.length >= MAX_CAUSE_NODES) continue;
       seen.add(cid);
       const ev = getEvent(world, cid);
       if (!ev) continue;
-      ancestors.push(eventView(world, ev));
-      next.push(...ev.causes);
+      ancestors.push({ event: eventView(world, ev), depth });
+      for (const p of ev.causes) next.push({ cid: p, depth: depth + 1 });
     }
     frontier = next;
   }

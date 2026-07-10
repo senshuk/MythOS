@@ -1767,8 +1767,26 @@ function Inspector({
             <p className="muted">This was an originating event — nothing caused it.</p>
           ) : (
             <>
-              <h4>Caused by (most recent first)</h4>
-              <ol className="chain">{eventChain.ancestors.map(eventLine)}</ol>
+              <h4>Caused by</h4>
+              {/* the causal ancestry as a TREE — each cause indented under what it explains,
+                  and itself clickable to re-root the "why?" there and walk further back. */}
+              <ul className="cause-tree">
+                {eventChain.ancestors.map((c) => (
+                  <li key={c.event.id} className="cause-node" style={{ paddingLeft: `${(c.depth - 1) * 16}px` }}>
+                    <span className="cause-arrow" aria-hidden>↳</span>
+                    <span
+                      className="ev-inspect"
+                      onClick={() => onPickEvent(c.event.id)}
+                      onKeyDown={(e) => onActivate(e, () => onPickEvent(c.event.id))}
+                      role="button"
+                      tabIndex={0}
+                      title="trace this cause's causes"
+                    >
+                      <span className="ev-year">y{c.event.year}</span> <EventText parts={c.event.parts} onRef={onRef} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </>
           )}
         </div>

@@ -459,6 +459,11 @@ button { font-family: inherit; }
 .chain { padding-left: 18px; }
 .chain li { padding: 3px 0; }
 .ev-root { background: var(--panel-2); padding: 10px 12px; border-radius: var(--radius-sm); border-left: 3px solid var(--gold); }
+/* the causal ancestry, indented into a tree; a fading rail marks descent into deeper causes */
+.cause-tree { list-style: none; margin: var(--space-1) 0 0; padding: 0; border-left: 2px solid var(--border); margin-left: 4px; }
+.cause-node { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.cause-arrow { color: var(--ink-faint, var(--ink-dim)); font-size: var(--fs-xs); flex: none; opacity: 0.6; }
+.cause-node .ev-inspect { padding: 2px 0; }
 
 /* ----------------------------------------------------------- player panel - */
 .player-panel {

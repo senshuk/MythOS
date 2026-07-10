@@ -24,7 +24,7 @@ describe('causal density — why did this happen?', () => {
     const succ = evs.find((e) => (e.type === 'ascension' || e.type === 'dynasty') && e.causes.length > 0);
     expect(succ).toBeDefined();
     const chain = inspectEvent(w, succ!.id)!;
-    expect(chain.ancestors.some((a) => a.type === 'ruler_died')).toBe(true); // traceable to the death
+    expect(chain.ancestors.some((a) => a.event.type === 'ruler_died')).toBe(true); // traceable to the death
   });
 
   it('a razed city fells its ruling House, which dissolves its polity — a traceable collapse', () => {
@@ -32,7 +32,7 @@ describe('causal density — why did this happen?', () => {
     expect(fallen).toBeDefined();
     // the House fell because the city fell (a ruin or a conquest)
     const fchain = inspectEvent(w, fallen!.id)!;
-    expect(fchain.ancestors.some((a) => a.type === 'ruined' || a.type === 'conquest')).toBe(true);
+    expect(fchain.ancestors.some((a) => a.event.type === 'ruined' || a.event.type === 'conquest')).toBe(true);
     // and the polity dissolved because the House fell
     const dissolved = evs.find((e) => e.type === 'polity_dissolved' && e.causes.includes(fallen!.id));
     expect(dissolved).toBeDefined();
