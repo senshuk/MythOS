@@ -476,6 +476,19 @@ button { font-family: inherit; }
 .lineage-head { font-family: var(--serif); }
 .lineage-mark { color: var(--gold); }
 
+/* the visual dynasty tree — a generational diagram drawn when real kinship is recorded */
+.dyn-scroll { overflow-x: auto; margin: var(--space-1) 0 var(--space-2); }
+.dyn-tree { max-width: 100%; height: auto; display: block; }
+.dyn-edge { fill: none; stroke: var(--border); stroke-width: 1.5; }
+.dyn-node { cursor: pointer; }
+.dyn-node rect { fill: var(--panel-2, var(--panel)); stroke: var(--border); stroke-width: 1; transition: stroke 0.12s; }
+.dyn-node text { fill: var(--ink); font-family: var(--serif); font-size: 12px; pointer-events: none; }
+.dyn-node:hover rect, .dyn-node:focus-visible rect { stroke: var(--gold); }
+.dyn-node:focus-visible { outline: none; }
+.dyn-node.founder rect { stroke: var(--gold); }
+.dyn-node.head rect { stroke: var(--gold); stroke-width: 2; }
+.dyn-node.dead text { fill: var(--ink-dim); }
+
 /* ----------------------------------------------------------- player panel - */
 .player-panel {
   margin: 14px 20px 0; border: 1px solid rgba(233, 196, 106, 0.4);

@@ -14,6 +14,7 @@ import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine
 import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
 import { featureName, CULTURES } from '../engine/pack';
 import { useSim } from './useSim';
+import { layoutLineage, LINEAGE_METRICS } from './lineageLayout';
 
 const TYPE_TONE: Record<string, string> = {
   born: 'good',
@@ -1536,6 +1537,38 @@ function LineageTree({ members, onRef }: { members: HouseMember[]; onRef: (r: Ev
   return <ul className="lineage">{roots.map(node)}</ul>;
 }
 
+/**
+ * The line as a VISUAL genealogy — a compact generational diagram (nodes + descent lines),
+ * shown when a House has real kinship depth. Longest-path depth sets the row; a tidy post-order
+ * layout centres each parent over its children. ⚑ founder, 👑 the living head; the departed fade.
+ * Rendered as inline SVG (self-contained, theme-aware via CSS), scrolling horizontally if wide.
+ */
+function LineageDiagram({ members, onRef }: { members: HouseMember[]; onRef: (r: EventRef) => void }) {
+  const { NODE_W, NODE_H } = LINEAGE_METRICS;
+  const { nodes, edges, width, height } = layoutLineage(members);
+  const clip = (s: string) => (s.length > 15 ? s.slice(0, 14) + '…' : s);
+  return (
+    <div className="dyn-scroll">
+      <svg className="dyn-tree" viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label="dynasty tree">
+        {edges.map((e) => <path key={`${e.from}-${e.to}`} className="dyn-edge" d={e.d} />)}
+        {members.map((m) => {
+          const n = nodes.get(m.id)!;
+          const mark = m.isFounder ? '⚑ ' : m.isSeat ? '👑 ' : '';
+          const cls = `dyn-node${m.isFounder ? ' founder' : ''}${m.isSeat ? ' head' : ''}${m.deathYear !== undefined ? ' dead' : ''}`;
+          return (
+            <g key={m.id} className={cls} onClick={() => onRef({ kind: 'figure', id: m.id })} tabIndex={0}
+               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRef({ kind: 'figure', id: m.id }); } }}>
+              <title>{`${m.name} — ${memberDates(m)}`}</title>
+              <rect x={n.x} y={n.y} width={NODE_W} height={NODE_H} rx={5} />
+              <text x={n.cx} y={n.y + NODE_H / 2 + 4} textAnchor="middle">{mark}{clip(m.name)}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function Inspector({
   actorDetail,
   eventChain,
@@ -1803,7 +1836,13 @@ function Inspector({
           {houseDetail.members.length > 0 && (
             <>
               <h4>The line</h4>
-              <LineageTree members={houseDetail.members} onRef={onRef} />
+              {/* a real dynasty (recorded kinship) reads best as a diagram; a bare succession
+                  line — the common case for minted rulers — stays a scannable list. */}
+              {houseDetail.members.some((m) => m.childIds.length > 0) ? (
+                <LineageDiagram members={houseDetail.members} onRef={onRef} />
+              ) : (
+                <LineageTree members={houseDetail.members} onRef={onRef} />
+              )}
             </>
           )}
           <h4>The House’s saga</h4>
