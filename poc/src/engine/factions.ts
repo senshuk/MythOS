@@ -82,8 +82,11 @@ export function factionOf(world: World, id: EntityId): 'high' | 'low' | undefine
 /** Mark the settlement's civil war clock — called by figures.ts when a
  *  contested_succession fires. Only sets it once (a second contested succession
  *  while a clock is already running does not reset the countdown). */
-export function startCivilWarClock(world: World, s: Settlement): void {
-  if (s.civilWarTick === undefined && world.tick > 0) s.civilWarTick = world.tick;
+export function startCivilWarClock(world: World, s: Settlement, causeEv?: number): void {
+  if (s.civilWarTick === undefined && world.tick > 0) {
+    s.civilWarTick = world.tick;
+    s.civilWarCause = causeEv; // the contested succession, so the war can trace its "why?"
+  }
 }
 
 /** Nearest live (non-ruined) settlement that isn't fromId, for exile routing. */
@@ -112,7 +115,7 @@ export function civilWarYearly(world: World): void {
 
   // If the split has dissolved (tiny or uniform population), cancel peacefully.
   const split = world.factionSplit;
-  if (!split) { focused.civilWarTick = undefined; return; }
+  if (!split) { focused.civilWarTick = undefined; focused.civilWarCause = undefined; return; }
 
   const year = Math.floor(world.tick / DAYS_PER_YEAR);
   const residents = fullActors(world);
@@ -136,7 +139,7 @@ export function civilWarYearly(world: World): void {
     winner: winnerName,
     loser: loserName,
     axis: split.axis,
-  }, [], [focused.id]);
+  }, focused.civilWarCause !== undefined ? [focused.civilWarCause] : [], [focused.id]);
 
   // Expel the losing faction leader if they are a real (simulated) actor.
   if (loserLeaderId !== undefined && world.identity.has(loserLeaderId)) {
@@ -162,6 +165,7 @@ export function civilWarYearly(world: World): void {
   }
 
   focused.civilWarTick = undefined;
+  focused.civilWarCause = undefined;
 }
 
 /** Yearly: check all pending exiles. After EXILE_RETURN_YEARS the actor returns to the

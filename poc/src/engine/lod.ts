@@ -301,9 +301,10 @@ export function createSettlements(world: World): void {
     world.tick = d.ruinedYear! * DAYS_PER_YEAR;
     s.ruinedYear = d.ruinedYear;
     s.macro = { population: 0, children: 0, adults: 0, elders: 0, stability: 0, dominantSpecies: d.people.species };
-    if (d.razedBy) emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) }, [], [s.id]);
-    else emit(world, 'ruined', [], { name: s.name }, [], [s.id]);
-    endHouseAt(world, s, d.ruinedYear!); // the ruling line falls with the city
+    const fallEv = d.razedBy
+      ? emit(world, 'conquest', [], { victor: cultureById(d.razedBy).name, fallen: s.name, reason: mostOpposedValue(d.razedBy, d.people.culture) }, [], [s.id])
+      : emit(world, 'ruined', [], { name: s.name }, [], [s.id]);
+    endHouseAt(world, s, d.ruinedYear!, fallEv); // the ruling line falls with the city — traceably
   }
 
   world.tick = PREHISTORY_YEARS * DAYS_PER_YEAR; // the world is "now" at the end of pre-history

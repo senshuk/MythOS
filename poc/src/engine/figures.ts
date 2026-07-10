@@ -71,15 +71,16 @@ export function houseConquers(world: World, victor: Settlement): void {
 
 /** A settlement's ruling House falls with the city: it loses its seat and its line ends.
  *  Called when a settlement is razed (pre-history or live conquest). */
-export function endHouseAt(world: World, settlement: Settlement, year: number): void {
+export function endHouseAt(world: World, settlement: Settlement, year: number, cause?: number): void {
   const ruler = getFigure(world, settlement.currentRulerId);
   const house = houseById(world, ruler?.houseId);
   if (!house || house.extinctYear !== undefined) return;
   house.seatSettlementId = undefined;
   house.extinctYear = year;
-  emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, [], [settlement.id]);
-  // the polity seated here falls with the city — dissolved, but its history endures.
-  dissolve(world, settlement.polityId, year);
+  // the House falls because the city fell (the conquest/ruin event, when the caller knows it);
+  // and the polity it seated dissolves in turn — a traceable chain of collapse.
+  const fallEv = emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, cause !== undefined ? [cause] : [], [settlement.id]);
+  dissolve(world, settlement.polityId, year, [fallEv]);
 }
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
@@ -189,19 +190,20 @@ function installRuler(
   oldHouse: House | undefined,
   year: number,
   title: string,
-): void {
+  causes: number[] = [], // the ruler's death (for hereditary succession) — the "why?"
+): number {
   let evId: number;
   if (oldHouse && oldHouse.extinctYear === undefined && surnameOf(heir.name) === oldHouse.name) {
     heir.houseId = oldHouse.id;
     oldHouse.prestige += HOUSE_ASCEND;
     oldHouse.seatSettlementId = s.id;
     s.currentRulerId = heir.id;
-    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, [], [s.id]);
+    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, causes, [s.id]);
   } else {
     const newHouse = foundHouse(world, heir, s.id, year);
     if (oldHouse && oldHouse.seatSettlementId === s.id) oldHouse.seatSettlementId = undefined; // out of power
     s.currentRulerId = heir.id;
-    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' }, [], [s.id]);
+    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' }, causes, [s.id]);
   }
   // succession operates on the ORGANIZATION: the polity this settlement hosts gets the new
   // leader (currentRulerId above is now a compatibility mirror of the org's leaderId).
@@ -225,6 +227,7 @@ function installRuler(
     for (const id of fullActors(world)) if (world.homeSettlement.get(id) === s.id) residents++;
     recordDeed(world, heir.id, 'ascension', { witnesses: residents, cause: evId });
   }
+  return evId; // the succession event — so a contested succession can name it as its cause
 }
 
 /** Yearly: leadership transfers per the polity's GOVERNMENT (succession is data).
@@ -253,10 +256,11 @@ export function figuresYearly(world: World): void {
     if (year >= ruler.reignEnd) {
       const oldHouse = houseById(world, ruler.houseId);
       // a hereditary ruler dies in office; an elected leader merely steps down (lives on).
+      let deathEv: number | undefined;
       if (gov.succession === 'hereditary') {
         ruler.deathYear = year;
         if (oldHouse) oldHouse.prestige += HOUSE_REIGN + (year - ruler.reignStart); // a completed reign
-        emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
+        deathEv = emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
       }
       // In the focused settlement, rule may pass to a real local heir (so an actor — and the
       // player — can actually rise to lead). Otherwise the dynasty continues or a new one rises.
@@ -269,7 +273,7 @@ export function figuresYearly(world: World): void {
         const continues = oldHouse !== undefined && oldHouse.extinctYear === undefined && !rng.chance(DYNASTY_TURNOVER);
         heir = mintFigure(world, s, year, rng, 'ruler', continues ? oldHouse!.name : undefined);
       }
-      installRuler(world, s, heir, oldHouse, year, title);
+      const succEv = installRuler(world, s, heir, oldHouse, year, title, deathEv !== undefined ? [deathEv] : []);
 
       // Contested succession: when power crosses faction lines, note it.
       // Both parties must be real actors (personality.has) — minted figures have
@@ -283,13 +287,13 @@ export function figuresYearly(world: World): void {
           const oldHigh = (oldPers.values[ax] ?? 0) >= split.axisMean;
           const newHigh = (newPers.values[ax] ?? 0) >= split.axisMean;
           if (oldHigh !== newHigh) {
-            emit(world, 'contested_succession', [heir.id], {
+            const contestedEv = emit(world, 'contested_succession', [heir.id], {
               settlement: s.name,
               axis: ax,
               newFaction: newHigh ? split.highName : split.lowName,
               oldFaction: oldHigh ? split.highName : split.lowName,
-            }, [], [s.id]);
-            startCivilWarClock(world, s);
+            }, [succEv], [s.id]);
+            startCivilWarClock(world, s, contestedEv); // the war, if it comes, traces here
           }
         }
       }

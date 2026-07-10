@@ -789,6 +789,9 @@ export interface Settlement extends Location {
    *  (expelling the losing faction leader) after CIVIL_WAR_GRACE_YEARS if the split
    *  persists. Undefined = no active clock. Serialized as part of the settlements array. */
   civilWarTick?: number;
+  /** the contested_succession event that started the clock — so a resulting civil war can
+   *  trace its cause ("why?"). Cleared with civilWarTick. Serialized with the settlement. */
+  civilWarCause?: number;
   /** how much population this site's LAND can sustain — a multiplier on base carrying
    *  capacity, from local fertility/water/coast. Generous land grows great cities. */
   capacity: number;

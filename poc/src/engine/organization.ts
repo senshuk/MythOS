@@ -162,12 +162,12 @@ export function moveSeat(world: World, orgId: OrgId, locationId: LocationId): vo
 
 /** Dissolve an organization (seat razed / membership lost). It keeps its id and history,
  *  like a ruin. A no-op if already dissolved. */
-export function dissolve(world: World, orgId: OrgId | undefined, year: number): void {
+export function dissolve(world: World, orgId: OrgId | undefined, year: number, causes: number[] = []): void {
   const org = getOrganization(world, orgId);
   if (!org || org.dissolvedYear !== undefined) return;
   org.dissolvedYear = year;
   closeRoster(world, org.id); // the institution ends — all open roles close, but are remembered
-  emit(world, 'polity_dissolved', [org.id], { name: org.name });
+  emit(world, 'polity_dissolved', [org.id], { name: org.name }, causes);
 }
 
 /** The current year, for callers that need it (mirrors figures.ts's derivation). */
