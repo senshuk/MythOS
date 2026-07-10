@@ -13,11 +13,16 @@ import {
   type ActorDetail,
   type RelationView,
   type EventChain,
+  type CauseNode,
   type WorldEvent,
   type SettlementView,
   type SettlementId,
   type FigureDetail,
   type SettlementDetail,
+  type HouseDetail,
+  type CultureDetail,
+  type DeityDetail,
+  type FeatureDetail,
   type PlayerView,
   type PlayerTargetView,
   type StoryBeat,
@@ -33,7 +38,7 @@ import { currentAspiration, aspirationLabel } from './aspiration';
 export { checkPlayerGoal } from './aspiration';
 export { chooseAmbition, abandonAmbition, reviewPlayerAmbition } from './ambition';
 import { Rng, mixSeed } from './rng';
-import { createSubstrate } from './substrate';
+import { createSubstrate, SurfaceSubstrate } from './substrate';
 import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse, getEvent, isKin, pruneRelationshipGraph } from './world';
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeMood, moodWord, moodReasons, pruneSelfThoughts } from './mood';
@@ -48,10 +53,11 @@ import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
-import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, setPack, type UniversePack } from './pack';
+import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, ambitionOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, featureName, setPack, type UniversePack } from './pack';
 import { personalityOf } from './social';
-import { eventInterest } from './pack';
+import { eventInterest, renderBackstory } from './pack';
+import { backstoryFacts } from './backstory';
 import { PLAYER_ACTIONS } from './pack';
 import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
@@ -278,6 +284,7 @@ function actorView(world: World, id: EntityId): ActorView {
     traits: world.traits.get(id)!,
     nature: natureOf(personalityOf(world, id)),
     house: idn.family, // their lineage — the surname carried down their family line
+    houseId: world.houses.find((h) => h.name === idn.family)?.id, // link to the dynasty, if any
     spouse: primarySpouse(world, id),
     relationshipCount: relCount(world, id),
     standing: Math.round(computeStanding(world.reputation.get(id) ?? emptyReputation(), world.tick)),
@@ -341,7 +348,130 @@ export function inspectFigure(world: World, id: EntityId): FigureDetail | undefi
     reignStart: fig.reignStart,
     reignEnd: fig.reignEnd,
     house: houseById(world, fig.houseId)?.name,
+    houseId: fig.houseId,
+    backstory: backstoryFor(world, id), // present for crowned actors; absent for minted records
     lifeEvents,
+  };
+}
+
+/** Inspect a HOUSE (dynasty): its founder, seat, the line of members who held power, and its
+ *  saga — assembled from the House record + its members' events. */
+export function inspectHouse(world: World, id: number): HouseDetail | undefined {
+  const house = world.houses.find((h) => h.id === id);
+  if (!house) return undefined;
+  const founderFig = getFigure(world, house.founderId);
+  // the line: figures of this House, deduped by id (a re-crowned actor leaves duplicate records),
+  // sorted by when they came to prominence.
+  const seenM = new Set<number>();
+  const memberFigs = world.figures
+    .filter((f) => f.houseId === id && !seenM.has(f.id) && seenM.add(f.id))
+    .sort((a, b) => a.reignStart - b.reignStart)
+    .slice(0, 20);
+  const memberIds = new Set(memberFigs.map((f) => f.id));
+  // the living head of the line: while the House holds a seat, its latest-reigning member still alive.
+  const headId =
+    house.seatSettlementId !== undefined
+      ? [...memberFigs].filter((f) => f.deathYear === undefined).sort((a, b) => b.reignStart - a.reignStart)[0]?.id
+      : undefined;
+  const members = memberFigs.map((f) => {
+    const t = world.ties.get(f.id);
+    // spouses resolved to figures (any House) so they can be named/linked — genealogy needs marriages.
+    const spouses = (t?.spouses ?? []).flatMap((sid) => {
+      const sf = world.figuresById.get(sid);
+      return sf ? [{ id: sf.id, name: sf.name, houseId: sf.houseId, houseName: houseById(world, sf.houseId)?.name }] : [];
+    });
+    return {
+      name: f.name,
+      id: f.id,
+      role: f.role,
+      bornYear: f.bornYear,
+      deathYear: f.deathYear,
+      reignStart: f.reignStart,
+      reignEnd: f.reignEnd,
+      isFounder: f.id === house.founderId,
+      isSeat: f.id === headId,
+      parentIds: (t?.parents ?? []).filter((p) => memberIds.has(p)), // edges up, within the House
+      childIds: (t?.children ?? []).filter((c) => memberIds.has(c)), // edges down, within the House
+      spouses,
+    };
+  });
+  // the House's saga: its members' events + anything naming the House, notable-first-then-chrono.
+  const evIds = new Set<number>();
+  for (const m of members) for (const e of world.eventsBySubject.get(m.id) ?? []) evIds.add(e);
+  const events = [...evIds]
+    .map((eid) => getEvent(world, eid))
+    .filter((ev): ev is WorldEvent => ev !== undefined)
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 24)
+    .map((ev) => eventView(world, ev));
+  return {
+    id: house.id,
+    name: house.name,
+    meaning: world.houseMeaning.get(house.name),
+    foundedYear: house.foundedYear,
+    extinctYear: house.extinctYear,
+    prestige: Math.round(house.prestige),
+    origin: world.settlements[house.originSettlementId]?.name,
+    originId: house.originSettlementId,
+    seat: house.seatSettlementId !== undefined ? world.settlements[house.seatSettlementId]?.name : undefined,
+    seatId: house.seatSettlementId,
+    founder: founderFig ? { name: founderFig.name, id: founderFig.id } : undefined,
+    members,
+    events,
+  };
+}
+
+/** Inspect a CULTURE/creed: what it holds dear, its moral character, its god, its tongue, and
+ *  the living settlements that keep it. Pure read of pack data + world state. */
+export function inspectCulture(world: World, id: string): CultureDetail | undefined {
+  const c = cultureById(id);
+  if (c.id !== id) return undefined; // cultureById falls back to CULTURES[0]; reject an unknown id
+  const deity = patronDeityOf(id);
+  return {
+    id,
+    name: c.name,
+    leanings: worldviewReading(worldviewFromValues(c.values as Record<ValueAxis, number>)),
+    creed: creedOf(id),
+    patronDeity: deity ? { name: deity.name, id: deity.id, domain: deity.domain } : undefined,
+    tongue: { demonym: peopleName(id, world.seed), voice: voiceOf(id) },
+    settlements: world.settlements
+      .filter((s) => s.ruinedYear === undefined && s.cultureId === id)
+      .map((s) => ({ name: s.name, id: s.id })),
+  };
+}
+
+/** Inspect a DEITY: its domain, the creeds whose patron it is, and how many souls hold its
+ *  faith right now. */
+export function inspectDeity(world: World, id: string): DeityDetail | undefined {
+  const d = deityById(id);
+  if (d.id !== id) return undefined; // deityById falls back; reject an unknown id
+  let faithful = 0;
+  for (const f of world.faith.values()) if (f === id) faithful++;
+  return {
+    id,
+    name: d.name,
+    domain: d.domain,
+    cultures: CULTURES.filter((c) => c.patronDeityId === id).map((c) => ({ name: c.name, id: c.id })),
+    faithful,
+  };
+}
+
+/** Inspect a named geographic FEATURE (a sea, range, great river, lake): its name in the old
+ *  tongue and the living towns that sit beside it. Surface worlds only. */
+export function inspectFeature(world: World, index: number): FeatureDetail | undefined {
+  const sub = world.substrate;
+  if (!(sub instanceof SurfaceSubstrate)) return undefined;
+  const feature = sub.geography.features.find((f) => f.index === index);
+  if (!feature) return undefined;
+  const named = featureName(world.seed, feature);
+  return {
+    index,
+    name: named.name,
+    meaning: named.meaning,
+    kind: feature.kind,
+    settlements: world.settlements
+      .filter((s) => s.ruinedYear === undefined && s.landmark?.featureIndex === index)
+      .map((s) => ({ name: s.name, id: s.id })),
   };
 }
 
@@ -402,11 +532,13 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       government: governmentById(s.governmentId).title || 'free folk',
       leaderTitle: leaderTitleOf(s.governmentId),
       culture: cultureById(s.cultureId).name,
+      cultureId: s.cultureId,
       culturalTaboos: ethicsTaboos(s.cultureId),
       creed: creedOf(s.cultureId),
-      patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
+      patronDeity: (({ name, domain, id }) => ({ name, domain, id }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
+      rulerId: getFigure(world, s.currentRulerId) ? s.currentRulerId : undefined,
       polity: (() => {
         const org = getOrganization(world, s.polityId);
         if (!org) return undefined;
@@ -415,7 +547,9 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           name: org.name,
           subtype: org.subtype,
           leaderName: getFigure(world, org.leaderId)?.name,
+          leaderId: getFigure(world, org.leaderId) ? org.leaderId : undefined,
           founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
+          founderId: founder && getFigure(world, founder.actorId) ? founder.actorId : undefined,
           leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
           treasury: Math.round(treasuryOf(world, org.id)),
@@ -980,14 +1114,45 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     summariesByHome.set(h, arr);
   }
 
-  const notable = [...full]
-    .sort(
-      (a, b) =>
-        relCount(world, b) - relCount(world, a) ||
-        world.lifecycle.get(b)!.ageYears - world.lifecycle.get(a)!.ageYears,
-    )
-    .slice(0, 8)
-    .map((id) => actorView(world, id));
+  // "Notable folk" = the most PROMINENT residents, not merely the oldest. Prominence blends
+  // renown (deeds make you known — for good or ill), social centrality, holding power, and raw
+  // ambition; age is only a final tiebreak, so elders no longer dominate the list.
+  const prominence = (id: EntityId): number => {
+    const home = world.homeSettlement.get(id);
+    const isRuler = home !== undefined && world.settlements[home]?.currentRulerId === id;
+    return (
+      Math.abs(standingOf(world, id)) + // renown OR notoriety — both make you notable
+      Math.min(relCount(world, id), 12) * 5 + // a touch of social centrality, tightly capped so
+      //                                          the most-connected trade families don't own the list
+      (isRuler ? 200 : 0) + // holding the seat is inherently notable
+      ambitionOf(world.traits.get(id) ?? []) * 45 // the strivers — a hungry youth outranks a placid elder
+    );
+  };
+  const ranked = [...full].sort(
+    (a, b) =>
+      prominence(b) - prominence(a) ||
+      world.lifecycle.get(b)!.ageYears - world.lifecycle.get(a)!.ageYears ||
+      a - b,
+  );
+  // keep the roster VARIED: cap any single trade so a market town's merchants (who accrue the
+  // most renown & ties) don't fill every slot — the player should see a mix of lives. Backfill
+  // past the cap only if too few distinct folk remain.
+  const NOTABLE_N = 8;
+  const PROF_CAP = 3;
+  const chosen: EntityId[] = [];
+  const perProf = new Map<string, number>();
+  for (const id of ranked) {
+    if (chosen.length >= NOTABLE_N) break;
+    const prof = world.profession.get(id) ?? '';
+    if ((perProf.get(prof) ?? 0) >= PROF_CAP) continue;
+    chosen.push(id);
+    perProf.set(prof, (perProf.get(prof) ?? 0) + 1);
+  }
+  for (const id of ranked) {
+    if (chosen.length >= NOTABLE_N) break;
+    if (!chosen.includes(id)) chosen.push(id);
+  }
+  const notable = chosen.map((id) => actorView(world, id));
 
   const recent = world.events.slice(-feedSize).map((ev) => eventView(world, ev)).reverse();
 
@@ -999,9 +1164,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .slice(0, 14)
     .map((t) => {
       const ev = getEvent(world, t.eventId);
-      return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev) } : null;
+      return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev), eventId: t.eventId } : null;
     })
-    .filter((v): v is { year: number; interest: number; text: string } => v !== null);
+    .filter((v): v is { year: number; interest: number; text: string; eventId: number } => v !== null);
 
   // named ages: one defining event per year. Landmark years (foundings, ruins)
   // ALWAYS appear; the rest are filled by the most momentous years. Shown as a
@@ -1025,9 +1190,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => a[0] - b[0]) // chronological — a timeline of ages
     .map(([year, best]) => {
       const ev = getEvent(world, best.eventId);
-      return ev ? { year, title: eraTitle(world, ev) } : null;
+      return ev ? { year, title: eraTitle(world, ev), eventId: best.eventId } : null;
     })
-    .filter((v): v is { year: number; title: string } => v !== null);
+    .filter((v): v is { year: number; title: string; eventId: number } => v !== null);
 
   // renowned figures of history: those who reigned longest (founders & great rulers)
   const curYear = Math.floor(world.tick / DAYS_PER_YEAR);
@@ -1035,6 +1200,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => ((b.deathYear ?? curYear) - b.reignStart) - ((a.deathYear ?? curYear) - a.reignStart) || a.id - b.id)
     .slice(0, 14)
     .map((f) => ({
+      id: f.id,
       name: f.name,
       role: f.role,
       settlement: world.settlements[f.settlementId]?.name ?? '?',
@@ -1060,7 +1226,9 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => b.prestige - a.prestige || a.id - b.id)
     .slice(0, 12)
     .map((h) => ({
+      id: h.id,
       name: h.name,
+      founder: getFigure(world, h.founderId)?.name,
       meaning: world.houseMeaning.get(h.name),
       foundedYear: h.foundedYear,
       prestige: Math.round(h.prestige),
@@ -1185,27 +1353,37 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   // every soul's inner weather is inspectable, per Legibility)
   const mood = world.selfThoughts.has(id) ? buildMoodView(world, id) : undefined;
 
-  return { actor: actorView(world, id), relationships, lifeEvents, reputation, mood };
+  return { actor: actorView(world, id), backstory: backstoryFor(world, id) ?? '', relationships, lifeEvents, reputation, mood };
 }
 
-/** Walk the causal ancestry of an event (breadth-first, de-duplicated).
- *  getEvent() handles both the recent buffer and the archive transparently. */
+/** A life-story for an actor, rendered from their real history in the pack's voice. Stable per
+ *  actor (a fixed rng salt), so the same soul always reads the same. Presentation only. */
+function backstoryFor(world: World, id: EntityId): string | undefined {
+  const facts = backstoryFacts(world, id);
+  return facts ? renderBackstory(facts, new Rng(mixSeed(world.seed, id, 0xba57))) : undefined;
+}
+
+/** Walk the causal ancestry of an event (breadth-first, de-duplicated), recording each
+ *  ancestor's DEPTH from the root so the UI can indent the chain into a tree. getEvent()
+ *  handles both the recent buffer and the archive transparently. Bounded so a densely-caused
+ *  event can't produce a runaway wall. */
+const MAX_CAUSE_NODES = 24;
 export function inspectEvent(world: World, id: number): EventChain | undefined {
   const root = getEvent(world, id);
   if (!root) return undefined;
 
-  const ancestors: EventView[] = [];
+  const ancestors: CauseNode[] = [];
   const seen = new Set<number>([id]);
-  let frontier = [...root.causes];
-  while (frontier.length) {
-    const next: number[] = [];
-    for (const cid of frontier) {
-      if (seen.has(cid)) continue;
+  let frontier = root.causes.map((cid) => ({ cid, depth: 1 }));
+  while (frontier.length && ancestors.length < MAX_CAUSE_NODES) {
+    const next: { cid: number; depth: number }[] = [];
+    for (const { cid, depth } of frontier) {
+      if (seen.has(cid) || ancestors.length >= MAX_CAUSE_NODES) continue;
       seen.add(cid);
       const ev = getEvent(world, cid);
       if (!ev) continue;
-      ancestors.push(eventView(world, ev));
-      next.push(...ev.causes);
+      ancestors.push({ event: eventView(world, ev), depth });
+      for (const p of ev.causes) next.push({ cid: p, depth: depth + 1 });
     }
     frontier = next;
   }

@@ -771,7 +771,7 @@ export interface Settlement extends Location {
   /** the named geographic feature this settlement sits beside (its sense of place —
    *  "on the shores of the Skarnald"), resolved at founding from the substrate. Absent
    *  for inland sites near nothing notable, and for non-surface worlds. */
-  landmark?: { name: string; kind: string; relation: string };
+  landmark?: { name: string; kind: string; relation: string; featureIndex?: number };
   /** a settlement always has a concrete map position (narrows Location.pos). */
   pos: WorldPosition;
   /** true => simulated per-actor (the focused settlement); false => aggregate. */
@@ -789,6 +789,9 @@ export interface Settlement extends Location {
    *  (expelling the losing faction leader) after CIVIL_WAR_GRACE_YEARS if the split
    *  persists. Undefined = no active clock. Serialized as part of the settlements array. */
   civilWarTick?: number;
+  /** the contested_succession event that started the clock — so a resulting civil war can
+   *  trace its cause ("why?"). Cleared with civilWarTick. Serialized with the settlement. */
+  civilWarCause?: number;
   /** how much population this site's LAND can sustain — a multiplier on base carrying
    *  capacity, from local fertility/water/coast. Generous land grows great cities. */
   capacity: number;
@@ -1102,6 +1105,7 @@ export interface ActorView {
   nature: string;
   /** this actor's House — their family lineage (surname). */
   house: string;
+  houseId?: HouseId; // the dynasty record, when their surname matches a known House — inspectable
   spouse?: EntityId;
   relationshipCount: number;
   /** public standing in the community (0 = unremarked, − = notorious, + = renowned).
@@ -1120,7 +1124,11 @@ export interface ActorView {
 export type EventRef =
   | { kind: 'actor'; id: EntityId }
   | { kind: 'figure'; id: EntityId }
-  | { kind: 'settlement'; id: SettlementId };
+  | { kind: 'settlement'; id: SettlementId }
+  | { kind: 'house'; id: HouseId }
+  | { kind: 'culture'; id: string } // a creed/people (pack culture id)
+  | { kind: 'deity'; id: string } // a god (pack deity id)
+  | { kind: 'feature'; id: number }; // a named geographic feature (per-world index)
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {
@@ -1160,6 +1168,10 @@ export interface FigureDetail {
   reignStart: number;
   reignEnd?: number;
   house?: string; // the lineage this figure belongs to
+  houseId?: HouseId; // so "of House X" links to the dynasty
+  /** a life-story, when this figure is a simulated actor (a crowned local) with the personality
+   *  and home a backstory needs; absent for purely minted historical records. */
+  backstory?: string;
   lifeEvents: EventView[];
 }
 
@@ -1200,7 +1212,7 @@ export interface SettlementView {
   name: string;
   nameMeaning?: string; // "the iron hold" — the name's sense in the founders' tongue
   /** the named landmark it sits beside ("on the shores of the Skarnald") — sense of place. */
-  landmark?: { name: string; kind: string; relation: string };
+  landmark?: { name: string; kind: string; relation: string; featureIndex?: number };
   detailed: boolean;
   population: number;
   foundedYear: number;
@@ -1211,12 +1223,14 @@ export interface SettlementView {
   government: string; // the polity's government (display label, e.g. 'Lord'/'Speaker'/'free folk')
   leaderTitle: string; // the leader's title ('' if leaderless) — for "ruled by {title} X"
   culture: string; // the people's culture name (e.g. 'the Iron Creed')
+  cultureId: string; // the pack culture id — so the name can be inspected
   culturalTaboos: string[]; // deed labels this culture especially abhors (ethics weight ≥ 1.5)
   /** the creed's moral character (design/23): the deeds & lives it reveres / abhors. */
   creed: { reveres: string[]; abhors: string[] };
-  patronDeity: { name: string; domain: string }; // the culture's patron deity
+  patronDeity: { name: string; domain: string; id: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
+  rulerId?: EntityId; // the ruler as a figure, so the name can be inspected
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
    *  government as a first-class entity, distinct from the place. `founderName` and
    *  `leaderCount` expose the org's institutional memory (its remembered line of leaders).
@@ -1225,7 +1239,10 @@ export interface SettlementView {
     name: string;
     subtype: string;
     leaderName?: string;
+    leaderId?: EntityId; // the sitting leader as a figure — inspectable
     founderName?: string;
+    founderId?: EntityId; // the founding figure — inspectable
+
     leaderCount: number;
     standing: number;
     /** the org's TREASURY (2C: OrgResources) — the tithe-fed funds its actions spend. */
@@ -1282,14 +1299,17 @@ export interface TaleView {
   year: number;
   interest: number;
   text: string; // the legend retelling
+  eventId?: number; // the event this legend retells — click to trace it
 }
 
 export interface EraView {
   year: number;
   title: string; // "the Year of Famine in Stonereach"
+  eventId?: number; // the defining event of the age — click to inspect it
 }
 
 export interface FigureView {
+  id: EntityId; // so the dynasties/figures panels can inspect them (inspectFigure)
   name: string;
   role: string;
   settlement: string;
@@ -1300,9 +1320,80 @@ export interface FigureView {
   house?: string; // the lineage this figure belongs to
 }
 
+/** Detail for a HOUSE (dynasty): the lineage made a first-class, inspectable thing — its
+ *  founder, seat, the line of members who held power, and its history from founding to fall. */
+export interface HouseDetail {
+  id: HouseId;
+  name: string;
+  meaning?: string;
+  foundedYear: number;
+  extinctYear?: number;
+  prestige: number;
+  origin?: string; // the settlement where the line began
+  originId?: SettlementId;
+  seat?: string; // the settlement it rules now (absent if out of power)
+  seatId?: SettlementId;
+  founder?: { name: string; id: EntityId };
+  /** The line, as a GENEALOGY. Each member carries their dates, their standing in the House
+   *  (founder / current seat-holder), and their kinship WITHIN the House — parentIds/childIds
+   *  restricted to fellow members. Kinship is present only for members who were simulated
+   *  actors (they carry SocialTies); minted records have none, so the tree degrades gracefully
+   *  to a plain succession order (every member a root). Spouses are resolved to figures for
+   *  naming, and may belong to another House. */
+  members: {
+    name: string;
+    id: EntityId;
+    role: string;
+    bornYear: number;
+    deathYear?: number;
+    reignStart: number;
+    reignEnd?: number;
+    isFounder: boolean;
+    isSeat: boolean; // the living head of the line — currently holds the House's seat
+    parentIds: EntityId[]; // parents who are also members of this House (tree edges up)
+    childIds: EntityId[]; // children who are also members of this House (tree edges down)
+    spouses: { id: EntityId; name: string; houseId?: HouseId; houseName?: string }[];
+  }[];
+  events: EventView[]; // the House's saga — foundings, ascensions, conquests, its fall
+}
+
+/** Detail for a CULTURE/creed — a people made inspectable: what it holds dear, its moral
+ *  character, its patron god, its tongue, and the settlements that keep it. */
+export interface CultureDetail {
+  id: string;
+  name: string;
+  leanings: string; // its worldview in a phrase (top values)
+  creed: { reveres: string[]; abhors: string[] };
+  patronDeity?: { name: string; id: string; domain: string };
+  tongue?: { demonym: string; voice: string };
+  settlements: { name: string; id: SettlementId }[]; // living towns that hold this creed
+}
+
+/** Detail for a named geographic FEATURE — a sea, lake, range, or great river made inspectable:
+ *  its name in the old tongue, its kind, and the living towns that sit beside it. */
+export interface FeatureDetail {
+  index: number;
+  name: string;
+  meaning?: string; // the name's sense in the world's dead old tongue ("the cold deep")
+  kind: string; // sea | lake | range | river
+  settlements: { name: string; id: SettlementId }[];
+}
+
+/** Detail for a DEITY — a god made inspectable: its domain, the peoples who venerate it, and
+ *  how many souls presently hold its faith. */
+export interface DeityDetail {
+  id: string;
+  name: string;
+  domain: string;
+  cultures: { name: string; id: string }[]; // creeds whose patron this is
+  faithful: number; // simulated souls presently of this faith
+}
+
 /** A great House for the dashboard's dynasties panel — a legible family saga at a glance. */
 export interface HouseView {
+  id: HouseId; // so the dynasties panel (and "of House X" in prose) can inspect the lineage
   name: string;
+  founder?: string; // the name of the line's founder
   meaning?: string; // the surname's sense in the founders' tongue ("the Iron Hand")
   foundedYear: number;
   prestige: number;
@@ -1547,6 +1638,9 @@ export interface Snapshot {
 
 export interface ActorDetail {
   actor: ActorView;
+  /** a life-story assembled from the actor's REAL history — lineage, birthplace fate, the era
+   *  that shaped them, their bent (engine/backstory + the pack's voice). Presentation only. */
+  backstory: string;
   relationships: RelationView[];
   lifeEvents: EventView[];
   /** this actor's mood + the reasons behind it (mood.ts); absent below full fidelity. */
@@ -1556,7 +1650,14 @@ export interface ActorDetail {
   reputation: { standing: number; reasons: { label: string; value: number }[] };
 }
 
+/** A causal ancestor + how many hops it sits from the root — so the UI can INDENT the
+ *  chain into a tree ("war ← raids ← a broken pact ← the feud") instead of a flat list. */
+export interface CauseNode {
+  event: EventView;
+  depth: number; // 1 = a direct cause of the root, 2 = a cause of that, …
+}
+
 export interface EventChain {
   root: EventView;
-  ancestors: EventView[]; // flattened causal ancestors, newest cause first
+  ancestors: CauseNode[]; // causal ancestors, breadth-first (shallowest cause first)
 }

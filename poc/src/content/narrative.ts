@@ -17,6 +17,8 @@
  * heard of — they render and score from the data below, with neutral fallbacks.
  */
 import { type GrammarRules } from '../engine/grammar';
+import { Rng } from '../engine/rng';
+import type { BackstoryFacts } from '../engine/backstory';
 
 /** Renders one event to prose. `n(i)` resolves the i-th subject's name; `d` is the
  *  event's data bag; `subjectCount` is how many subjects it carries. */
@@ -40,6 +42,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
   ascension: (n, d) =>
     `${n(0)}${d.house ? ` of House ${d.house}` : ''} became ${d.title || 'ruler'} of ${d.settlement}.`,
+  claim_pressed: (n, d) => `${n(0)} pressed a claim to lead ${d.settlement}, and the failing ${d.title || 'ruler'} yielded the seat.`,
   dynasty: (n, d) =>
     `${n(0)} of House ${d.house} seized ${d.settlement}${d.old ? `, ending the rule of House ${d.old}` : ''}, founding a new dynasty.`,
   house_fallen: (_n, d) => `House ${d.house} fell with ${d.settlement} — its line ended.`,
@@ -162,6 +165,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 40; // a ruler's passing is remembered
     case 'ascension':
       return 18; // a new ruler rising is minor news
+    case 'claim_pressed':
+      return 34; // a bid for power, taken not inherited — notable, below a full dynastic turn
     case 'dynasty':
       return 44; // a new dynasty seizing a seat — a turn of the age
     case 'house_fallen':
@@ -322,3 +327,81 @@ export const OMEN_GRAMMAR: GrammarRules = {
 
 /** Names for a bountiful director-blessed year (the `kind` of a `boon` event). */
 export const BOONS = ['A bountiful harvest', 'A golden season', 'A time of plenty', 'Fair fortune', 'A mild and giving year'];
+
+// ------------------------------------------------------ backstories ----------
+// A life-story rendered from an actor's REAL history (engine/backstory gathers the facts).
+// Each clause is grounded in something that actually happened — the lineage's fortune, the
+// place's fate, the era that shaped them — and the whole reads like a RimWorld backstory but
+// is TRUE to the world. Pack VOICE; a different universe rewrites the phrasing.
+
+/** The lesson a dominant value teaches — the bent a backstory ties off with (two voicings each,
+ *  so a region of like-minded folk doesn't read identically). */
+const VALUE_LESSON: Record<string, [string, string]> = {
+  craft: ['learned to make and to mend', 'took pride in good work'],
+  war: ['learned to fight, and to fear little', 'came to trust the blade over the word'],
+  honor: ['learned to keep their word above all', 'held their good name dear'],
+  freedom: ['learned to answer to no one', 'chafed at any yoke'],
+  nature: ['learned to heed the wild', 'kept close to the living land'],
+  tradition: ['learned to keep the old ways', 'held to what the elders taught'],
+};
+
+function houseClause(f: BackstoryFacts): string {
+  const h = f.house!;
+  switch (f.houseFate) {
+    case 'ruling': return `of the ruling House ${h}`;
+    case 'fallen': return `of House ${h}, fallen from its high seat`;
+    case 'ended': return `last of House ${h}, a line now ended`;
+    case 'founding': return `founder of House ${h}`;
+    default: return `of House ${h}`;
+  }
+}
+
+function placeClause(f: BackstoryFacts): string {
+  const p = f.place ?? 'a forgotten place';
+  switch (f.placeFate) {
+    case 'razed': return `${p}, now a ruin`;
+    case 'founded': return `${p}, in the very year it was raised`;
+    case 'ancient': return `ancient ${p}`;
+    default: return p;
+  }
+}
+
+/** How a formative-year event reads as the era that shaped someone (undefined = no real era). */
+function eraPhrase(f: BackstoryFacts): string | undefined {
+  const e = f.era;
+  if (!e) return undefined;
+  switch (e.type) {
+    case 'famine': return `through the famine of y${e.year}`;
+    case 'plague': case 'blight': return 'through the plague years';
+    case 'beast': return `in the year a ${e.data.beast ?? 'beast'} stalked the land`;
+    case 'conquest': return `in the shadow of the sack of ${e.data.fallen ?? 'a neighbour'}`;
+    case 'battle': case 'raid': case 'civil_war': return `amid the wars of y${e.year}`;
+    case 'prosperity': case 'boon': case 'wonder': return `in the golden years of y${e.year}`;
+    case 'ruined': return 'as their home fell to ruin';
+    default: return undefined;
+  }
+}
+
+const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/** Render an actor's gathered facts into a short life-story, in this universe's voice.
+ *  `rng` (seeded stably per actor by the caller) picks interchangeable phrasings so the
+ *  same soul always reads the same. */
+export function renderBackstory(f: BackstoryFacts, rng: Rng): string {
+  // 1) ORIGIN — name, lineage, trade, place.
+  const lineage = f.house ? houseClause(f) : 'of common birth';
+  const s1 = `${f.given}, ${lineage} — a ${f.profession} of ${placeClause(f)}.`;
+
+  // 2) FORMATION — the era that shaped them, and the bent it left.
+  const grew = rng.pick(['came of age', 'grew up', 'came up']);
+  const era = eraPhrase(f);
+  const lessons = f.dominantValue ? VALUE_LESSON[f.dominantValue] : undefined;
+  const lesson = lessons ? rng.pick(lessons) : undefined;
+  let s2 = '';
+  if (era && lesson) s2 = `${f.orphaned ? 'Orphaned young, they' : 'They'} ${grew} ${era}, and ${lesson}.`;
+  else if (era) s2 = `${f.orphaned ? 'Orphaned young, they' : 'They'} ${grew} ${era}.`;
+  else if (lesson) s2 = `${f.orphaned ? 'Orphaned young, they' : 'They'} ${lesson}.`;
+  else if (f.orphaned) s2 = 'Orphaned young, they made their own way.';
+
+  return (s1 + (s2 ? ' ' + cap(s2) : '')).replace(/\s+/g, ' ').trim();
+}

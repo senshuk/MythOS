@@ -459,6 +459,35 @@ button { font-family: inherit; }
 .chain { padding-left: 18px; }
 .chain li { padding: 3px 0; }
 .ev-root { background: var(--panel-2); padding: 10px 12px; border-radius: var(--radius-sm); border-left: 3px solid var(--gold); }
+/* a character's world-grounded life-story — set apart, in the chronicle's serif voice */
+.backstory { font-family: var(--serif); font-style: italic; color: var(--parchment, var(--ink)); border-left: 2px solid var(--gold); padding: 4px 0 4px 10px; margin: var(--space-2) 0; line-height: 1.55; }
+/* the causal ancestry, indented into a tree; a fading rail marks descent into deeper causes */
+.cause-tree { list-style: none; margin: var(--space-1) 0 0; padding: 0; border-left: 2px solid var(--border); margin-left: 4px; }
+.cause-node { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.cause-arrow { color: var(--ink-faint, var(--ink-dim)); font-size: var(--fs-xs); flex: none; opacity: 0.6; }
+.cause-node .ev-inspect { padding: 2px 0; }
+
+/* a House's line, rendered as a genealogy: each generation nested beneath its parent, with a
+   fading rail marking descent. Degrades to a flat succession list when no kinship is recorded. */
+.lineage, .lineage-kids { list-style: none; margin: 0; padding: 0; }
+.lineage { margin-top: var(--space-1); }
+.lineage-node { padding: 2px 0; }
+.lineage-kids { margin-left: 8px; padding-left: 10px; border-left: 2px solid var(--border); }
+.lineage-head { font-family: var(--serif); }
+.lineage-mark { color: var(--gold); }
+
+/* the visual dynasty tree — a generational diagram drawn when real kinship is recorded */
+.dyn-scroll { overflow-x: auto; margin: var(--space-1) 0 var(--space-2); }
+.dyn-tree { max-width: 100%; height: auto; display: block; }
+.dyn-edge { fill: none; stroke: var(--border); stroke-width: 1.5; }
+.dyn-node { cursor: pointer; }
+.dyn-node rect { fill: var(--panel-2, var(--panel)); stroke: var(--border); stroke-width: 1; transition: stroke 0.12s; }
+.dyn-node text { fill: var(--ink); font-family: var(--serif); font-size: 12px; pointer-events: none; }
+.dyn-node:hover rect, .dyn-node:focus-visible rect { stroke: var(--gold); }
+.dyn-node:focus-visible { outline: none; }
+.dyn-node.founder rect { stroke: var(--gold); }
+.dyn-node.head rect { stroke: var(--gold); stroke-width: 2; }
+.dyn-node.dead text { fill: var(--ink-dim); }
 
 /* ----------------------------------------------------------- player panel - */
 .player-panel {

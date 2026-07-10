@@ -108,7 +108,7 @@ describe('narrative demo', () => {
       const chain = inspectEvent(world, interesting.id)!;
       line('\n-- tracing causality --');
       line(`  EVENT  y${chain.root.year}: ${chain.root.text}`);
-      for (const a of chain.ancestors) line(`    <- y${a.year}: ${a.text}`);
+      for (const a of chain.ancestors) line(`    ${'  '.repeat(a.depth - 1)}<- y${a.event.year}: ${a.event.text}`);
     }
 
     // migration: named people moving between settlements

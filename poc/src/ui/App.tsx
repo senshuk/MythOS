@@ -5,15 +5,16 @@
  *
  * The UI is intentionally a thin, read-only renderer of snapshots.
  */
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import type { PointerEvent as RPointerEvent, MouseEvent as RMouseEvent } from 'react';
-import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
+import type { EventView, EventPart, EventRef, SettlementView, PlayerView, EraView, TaleView, FigureView, HouseView, HouseDetail, TongueView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { createSubstrate, SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
 import { featureName, CULTURES } from '../engine/pack';
 import { useSim } from './useSim';
+import { layoutLineage, LINEAGE_METRICS } from './lineageLayout';
 
 const TYPE_TONE: Record<string, string> = {
   born: 'good',
@@ -406,6 +407,10 @@ export default function App() {
               eventChain={sim.eventChain}
               figureDetail={sim.figureDetail}
               settlementDetail={sim.settlementDetail}
+              houseDetail={sim.houseDetail}
+              cultureDetail={sim.cultureDetail}
+              deityDetail={sim.deityDetail}
+              featureDetail={sim.featureDetail}
               settlements={stat.settlements}
               playerId={stat.player?.id}
               onPickActor={inspectActor}
@@ -1380,7 +1385,7 @@ function HistoryFeed({
             {tongues.map((t) => (
               <div key={t.cultureId} className="tongue">
                 <h3>
-                  {cultureName(t.cultureId)} — <span className="tongue-demonym">the {t.demonym}</span>
+                  <button className="link" onClick={() => onRef({ kind: 'culture', id: t.cultureId })}>{cultureName(t.cultureId)}</button> — <span className="tongue-demonym">the {t.demonym}</span>
                   <span className="tongue-voice"> · a {t.voice} tongue</span>
                 </h3>
                 {t.kin.length > 0 && (
@@ -1415,7 +1420,10 @@ function HistoryFeed({
               <ul className="eras">
                 {eras.slice(0, 8).map((e, i) => (
                   <li key={i}>
-                    <span className="muted">y{e.year}:</span> {e.title}
+                    <span className="muted">y{e.year}:</span>{' '}
+                    {e.eventId !== undefined ? (
+                      <button className="link" onClick={() => onPickEvent(e.eventId!)} title="trace this age's defining event">{e.title}</button>
+                    ) : e.title}
                   </li>
                 ))}
               </ul>
@@ -1427,7 +1435,8 @@ function HistoryFeed({
               <ul className="houses">
                 {houses.slice(0, 8).map((h, i) => (
                   <li key={i} className={h.extinctYear !== undefined ? 'house-fallen' : ''}>
-                    <span className="house-name">House {h.name}{h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}</span>
+                    <button className="link house-name" onClick={() => onRef({ kind: 'house', id: h.id })}>House {h.name}</button>
+                    {h.meaning ? <span className="house-gloss"> · {h.meaning}</span> : null}
                     <span className="house-status">
                       {h.extinctYear !== undefined
                         ? `fell with its seat, y${h.extinctYear}`
@@ -1449,7 +1458,7 @@ function HistoryFeed({
               <ul className="figures-hist">
                 {figures.slice(0, 8).map((f, i) => (
                   <li key={i}>
-                    <span className="fig-name">{f.name}</span>
+                    <button className="link fig-name" onClick={() => onRef({ kind: 'figure', id: f.id })}>{f.name}</button>
                     <span className="muted">
                       {' '}
                       — {f.role}
@@ -1467,7 +1476,10 @@ function HistoryFeed({
               <ul className="legends">
                 {legends.slice(0, 12).map((t, i) => (
                   <li key={i}>
-                    <span className="muted">y{t.year}</span> {t.text}
+                    <span className="muted">y{t.year}</span>{' '}
+                    {t.eventId !== undefined ? (
+                      <button className="link legend-link" onClick={() => onPickEvent(t.eventId!)} title="trace the deed behind the legend">{t.text}</button>
+                    ) : t.text}
                   </li>
                 ))}
               </ul>
@@ -1479,11 +1491,93 @@ function HistoryFeed({
   );
 }
 
+type HouseMember = HouseDetail['members'][number];
+
+/** How a member's life reads in the line: role, birth–death, and reign span. */
+function memberDates(m: HouseMember): string {
+  const life = `b.${m.bornYear}${m.deathYear !== undefined ? `–${m.deathYear}` : ''}`;
+  const reign = m.deathYear !== undefined ? `r.${m.reignStart}–${m.deathYear}` : `ruling since y${m.reignStart}`;
+  return `${m.role} · ${life} · ${reign}`;
+}
+
+/**
+ * The line rendered as a GENEALOGY. Roots are members with no parent inside the House; children
+ * nest beneath them via childIds. When a House has no recorded kinship (minted records carry no
+ * ties), every member is a root — so this same renderer degrades naturally to a plain succession
+ * list. A visited set guards against any stray cycle. ⚑ marks the founder, 👑 the living head.
+ */
+function LineageTree({ members, onRef }: { members: HouseMember[]; onRef: (r: EventRef) => void }) {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const roots = members.filter((m) => m.parentIds.length === 0);
+  const seen = new Set<number>();
+  const node = (m: HouseMember): React.ReactNode => {
+    if (seen.has(m.id)) return null;
+    seen.add(m.id);
+    const kids = m.childIds.map((c) => byId.get(c)).filter((c): c is HouseMember => !!c);
+    return (
+      <li key={m.id} className="lineage-node">
+        <span className="lineage-head">
+          {m.isFounder ? <span className="lineage-mark" title="founder of the line">⚑ </span> : m.isSeat ? <span className="lineage-mark" title="the living head — holds the seat">👑 </span> : null}
+          <button className="link" onClick={() => onRef({ kind: 'figure', id: m.id })}>{m.name}</button>
+          {m.spouses.length > 0 && (
+            <span className="muted"> ⚭ {m.spouses.map((s, i) => (
+              <Fragment key={s.id}>
+                {i > 0 ? ', ' : ''}
+                <button className="link" onClick={() => onRef({ kind: 'figure', id: s.id })}>{s.name}</button>
+                {s.houseName && s.houseId !== undefined ? <> of <button className="link" onClick={() => onRef({ kind: 'house', id: s.houseId! })}>House {s.houseName}</button></> : null}
+              </Fragment>
+            ))}</span>
+          )}
+        </span>
+        <span className="muted"> — {memberDates(m)}</span>
+        {kids.length > 0 && <ul className="lineage-kids">{kids.map(node)}</ul>}
+      </li>
+    );
+  };
+  return <ul className="lineage">{roots.map(node)}</ul>;
+}
+
+/**
+ * The line as a VISUAL genealogy — a compact generational diagram (nodes + descent lines),
+ * shown when a House has real kinship depth. Longest-path depth sets the row; a tidy post-order
+ * layout centres each parent over its children. ⚑ founder, 👑 the living head; the departed fade.
+ * Rendered as inline SVG (self-contained, theme-aware via CSS), scrolling horizontally if wide.
+ */
+function LineageDiagram({ members, onRef }: { members: HouseMember[]; onRef: (r: EventRef) => void }) {
+  const { NODE_W, NODE_H } = LINEAGE_METRICS;
+  const { nodes, edges, width, height } = layoutLineage(members);
+  const clip = (s: string) => (s.length > 15 ? s.slice(0, 14) + '…' : s);
+  return (
+    <div className="dyn-scroll">
+      <svg className="dyn-tree" viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label="dynasty tree">
+        {edges.map((e) => <path key={`${e.from}-${e.to}`} className="dyn-edge" d={e.d} />)}
+        {members.map((m) => {
+          const n = nodes.get(m.id)!;
+          const mark = m.isFounder ? '⚑ ' : m.isSeat ? '👑 ' : '';
+          const cls = `dyn-node${m.isFounder ? ' founder' : ''}${m.isSeat ? ' head' : ''}${m.deathYear !== undefined ? ' dead' : ''}`;
+          return (
+            <g key={m.id} className={cls} onClick={() => onRef({ kind: 'figure', id: m.id })} tabIndex={0}
+               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRef({ kind: 'figure', id: m.id }); } }}>
+              <title>{`${m.name} — ${memberDates(m)}`}</title>
+              <rect x={n.x} y={n.y} width={NODE_W} height={NODE_H} rx={5} />
+              <text x={n.cx} y={n.y + NODE_H / 2 + 4} textAnchor="middle">{mark}{clip(m.name)}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function Inspector({
   actorDetail,
   eventChain,
   figureDetail,
   settlementDetail,
+  houseDetail,
+  cultureDetail,
+  deityDetail,
+  featureDetail,
   settlements,
   playerId,
   onPickActor,
@@ -1497,6 +1591,10 @@ function Inspector({
   eventChain: ReturnType<typeof useSim>['eventChain'];
   figureDetail: ReturnType<typeof useSim>['figureDetail'];
   settlementDetail: ReturnType<typeof useSim>['settlementDetail'];
+  houseDetail: ReturnType<typeof useSim>['houseDetail'];
+  cultureDetail: ReturnType<typeof useSim>['cultureDetail'];
+  deityDetail: ReturnType<typeof useSim>['deityDetail'];
+  featureDetail: ReturnType<typeof useSim>['featureDetail'];
   settlements: SettlementView[];
   playerId?: number;
   onPickActor: (id: number) => void;
@@ -1506,7 +1604,7 @@ function Inspector({
   onPossess: (id: number) => void;
   onClose: () => void;
 }) {
-  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail) {
     return (
       <section className="panel inspector empty">
         <h2>A closer look</h2>
@@ -1560,10 +1658,14 @@ function Inspector({
           </h3>
           <p className="muted">
             {actorDetail.actor.species} {actorDetail.actor.profession} · {actorDetail.actor.ageYears}y ·{' '}
-            {actorDetail.actor.sex} · of House {actorDetail.actor.house} · traits:{' '}
+            {actorDetail.actor.sex} · of {actorDetail.actor.houseId !== undefined ? (
+              <button className="link" onClick={() => onRef({ kind: 'house', id: actorDetail.actor.houseId! })}>House {actorDetail.actor.house}</button>
+            ) : `House ${actorDetail.actor.house}`} · traits:{' '}
             {actorDetail.actor.traits.join(', ') || 'none'}
           </p>
           <p className="muted">Nature: {actorDetail.actor.nature}{actorDetail.actor.faith ? ` · faithful to ${actorDetail.actor.faith}` : ' · faithless'}{actorDetail.actor.factionName ? ` · ${actorDetail.actor.factionName}` : ''}{actorDetail.actor.exiledFrom ? <span className="exile-status"> · exile from {actorDetail.actor.exiledFrom}</span> : null}</p>
+          {/* a life-story assembled from their REAL history — who they are, and why */}
+          {actorDetail.backstory && <p className="backstory">{actorDetail.backstory}</p>}
 
           {actorDetail.mood && (
             <>
@@ -1637,7 +1739,9 @@ function Inspector({
           <h3>{figureDetail.name}</h3>
           <p className="muted">
             {figureDetail.role}
-            {figureDetail.house ? ` of House ${figureDetail.house}` : ''} of{' '}
+            {figureDetail.house ? (
+              <> of {figureDetail.houseId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'house', id: figureDetail.houseId! })}>House {figureDetail.house}</button> : `House ${figureDetail.house}`}</>
+            ) : ''} of{' '}
             <button className="link" onClick={() => onRef({ kind: 'settlement', id: figureDetail.settlementId })}>
               {figureDetail.settlement}
             </button>{' '}
@@ -1653,26 +1757,141 @@ function Inspector({
         </div>
       )}
 
+      {featureDetail && (
+        <div>
+          <h3>{featureDetail.name}{featureDetail.meaning ? <span className="house-gloss"> · {featureDetail.meaning}</span> : null}</h3>
+          <p className="muted">a {featureDetail.kind === 'range' ? 'mountain range' : featureDetail.kind}{featureDetail.settlements.length ? '' : ' · no towns sit beside it'}</p>
+          {featureDetail.settlements.length > 0 && (
+            <>
+              <h4>Towns upon it</h4>
+              <ul className="rels">
+                {featureDetail.settlements.map((s) => (
+                  <li key={s.id}><button className="link" onClick={() => onRef({ kind: 'settlement', id: s.id })}>{s.name}</button></li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {cultureDetail && (
+        <div>
+          <h3>{cultureDetail.name}</h3>
+          <p className="muted">
+            {cultureDetail.tongue ? `the ${cultureDetail.tongue.demonym} · a ${cultureDetail.tongue.voice} tongue · ` : ''}
+            {cultureDetail.leanings}
+            {cultureDetail.patronDeity ? (
+              <> · venerate <button className="link" onClick={() => onRef({ kind: 'deity', id: cultureDetail.patronDeity!.id })}>{cultureDetail.patronDeity.name}</button></>
+            ) : ''}
+          </p>
+          {(cultureDetail.creed.reveres.length > 0 || cultureDetail.creed.abhors.length > 0) && (
+            <p className="muted">
+              {cultureDetail.creed.reveres.length > 0 ? <>reveres {cultureDetail.creed.reveres.join(', ')}. </> : ''}
+              {cultureDetail.creed.abhors.length > 0 ? <>abhors {cultureDetail.creed.abhors.join(', ')}.</> : ''}
+            </p>
+          )}
+          {cultureDetail.settlements.length > 0 && (
+            <>
+              <h4>Its towns</h4>
+              <ul className="rels">
+                {cultureDetail.settlements.slice(0, 20).map((s) => (
+                  <li key={s.id}><button className="link" onClick={() => onRef({ kind: 'settlement', id: s.id })}>{s.name}</button></li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {deityDetail && (
+        <div>
+          <h3>{deityDetail.name}</h3>
+          <p className="muted">god of {deityDetail.domain} · {deityDetail.faithful} {deityDetail.faithful === 1 ? 'soul holds' : 'souls hold'} this faith</p>
+          {deityDetail.cultures.length > 0 && (
+            <p className="muted">
+              venerated by {deityDetail.cultures.map((c, i) => (
+                <span key={c.id}>{i > 0 ? ', ' : ''}<button className="link" onClick={() => onRef({ kind: 'culture', id: c.id })}>{c.name}</button></span>
+              ))}
+            </p>
+          )}
+        </div>
+      )}
+
+      {houseDetail && (
+        <div>
+          <h3>House {houseDetail.name}{houseDetail.meaning ? <span className="house-gloss"> · {houseDetail.meaning}</span> : null}</h3>
+          <p className="muted">
+            founded y{houseDetail.foundedYear}
+            {houseDetail.founder ? <> by <button className="link" onClick={() => onRef({ kind: 'figure', id: houseDetail.founder!.id })}>{houseDetail.founder.name}</button></> : ''}
+            {houseDetail.originId !== undefined ? <> in <button className="link" onClick={() => onRef({ kind: 'settlement', id: houseDetail.originId! })}>{houseDetail.origin}</button></> : houseDetail.origin ? ` in ${houseDetail.origin}` : ''}
+            {` · ${houseDetail.prestige} renown`}
+          </p>
+          <p className="muted">
+            {houseDetail.extinctYear !== undefined ? (
+              `a fallen line — ended y${houseDetail.extinctYear}`
+            ) : houseDetail.seatId !== undefined ? (
+              <>rules <button className="link" onClick={() => onRef({ kind: 'settlement', id: houseDetail.seatId! })}>{houseDetail.seat}</button></>
+            ) : 'out of power, its dynasty enduring in name'}
+          </p>
+          {houseDetail.members.length > 0 && (
+            <>
+              <h4>The line</h4>
+              {/* a real dynasty (recorded kinship) reads best as a diagram; a bare succession
+                  line — the common case for minted rulers — stays a scannable list. */}
+              {houseDetail.members.some((m) => m.childIds.length > 0) ? (
+                <LineageDiagram members={houseDetail.members} onRef={onRef} />
+              ) : (
+                <LineageTree members={houseDetail.members} onRef={onRef} />
+              )}
+            </>
+          )}
+          <h4>The House’s saga</h4>
+          {houseDetail.events.length === 0 ? (
+            <p className="muted">Nothing recorded.</p>
+          ) : (
+            <ul className="rels">{houseDetail.events.map(eventLine)}</ul>
+          )}
+        </div>
+      )}
+
       {settlementDetail && (
         <div>
           <h3>{settV?.name ?? 'Settlement'}</h3>
           {settV?.nameMeaning && <p className="name-gloss">“{settV.nameMeaning}”, in the founders’ tongue</p>}
-          {settV?.landmark && <p className="name-gloss">{settV.landmark.relation} {settV.landmark.name}</p>}
+          {settV?.landmark && (
+            <p className="name-gloss">
+              {settV.landmark.relation}{' '}
+              {settV.landmark.featureIndex !== undefined ? (
+                <button className="link" onClick={() => onRef({ kind: 'feature', id: settV.landmark!.featureIndex! })}>{settV.landmark.name}</button>
+              ) : settV.landmark.name}
+            </p>
+          )}
           {settV && (
             <p className="muted">
               {settV.ruinedYear !== undefined
                 ? `a ruin · fell y${settV.ruinedYear}`
                 : `${settV.population} souls · ${settV.dominantSpecies} · ${settV.specialization}`}
               {' · '}
-              {settV.culture}
-              {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
+              <button className="link" onClick={() => onRef({ kind: 'culture', id: settV.cultureId })}>{settV.culture}</button>
+              {settV.leaderTitle && settV.ruler ? (
+                <>
+                  {' · '}{settV.leaderTitle}{' '}
+                  {settV.rulerId !== undefined ? (
+                    <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.rulerId! })}>{settV.ruler}</button>
+                  ) : settV.ruler}
+                </>
+              ) : !settV.leaderTitle ? ' · free folk' : ''}
             </p>
           )}
           {settV?.polity && (
             <p className="polity">
               governed by the <em>{settV.polity.name}</em>
-              {settV.polity.leaderName ? ` · led by ${settV.polity.leaderName}` : ''}
-              {settV.polity.founderName ? ` · founded by ${settV.polity.founderName}` : ''}
+              {settV.polity.leaderName ? (
+                <> · led by {settV.polity.leaderId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.polity!.leaderId! })}>{settV.polity.leaderName}</button> : settV.polity.leaderName}</>
+              ) : ''}
+              {settV.polity.founderName ? (
+                <> · founded by {settV.polity.founderId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.polity!.founderId! })}>{settV.polity.founderName}</button> : settV.polity.founderName}</>
+              ) : ''}
               {settV.polity.leaderCount > 1 ? ` · ${settV.polity.leaderCount} leaders in its line` : ''}
               {` · treasury ${settV.polity.treasury}`}
             </p>
@@ -1728,7 +1947,7 @@ function Inspector({
             </p>
           )}
           {settV?.patronDeity && (
-            <p className="patron-deity">sacred to: <em>{settV.patronDeity.name}</em> · {settV.patronDeity.domain}</p>
+            <p className="patron-deity">sacred to: <button className="link" onClick={() => onRef({ kind: 'deity', id: settV.patronDeity.id })}><em>{settV.patronDeity.name}</em></button> · {settV.patronDeity.domain}</p>
           )}
           {settV?.creed && (settV.creed.reveres.length > 0 || settV.creed.abhors.length > 0) && (
             <p className="creed">
@@ -1767,8 +1986,26 @@ function Inspector({
             <p className="muted">This was an originating event — nothing caused it.</p>
           ) : (
             <>
-              <h4>Caused by (most recent first)</h4>
-              <ol className="chain">{eventChain.ancestors.map(eventLine)}</ol>
+              <h4>Caused by</h4>
+              {/* the causal ancestry as a TREE — each cause indented under what it explains,
+                  and itself clickable to re-root the "why?" there and walk further back. */}
+              <ul className="cause-tree">
+                {eventChain.ancestors.map((c) => (
+                  <li key={c.event.id} className="cause-node" style={{ paddingLeft: `${(c.depth - 1) * 16}px` }}>
+                    <span className="cause-arrow" aria-hidden>↳</span>
+                    <span
+                      className="ev-inspect"
+                      onClick={() => onPickEvent(c.event.id)}
+                      onKeyDown={(e) => onActivate(e, () => onPickEvent(c.event.id))}
+                      role="button"
+                      tabIndex={0}
+                      title="trace this cause's causes"
+                    >
+                      <span className="ev-year">y{c.event.year}</span> <EventText parts={c.event.parts} onRef={onRef} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </>
           )}
         </div>

@@ -71,15 +71,16 @@ export function houseConquers(world: World, victor: Settlement): void {
 
 /** A settlement's ruling House falls with the city: it loses its seat and its line ends.
  *  Called when a settlement is razed (pre-history or live conquest). */
-export function endHouseAt(world: World, settlement: Settlement, year: number): void {
+export function endHouseAt(world: World, settlement: Settlement, year: number, cause?: number): void {
   const ruler = getFigure(world, settlement.currentRulerId);
   const house = houseById(world, ruler?.houseId);
   if (!house || house.extinctYear !== undefined) return;
   house.seatSettlementId = undefined;
   house.extinctYear = year;
-  emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, [], [settlement.id]);
-  // the polity seated here falls with the city — dissolved, but its history endures.
-  dissolve(world, settlement.polityId, year);
+  // the House falls because the city fell (the conquest/ruin event, when the caller knows it);
+  // and the polity it seated dissolves in turn — a traceable chain of collapse.
+  const fallEv = emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, cause !== undefined ? [cause] : [], [settlement.id]);
+  dissolve(world, settlement.polityId, year, [fallEv]);
 }
 
 /** Create a figure: a name in the registry + a record. Caller supplies the RNG so
@@ -133,30 +134,69 @@ export function getFigure(world: World, id: FigureId | undefined): HistoricalFig
   return world.figuresById.get(id);
 }
 
-/** The local heir to a focused settlement's rule: the most PROMINENT living adult —
- *  weighing ambition (do they want it), RENOWN (public standing), and ties (their
- *  place in the community). Ambition still dominates, but a celebrated soul can now be
- *  raised to lead — the renown→opportunity loop (HEIR_WEIGHTS, pack data). With nobody
- *  renowned this reduces to the old ambition-first, ties-tiebreak order. Deterministic —
- *  no RNG (fullActors is id-order; strict `>` keeps the lowest-id winner on ties). */
-export function chooseHeir(world: World, settlementId: number): EntityId | undefined {
-  let best: EntityId | undefined;
-  let bestProminence = -Infinity;
-  let bestTies = -1;
+/** A contender for a settlement's seat, with the standing the polity weighs. */
+export interface Claimant {
+  id: EntityId;
+  prominence: number; // ambition (do they want it) + renown (how the town regards them)
+  ties: number; // their place in the community — the tiebreak
+}
+
+/** The living adults who could inherit a settlement's rule, ranked as the polity would rank them:
+ *  by PROMINENCE (ambition + renown), ties breaking a tie, lowest id breaking that. This is the
+ *  succession race, made a first-class read so it can be both DECIDED (chooseHeir) and SHOWN (the
+ *  'rise' ambition surfaces where the player stands). Deterministic — no RNG, total ordering. */
+export function rankClaimants(world: World, settlementId: number): Claimant[] {
+  const out: Claimant[] = [];
   for (const id of fullActors(world)) {
     if (world.homeSettlement.get(id) !== settlementId) continue;
     if (world.lifecycle.get(id)!.ageYears < maturityOf(world.identity.get(id)!.speciesId)) continue;
-    // prominence = ambition + renown (these compete); ties only break a tie. With no
-    // renown this is exactly the old ambition-first, ties-tiebreak order.
     const prominence = ambitionOf(world.traits.get(id)!) * HEIR_WEIGHTS.ambition + standingOf(world, id) * HEIR_WEIGHTS.renown;
-    const ties = relCount(world, id);
-    if (prominence > bestProminence || (prominence === bestProminence && ties > bestTies)) {
-      bestProminence = prominence;
-      bestTies = ties;
-      best = id;
-    }
+    out.push({ id, prominence, ties: relCount(world, id) });
   }
-  return best;
+  // prominence desc, then ties desc, then id asc — identical to the old strict-`>` scan over the
+  // id-ordered actors (so heir selection, and the determinism hash, are unchanged).
+  out.sort((a, b) => b.prominence - a.prominence || b.ties - a.ties || a.id - b.id);
+  return out;
+}
+
+/** The local heir to a settlement's rule: the front-runner of the succession race (see
+ *  rankClaimants). With nobody renowned this reduces to the old ambition-first, ties-tiebreak
+ *  order. Deterministic — no RNG. */
+export function chooseHeir(world: World, settlementId: number): EntityId | undefined {
+  return rankClaimants(world, settlementId)[0]?.id;
+}
+
+/** Years before a ruler's fated end that the seat counts as "failing" — the peaceful window in
+ *  which the acclaimed front-runner may press a claim and the succession comes early. Shared with
+ *  the 'rise' ambition so what the player is TOLD and what pressClaim ALLOWS never drift. */
+export const CLAIM_RIPE_WINDOW = 6;
+
+/**
+ * A proactive, PEACEFUL bid for a seat. When the claimant is the one the town would raise (the
+ * front-runner) AND the sitting ruler is failing (near the end of their days or term), the polity
+ * turns to them and the succession comes early — the old ruler yields, and lives on. Any other
+ * press is premature and does nothing (the forceful, contested path — challenging firm power into a
+ * civil war — is a later stage). ONE RULE SET: an ambitious NPC noble presses a claim by this very
+ * verb; there is no player branch. Randomness (the new reign's span) comes from the caller's stream.
+ */
+export function pressClaim(world: World, claimant: EntityId, rng: Rng): void {
+  const h = world.homeSettlement.get(claimant);
+  if (h === undefined) return;
+  const s = world.settlements[h];
+  if (!s || s.ruinedYear !== undefined || s.macro.population <= 0) return;
+  if (s.currentRulerId === claimant) return; // already yours
+  if (governmentById(s.governmentId).succession === 'none') return; // a leaderless polity has no seat
+  if (rankClaimants(world, h)[0]?.id !== claimant) return; // you must be the one they'd raise
+  const year = Math.floor(world.tick / DAYS_PER_YEAR);
+  const ruler = getFigure(world, s.currentRulerId);
+  if (ruler && year < ruler.reignEnd - CLAIM_RIPE_WINDOW) return; // the moment is not yet ripe
+
+  const oldHouse = houseById(world, ruler?.houseId);
+  const title = leaderTitleOf(s.governmentId);
+  const claimEv = emit(world, 'claim_pressed', [claimant], { settlement: s.name, title }, [], [s.id]);
+  if (ruler && ruler.deathYear === undefined) ruler.reignEnd = year; // the old ruler yields, and lives on
+  const heir = crownActor(world, s, claimant, year, rng);
+  installRuler(world, s, heir, oldHouse, year, title, [claimEv]); // seats them; the ascension cites the claim
 }
 
 /** Crown a simulated actor: mint a figure record sharing the actor's id (FigureId
@@ -189,19 +229,20 @@ function installRuler(
   oldHouse: House | undefined,
   year: number,
   title: string,
-): void {
+  causes: number[] = [], // the ruler's death (for hereditary succession) — the "why?"
+): number {
   let evId: number;
   if (oldHouse && oldHouse.extinctYear === undefined && surnameOf(heir.name) === oldHouse.name) {
     heir.houseId = oldHouse.id;
     oldHouse.prestige += HOUSE_ASCEND;
     oldHouse.seatSettlementId = s.id;
     s.currentRulerId = heir.id;
-    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, [], [s.id]);
+    evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, causes, [s.id]);
   } else {
     const newHouse = foundHouse(world, heir, s.id, year);
     if (oldHouse && oldHouse.seatSettlementId === s.id) oldHouse.seatSettlementId = undefined; // out of power
     s.currentRulerId = heir.id;
-    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' }, [], [s.id]);
+    evId = emit(world, 'dynasty', [heir.id], { settlement: s.name, title, house: newHouse.name, old: oldHouse?.name ?? '' }, causes, [s.id]);
   }
   // succession operates on the ORGANIZATION: the polity this settlement hosts gets the new
   // leader (currentRulerId above is now a compatibility mirror of the org's leaderId).
@@ -225,6 +266,7 @@ function installRuler(
     for (const id of fullActors(world)) if (world.homeSettlement.get(id) === s.id) residents++;
     recordDeed(world, heir.id, 'ascension', { witnesses: residents, cause: evId });
   }
+  return evId; // the succession event — so a contested succession can name it as its cause
 }
 
 /** Yearly: leadership transfers per the polity's GOVERNMENT (succession is data).
@@ -253,10 +295,11 @@ export function figuresYearly(world: World): void {
     if (year >= ruler.reignEnd) {
       const oldHouse = houseById(world, ruler.houseId);
       // a hereditary ruler dies in office; an elected leader merely steps down (lives on).
+      let deathEv: number | undefined;
       if (gov.succession === 'hereditary') {
         ruler.deathYear = year;
         if (oldHouse) oldHouse.prestige += HOUSE_REIGN + (year - ruler.reignStart); // a completed reign
-        emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
+        deathEv = emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
       }
       // In the focused settlement, rule may pass to a real local heir (so an actor — and the
       // player — can actually rise to lead). Otherwise the dynasty continues or a new one rises.
@@ -269,7 +312,7 @@ export function figuresYearly(world: World): void {
         const continues = oldHouse !== undefined && oldHouse.extinctYear === undefined && !rng.chance(DYNASTY_TURNOVER);
         heir = mintFigure(world, s, year, rng, 'ruler', continues ? oldHouse!.name : undefined);
       }
-      installRuler(world, s, heir, oldHouse, year, title);
+      const succEv = installRuler(world, s, heir, oldHouse, year, title, deathEv !== undefined ? [deathEv] : []);
 
       // Contested succession: when power crosses faction lines, note it.
       // Both parties must be real actors (personality.has) — minted figures have
@@ -283,13 +326,13 @@ export function figuresYearly(world: World): void {
           const oldHigh = (oldPers.values[ax] ?? 0) >= split.axisMean;
           const newHigh = (newPers.values[ax] ?? 0) >= split.axisMean;
           if (oldHigh !== newHigh) {
-            emit(world, 'contested_succession', [heir.id], {
+            const contestedEv = emit(world, 'contested_succession', [heir.id], {
               settlement: s.name,
               axis: ax,
               newFaction: newHigh ? split.highName : split.lowName,
               oldFaction: oldHigh ? split.highName : split.lowName,
-            }, [], [s.id]);
-            startCivilWarClock(world, s);
+            }, [succEv], [s.id]);
+            startCivilWarClock(world, s, contestedEv); // the war, if it comes, traces here
           }
         }
       }

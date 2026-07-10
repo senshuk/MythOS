@@ -17,6 +17,7 @@
 import { type World, type EntityId, type PlayerActionView } from '../engine/model';
 import { type Intent } from '../engine/intent';
 import { Rng } from '../engine/rng';
+import { pressClaim } from '../engine/figures';
 
 /** The actions offered to the player this turn. (NPC choice is in systems/decide.ts.) */
 export const PLAYER_ACTIONS: PlayerActionView[] = [
@@ -35,8 +36,14 @@ export type ActionResolver = (world: World, actor: EntityId, target: EntityId | 
  * Registry of pack-specific verbs the engine's core resolver doesn't know. The fixture
  * ships none; a real pack registers e.g. EXTRA_ACTIONS['hack'] = (world, actor, …) => {…},
  * calling engine mechanism (world.ts / opinion.ts) for the effects.
+ *
+ * `press_claim` is the exception this pack does ship: a proactive bid for the settlement's seat.
+ * It carries no target (you claim your OWN home's seat) and routes into the succession machinery
+ * (engine/figures.ts pressClaim) — the first player LEVER on the grand systems the sim runs.
  */
-export const EXTRA_ACTIONS: Record<string, ActionResolver> = {};
+export const EXTRA_ACTIONS: Record<string, ActionResolver> = {
+  press_claim: (world, actor, _target, rng) => pressClaim(world, actor, rng),
+};
 
 /** Engine entry point: resolve an unknown verb via the pack registry (no-op if absent). */
 export function resolveExtraAction(world: World, actor: EntityId, intent: Intent, rng: Rng): void {
