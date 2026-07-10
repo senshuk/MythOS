@@ -6,7 +6,7 @@
  * Pure presentation: nothing here is stored, and the sim never sees it.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RegionMapView, SettlementView, EventRef, EventView } from '../engine/model';
+import type { RegionMapView, SettlementView, EventRef, EventView, HouseholdView } from '../engine/model';
 import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
@@ -24,6 +24,7 @@ export function LocalMapView({
   seed,
   currentYear,
   chronicle,
+  households,
   onExit,
   onRef,
   onPickEvent,
@@ -34,6 +35,8 @@ export function LocalMapView({
   currentYear: number;
   /** the settlement's notable history (oldest first) — feeds the HISTORY MARKS. */
   chronicle?: EventView[];
+  /** who lives under which roof — present only for the lived-in-full settlement (L2). */
+  households?: HouseholdView[];
   onExit: () => void;
   onRef: (ref: EventRef) => void;
   /** a history mark traces the event it remembers (the burned quarter answers "why?"). */
@@ -95,9 +98,10 @@ export function LocalMapView({
       geo: sub.geography,
       currentYear,
       chronicle,
+      households,
     };
     return buildLocalPlan(facts);
-  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle]);
+  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households]);
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -180,7 +184,11 @@ export function LocalMapView({
         ) : (
           <span>
             {settlement.population.toLocaleString()} souls · {settlement.culture} · {settlement.specialization}
-            {settlement.detailed ? ' · lived in full' : ' · known by chronicle and rumour'}
+            {settlement.detailed
+              ? households && households.length > 0
+                ? ` · lived in full — hover a lit roof to meet its household`
+                : ' · lived in full'
+              : ' · known by chronicle and rumour'}
           </span>
         )}
       </div>
@@ -256,7 +264,7 @@ function PlanGlyph({
     );
   }
   if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
-  const cls = `plan-building tone-${it.tone} role-${it.role}`;
+  const cls = `plan-building tone-${it.tone} role-${it.role}${it.inhabited ? ' inhabited' : ''}`;
   // a history mark traces its event; a civic building inspects its subject
   const act = it.eventId !== undefined ? () => onPickEvent(it.eventId!) : it.ref ? () => onRef(it.ref!) : undefined;
   return (

@@ -1136,6 +1136,25 @@ export interface EventPart {
   ref?: EventRef;
 }
 
+/** One member of a HOUSEHOLD, as the close view shows it — a name on a roof. */
+export interface HouseholdMember {
+  id: EntityId;
+  name: string;
+  role: 'head' | 'spouse' | 'child';
+  ageYears: number;
+  profession: string;
+}
+
+/** A HOUSEHOLD — who lives under one roof, derived purely from the social ties the
+ *  sim already keeps (couples co-housed, the unwed under their parents' roof). The
+ *  close view assigns these to its drawn houses (design/24 L2). Derived at request
+ *  time, never stored: households are a READING of ties, not new world state. */
+export interface HouseholdView {
+  /** the family surname the household answers to (its head's). */
+  family: string;
+  members: HouseholdMember[];
+}
+
 /** A tiny at-a-glance card for a hovered entity link — just enough to recognize who or
  *  what something is without committing to a full inspection (legibility at hover cost).
  *  Built by the worker on demand; deliberately much lighter than the *Detail views. */

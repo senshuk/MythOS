@@ -19,6 +19,7 @@ import {
   inspectFeature,
   buildPeek,
   buildLocalChronicle,
+  buildHouseholds,
   focusSettlement,
   setStoryteller,
   possess,
@@ -211,11 +212,12 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       });
       break;
     }
-    case 'localChronicle': {
+    case 'localFacts': {
       ctx.postMessage({
-        kind: 'localChronicle',
+        kind: 'localFacts',
         token: msg.token,
         events: world ? buildLocalChronicle(world, msg.id) : [],
+        households: world ? buildHouseholds(world, msg.id) : [],
       });
       break;
     }

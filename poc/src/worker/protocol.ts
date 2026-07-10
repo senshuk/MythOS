@@ -5,7 +5,7 @@
  * keeps the UI a pure function of state, and leaves the door open to replay and
  * (eventually) multiplayer.
  */
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard, EventView } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 
@@ -27,9 +27,10 @@ export type SimRequest =
   // a hover peek — a tiny card, separate from the inspector so hovering never
   // disturbs what the player has open. `token` pairs the reply with its request.
   | { kind: 'peek'; ref: EventRef; token: number }
-  // one settlement's notable history, for the close view's HISTORY MARKS —
-  // out-of-band like peek, so entering a town never disturbs the inspector.
-  | { kind: 'localChronicle'; id: number; token: number }
+  // one settlement's close-view facts — its notable history (HISTORY MARKS) and,
+  // when it is the lived-in-full settlement, its HOUSEHOLDS (who lives under which
+  // roof). Out-of-band like peek, so entering a town never disturbs the inspector.
+  | { kind: 'localFacts'; id: number; token: number }
   // --- player-as-actor control loop ---
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
@@ -53,5 +54,5 @@ export type SimResponse =
   | { kind: 'deityDetail'; detail: DeityDetail | null }
   | { kind: 'featureDetail'; detail: FeatureDetail | null }
   | { kind: 'peek'; token: number; card: PeekCard | null }
-  | { kind: 'localChronicle'; token: number; events: EventView[] }
+  | { kind: 'localFacts'; token: number; events: EventView[]; households: HouseholdView[] }
   | { kind: 'saveList'; saves: SaveMeta[] };

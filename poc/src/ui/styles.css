@@ -964,6 +964,12 @@ button { font-family: inherit; }
 .plan-building.tone-ruin .plan-ridge { display: none; }
 .plan-building[role="button"] { cursor: pointer; }
 .plan-building[role="button"]:hover rect { stroke: var(--cyan); }
+/* an INHABITED roof — a known family lives here (L2, the lived-in-full settlement):
+   warm hearth-light at the door, so the peopled town visibly differs from a macro one */
+.plan-building.inhabited rect { fill: #56483a; stroke: #2e2620; }
+.plan-building.inhabited::after { content: none; }
+.plan-building.inhabited .plan-ridge { stroke: rgba(233, 196, 106, 0.35); }
+.plan-building.inhabited:hover rect { stroke: var(--gold); }
 
 /* HISTORY MARKS (L3) — the chronicle stamped into the ground, every one a click */
 .plan-scorch { fill: rgba(24, 18, 14, 0.9); stroke: rgba(60, 40, 26, 0.6); stroke-width: 0.012; }

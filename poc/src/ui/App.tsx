@@ -9,7 +9,7 @@
  * live in WorldPanel.tsx, Feed.tsx, MapView.tsx, Inspector.tsx, PlayerCockpit.tsx.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EventRef, EventView } from '../engine/model';
+import type { EventRef, EventView, HouseholdView } from '../engine/model';
 import { useSim } from './useSim';
 import { usePersistentState } from './common';
 import { RegionMap } from './MapView';
@@ -76,8 +76,9 @@ export default function App() {
   const [rightOpen, setRightOpen] = usePersistentState('mythos.dock.right', true);
   // THE CLOSE VIEW (design/24 L1): which settlement's streets we're walking, if any
   const [closeViewId, setCloseViewId] = useState<number | null>(null);
-  // …and its notable history, fetched out-of-band for the HISTORY MARKS (L3)
-  const [closeChronicle, setCloseChronicle] = useState<{ id: number; events: EventView[] } | null>(null);
+  // …and its facts, fetched out-of-band: notable history for the HISTORY MARKS (L3)
+  // and households for WHO LIVES WHERE (L2 — focused settlement only)
+  const [closeFacts, setCloseFacts] = useState<{ id: number; events: EventView[]; households: HouseholdView[] } | null>(null);
 
   const stat = sim.snapshot;
   // a reforged/reloaded world may not contain the settlement we were standing in
@@ -85,21 +86,21 @@ export default function App() {
   useEffect(() => {
     if (closeViewId !== null && stat && !closeSettlement) setCloseViewId(null);
   }, [closeViewId, stat, closeSettlement]);
-  // fetch the marks feed when entering (and re-fetch when time moves — a new snapshot
-  // may carry new history for the same town). The stale-guard drops crossed replies.
+  // fetch the facts when entering (and re-fetch when time moves — a new snapshot may
+  // carry new history or new households). The stale-guard drops crossed replies.
   useEffect(() => {
     if (closeViewId === null) {
-      setCloseChronicle(null);
+      setCloseFacts(null);
       return;
     }
     let stale = false;
-    void sim.localChronicle(closeViewId).then((events) => {
-      if (!stale) setCloseChronicle({ id: closeViewId, events });
+    void sim.localFacts(closeViewId).then(({ events, households }) => {
+      if (!stale) setCloseFacts({ id: closeViewId, events, households });
     });
     return () => {
       stale = true;
     };
-  }, [closeViewId, sim.localChronicle, stat?.year]);
+  }, [closeViewId, sim.localFacts, stat?.year]);
 
   // ------------------------------------------------ inspector trail --------
   // Browser-style history over inspections: walk a cause chain three deep and
@@ -289,7 +290,8 @@ export default function App() {
                     map={stat.map}
                     seed={stat.seed}
                     currentYear={stat.year}
-                    chronicle={closeChronicle?.id === closeSettlement.id ? closeChronicle.events : undefined}
+                    chronicle={closeFacts?.id === closeSettlement.id ? closeFacts.events : undefined}
+                    households={closeFacts?.id === closeSettlement.id ? closeFacts.households : undefined}
                     onExit={() => setCloseViewId(null)}
                     onRef={inspectRef}
                     onPickEvent={inspectEvent}

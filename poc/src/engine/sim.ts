@@ -33,6 +33,8 @@ import {
   type OrgIntentView,
   type EventRef,
   type PeekCard,
+  type HouseholdView,
+  type HouseholdMember,
   DAYS_PER_YEAR,
 } from './model';
 import { type Intent } from './intent';
@@ -518,6 +520,85 @@ export function buildLocalChronicle(world: World, id: SettlementId): EventView[]
     .filter((ev): ev is WorldEvent => ev !== undefined && eventInterest(ev.type, ev.data) >= LOCAL_CHRONICLE_FLOOR)
     .slice(-LOCAL_CHRONICLE_CAP) // the most recent notable N (history marks fade anyway)
     .map((ev) => eventView(world, ev));
+}
+
+/**
+ * WHO LIVES UNDER ONE ROOF (design/24 L2) — the focused settlement's full actors,
+ * grouped into households purely from the ties the sim already keeps: wedded couples
+ * share a hearth, the unwed live under their parents' roof, the rest keep their own.
+ * A pure READING of world state — no rng, no mutation, nothing stored — so the same
+ * ties always yield the same households, and a wedding re-houses a couple correctly.
+ * Only the focused settlement is lived in full; anywhere else returns [].
+ */
+export function buildHouseholds(world: World, id: SettlementId): HouseholdView[] {
+  if (world.focusedSettlementId !== id) return [];
+  const locals = fullActors(world).filter((a) => world.lifecycle.get(a)?.alive);
+  const localSet = new Set(locals);
+  const households: EntityId[][] = [];
+  const homeOf = new Map<EntityId, number>(); // actor → household index
+  const place = (aid: EntityId, h: number) => {
+    households[h].push(aid);
+    homeOf.set(aid, h);
+  };
+
+  // PASS A — wedded couples found households (ascending id: deterministic)
+  for (const aid of locals) {
+    if (homeOf.has(aid)) continue;
+    const spouses = (world.ties.get(aid)?.spouses ?? []).filter((s) => localSet.has(s) && !homeOf.has(s));
+    if (spouses.length === 0) continue;
+    const h = households.push([]) - 1;
+    place(aid, h);
+    for (const s of spouses) place(s, h);
+  }
+  // PASS B — the unwed with NO living local parent keep their own roof. This runs
+  // before the join pass so an unwed parent's own household exists for their children
+  // to join (a widowed mother and her children share one hearth, not three).
+  for (const aid of locals) {
+    if (homeOf.has(aid)) continue;
+    const hasLocalParent = (world.ties.get(aid)?.parents ?? []).some((p) => localSet.has(p));
+    if (hasLocalParent) continue;
+    const h = households.push([]) - 1;
+    place(aid, h);
+  }
+  // PASS C — the unwed join a parent's hearth (iterate to fixpoint so a grandchild
+  // follows its parent in; parent-child ties are acyclic, so every chain ends at a
+  // pass-A couple or a pass-B root and the fixpoint houses everyone)
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const aid of locals) {
+      if (homeOf.has(aid)) continue;
+      const parents = (world.ties.get(aid)?.parents ?? []).filter((p) => homeOf.has(p)).sort((a, b) => a - b);
+      if (parents.length === 0) continue;
+      place(aid, homeOf.get(parents[0])!);
+      moved = true;
+    }
+  }
+  // PASS D — anyone still unhoused (every local parent is dead/away and unhoused ties
+  // couldn't resolve) keeps their own roof
+  for (const aid of locals) {
+    if (homeOf.has(aid)) continue;
+    const h = households.push([]) - 1;
+    place(aid, h);
+  }
+
+  return households.map((members) => {
+    // the eldest is the head of the household; their surname names it
+    const byAge = [...members].sort(
+      (a, b) => (world.lifecycle.get(b)?.ageYears ?? 0) - (world.lifecycle.get(a)?.ageYears ?? 0) || a - b,
+    );
+    const head = byAge[0];
+    const headSpouses = new Set(world.ties.get(head)?.spouses ?? []);
+    const view = (aid: EntityId): HouseholdMember => ({
+      id: aid,
+      name: fullName(world, aid),
+      role: aid === head ? 'head' : headSpouses.has(aid) ? 'spouse' : 'child',
+      ageYears: world.lifecycle.get(aid)?.ageYears ?? 0,
+      profession: world.profession.get(aid) ?? '',
+    });
+    const ordered = [head, ...byAge.filter((m) => m !== head && headSpouses.has(m)), ...byAge.filter((m) => m !== head && !headSpouses.has(m))];
+    return { family: world.identity.get(head)?.family ?? '?', members: ordered.map(view) };
+  });
 }
 
 /**

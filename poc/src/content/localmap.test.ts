@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch } from './localmap';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
-import type { EventView, SettlementView } from '../engine/model';
+import type { EventView, HouseholdView, SettlementView } from '../engine/model';
 
 // ONE shared world fixture (test-suite convention) — we only need real geography + a site
 const FIXTURE = createWorld(123456, false);
@@ -118,5 +118,39 @@ describe('history marks (L3)', () => {
     const plan = buildLocalPlan(worldFacts());
     expect(plan.items.some((i) => i.kind === 'scorch' || i.kind === 'barricade')).toBe(false);
     expect(plan.items.length).toBeGreaterThan(20);
+  });
+});
+
+describe('households on the map (L2)', () => {
+  const HOUSEHOLDS: HouseholdView[] = [
+    {
+      family: 'Vrihi',
+      members: [
+        { id: 11, name: 'Sisvrer Vrihi', role: 'head', ageYears: 52, profession: 'trader' },
+        { id: 12, name: 'Ony Vrihi', role: 'spouse', ageYears: 49, profession: 'smith' },
+        { id: 13, name: 'Little Vrihi', role: 'child', ageYears: 8, profession: 'child' },
+      ],
+    },
+    { family: 'Anva', members: [{ id: 21, name: 'Faivrai Anva', role: 'head', ageYears: 61, profession: 'trader' }] },
+  ];
+
+  it('known families take the roofs nearest the square — named, lit, click→head', () => {
+    const facts = worldFacts({ detailed: true });
+    facts.households = HOUSEHOLDS;
+    const plan = buildLocalPlan(facts);
+    const houses = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    const named = houses.filter((h) => h.inhabited);
+    expect(named.length).toBe(2);
+    expect(named[0].label).toContain('the Vrihi household');
+    expect(named[0].label).toContain('Sisvrer Vrihi');
+    expect(named[0].ref).toEqual({ kind: 'actor', id: 11 });
+    // roofs beyond the known families stay anonymous — the LOD made visible
+    expect(houses.some((h) => !h.inhabited && h.label === 'a household')).toBe(true);
+  });
+
+  it('a macro settlement (no households) keeps every roof anonymous', () => {
+    const plan = buildLocalPlan(worldFacts());
+    const houses = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    expect(houses.every((h) => !h.inhabited)).toBe(true);
   });
 });

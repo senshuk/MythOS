@@ -10,7 +10,7 @@
  * with domes and landing pads; the UI only renders PlanItems.
  */
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_SEA, WATER_LAKE, WATER_RIVER } from '../engine/geography';
-import { type SettlementView, type EventRef, type EventView } from '../engine/model';
+import { type SettlementView, type EventRef, type EventView, type HouseholdView } from '../engine/model';
 import { Rng, mixSeed } from '../engine/rng';
 
 // ------------------------------------------------------------ the plan model --
@@ -23,8 +23,10 @@ export interface PlanBuilding {
   role: 'house' | 'seat' | 'shrine' | 'workshop' | 'warehouse' | 'boathouse' | 'minehead' | 'mill' | 'monument' | 'stone' | 'tomb' | 'shell';
   label: string; // hover text, in the pack's voice
   tone: 'plain' | 'grand' | 'sacred' | 'ruin';
-  ref?: EventRef; // the shrine inspects its deity, the seat its ruler…
+  ref?: EventRef; // the shrine inspects its deity, the seat its ruler, a home its head
   eventId?: number; // a HISTORY MARK traces the event it remembers (design/24 §3.4)
+  /** a roof with a KNOWN family under it (L2, focused settlement) — lit on the map. */
+  inhabited?: boolean;
 }
 export interface PlanPath {
   kind: 'street' | 'pier' | 'wall' | 'barricade';
@@ -53,6 +55,9 @@ export interface LocalPlanFacts {
   /** the settlement's notable recorded history (oldest first) — the history-marks feed.
    *  Arrives out-of-band; the plan builds without it and re-builds when it lands. */
   chronicle?: EventView[];
+  /** who lives under which roof (L2) — present only for the lived-in-full settlement.
+   *  The Houses step names its roofs from these, densest hearths nearest the square. */
+  households?: HouseholdView[];
 }
 
 export interface LocalPlan {
@@ -355,22 +360,34 @@ const Houses: LocalGenStep = {
         }
       }
     }
-    // near lots first (the town grew from its square), a lot only if the ground allows
+    // near lots first (the town grew from its square), a lot only if the ground allows.
+    // In the lived-in-full settlement, the KNOWN households take the roofs nearest the
+    // square (both orders deterministic): hover a roof, meet the family; click, meet
+    // its head. Roofs beyond the known families stay anonymous — the LOD made visible.
     lots.sort((a, b) => a.t - b.t);
+    const households = facts.settlement.ruinedYear === undefined ? facts.households ?? [] : [];
+    let nextHousehold = 0;
     for (const lot of lots) {
       if (budget <= 0) break;
       if (!buildable(geo, lot.x, lot.y)) continue;
       // a fresh burn scar is a gap the town hasn't rebuilt yet (HistoryMarks)
       if (ctx.scars.some((sc) => (lot.x - sc.x) ** 2 + (lot.y - sc.y) ** 2 < sc.r * sc.r)) continue;
       const sizeBase = 0.11 + rng.next() * 0.07 + wealthTier * 0.03;
+      const hh = nextHousehold < households.length ? households[nextHousehold++] : undefined;
       plan.items.push({
         kind: 'building',
         x: lot.x, y: lot.y,
         w: sizeBase * (1.1 + rng.next() * 0.5), h: sizeBase,
         rot: lot.rot,
         role: 'house',
-        label: ruined ? 'a fallen roof' : 'a household',
+        label: ruined
+          ? 'a fallen roof'
+          : hh
+            ? `the ${hh.family} household — ${hh.members.map((m) => `${m.name} (${m.ageYears}y)`).join(' · ')}`
+            : 'a household',
         tone: ruined ? 'ruin' : 'plain',
+        ref: hh ? { kind: 'actor', id: hh.members[0].id } : undefined,
+        inhabited: !!hh,
       });
       budget--;
     }
