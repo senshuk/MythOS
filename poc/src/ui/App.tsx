@@ -1449,7 +1449,7 @@ function HistoryFeed({
               <ul className="figures-hist">
                 {figures.slice(0, 8).map((f, i) => (
                   <li key={i}>
-                    <span className="fig-name">{f.name}</span>
+                    <button className="link fig-name" onClick={() => onRef({ kind: 'figure', id: f.id })}>{f.name}</button>
                     <span className="muted">
                       {' '}
                       — {f.role}
@@ -1667,14 +1667,25 @@ function Inspector({
                 : `${settV.population} souls · ${settV.dominantSpecies} · ${settV.specialization}`}
               {' · '}
               {settV.culture}
-              {settV.leaderTitle && settV.ruler ? ` · ${settV.leaderTitle} ${settV.ruler}` : !settV.leaderTitle ? ' · free folk' : ''}
+              {settV.leaderTitle && settV.ruler ? (
+                <>
+                  {' · '}{settV.leaderTitle}{' '}
+                  {settV.rulerId !== undefined ? (
+                    <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.rulerId! })}>{settV.ruler}</button>
+                  ) : settV.ruler}
+                </>
+              ) : !settV.leaderTitle ? ' · free folk' : ''}
             </p>
           )}
           {settV?.polity && (
             <p className="polity">
               governed by the <em>{settV.polity.name}</em>
-              {settV.polity.leaderName ? ` · led by ${settV.polity.leaderName}` : ''}
-              {settV.polity.founderName ? ` · founded by ${settV.polity.founderName}` : ''}
+              {settV.polity.leaderName ? (
+                <> · led by {settV.polity.leaderId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.polity!.leaderId! })}>{settV.polity.leaderName}</button> : settV.polity.leaderName}</>
+              ) : ''}
+              {settV.polity.founderName ? (
+                <> · founded by {settV.polity.founderId !== undefined ? <button className="link" onClick={() => onRef({ kind: 'figure', id: settV.polity!.founderId! })}>{settV.polity.founderName}</button> : settV.polity.founderName}</>
+              ) : ''}
               {settV.polity.leaderCount > 1 ? ` · ${settV.polity.leaderCount} leaders in its line` : ''}
               {` · treasury ${settV.polity.treasury}`}
             </p>

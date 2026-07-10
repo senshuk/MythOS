@@ -1223,6 +1223,7 @@ export interface SettlementView {
   patronDeity: { name: string; domain: string }; // the culture's patron deity
   founder?: string; // who founded it
   ruler?: string; // who rules it now (or last, if a ruin)
+  rulerId?: EntityId; // the ruler as a figure, so the name can be inspected
   /** the Organization (a Polity) this settlement hosts, if it is governed — the
    *  government as a first-class entity, distinct from the place. `founderName` and
    *  `leaderCount` expose the org's institutional memory (its remembered line of leaders).
@@ -1231,7 +1232,10 @@ export interface SettlementView {
     name: string;
     subtype: string;
     leaderName?: string;
+    leaderId?: EntityId; // the sitting leader as a figure — inspectable
     founderName?: string;
+    founderId?: EntityId; // the founding figure — inspectable
+
     leaderCount: number;
     standing: number;
     /** the org's TREASURY (2C: OrgResources) — the tithe-fed funds its actions spend. */
@@ -1296,6 +1300,7 @@ export interface EraView {
 }
 
 export interface FigureView {
+  id: EntityId; // so the dynasties/figures panels can inspect them (inspectFigure)
   name: string;
   role: string;
   settlement: string;

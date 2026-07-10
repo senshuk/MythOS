@@ -30,9 +30,15 @@ export function renderEventParts(world: World, ev: WorldEvent): EventPart[] {
   const text = renderEvent(world, ev);
   const tokens: { name: string; ref: EventRef }[] = [];
   for (const id of ev.subjects) {
-    const isActor = world.identity.has(id);
-    const name = isActor ? fullName(world, id) : world.names.get(id);
-    if (name) tokens.push({ name, ref: isActor ? { kind: 'actor', id } : { kind: 'figure', id } });
+    // link a subject only where it actually RESOLVES: a live actor → its inspector; a remembered
+    // figure → the figure inspector. A demoted actor whose identity was freed but who is not a
+    // figure has a lingering name in the registry — render it as plain text, never a DEAD link.
+    if (world.identity.has(id)) {
+      tokens.push({ name: fullName(world, id), ref: { kind: 'actor', id } });
+    } else if (world.figuresById.has(id)) {
+      const name = world.names.get(id);
+      if (name) tokens.push({ name, ref: { kind: 'figure', id } });
+    }
   }
   for (const s of world.settlements) tokens.push({ name: s.name, ref: { kind: 'settlement', id: s.id } });
   tokens.sort((a, b) => b.name.length - a.name.length);

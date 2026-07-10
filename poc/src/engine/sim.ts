@@ -410,6 +410,7 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
       patronDeity: (({ name, domain }) => ({ name, domain }))(patronDeityOf(s.cultureId)),
       founder: s.founderName,
       ruler: getFigure(world, s.currentRulerId)?.name,
+      rulerId: getFigure(world, s.currentRulerId) ? s.currentRulerId : undefined,
       polity: (() => {
         const org = getOrganization(world, s.polityId);
         if (!org) return undefined;
@@ -418,7 +419,9 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
           name: org.name,
           subtype: org.subtype,
           leaderName: getFigure(world, org.leaderId)?.name,
+          leaderId: getFigure(world, org.leaderId) ? org.leaderId : undefined,
           founderName: founder ? getFigure(world, founder.actorId)?.name : undefined,
+          founderId: founder && getFigure(world, founder.actorId) ? founder.actorId : undefined,
           leaderCount: roleHistory(world, org.id, ROLE_LEADER).length,
           standing: Math.round(computeStanding(world.reputation.get(org.id) ?? emptyReputation(), world.tick)),
           treasury: Math.round(treasuryOf(world, org.id)),
@@ -1038,6 +1041,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     .sort((a, b) => ((b.deathYear ?? curYear) - b.reignStart) - ((a.deathYear ?? curYear) - a.reignStart) || a.id - b.id)
     .slice(0, 14)
     .map((f) => ({
+      id: f.id,
       name: f.name,
       role: f.role,
       settlement: world.settlements[f.settlementId]?.name ?? '?',
