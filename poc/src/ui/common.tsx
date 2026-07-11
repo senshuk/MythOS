@@ -41,6 +41,7 @@ export const TYPE_TONE: Record<string, string> = {
   judgment: 'focus',
   shrine_funding: 'good',
   petition_dismissed: 'neutral',
+  polity_steered: 'focus',
   rivalry: 'bad',
   dispute: 'bad',
   feud: 'bad',

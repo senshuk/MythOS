@@ -711,6 +711,13 @@ const TEMPERAMENT_WORDS: Record<TemperamentAxis, [string, string]> = {
   sociability: ['gregarious', 'solitary'],
   curiosity: ['inquisitive', 'incurious'],
 };
+/** The adjective for one pole of a value axis — 'honor'+ → "honourable", − → "dishonourable".
+ *  Lets the UI name the conviction an option enacts (design/26 P3). Pack data: a different
+ *  universe words its values differently. */
+export function valueWord(axis: ValueAxis, positive: boolean): string {
+  return VALUE_WORDS[axis][positive ? 0 : 1];
+}
+
 export function natureOf(p: Personality): string {
   const top = <K extends string>(
     axes: readonly K[],
@@ -1408,6 +1415,12 @@ export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // = a life at odds with it.
   at_peace: { base: 40, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'at peace with your creed' },
   disquiet: { base: -50, durationTicks: 2 * DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'a life at odds with your creed' },
+  // CONSCIENCE OF CHOICE (design/26 P3): the weight of a deliberate choice that accorded
+  // with — or betrayed — a value the soul holds strongly. Twin of the deed conscience
+  // above, but sprung from a CHOICE rather than a witnessed deed. Betrayal bites harder
+  // and lingers longer than accord lifts (the same loss-aversion shape as guilt/righteous).
+  true_to_self: { base: 45, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.75, label: 'true to your own nature' },
+  against_nature: { base: -80, durationTicks: Math.round(1.5 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.7, label: 'you went against your own nature' },
 };
 
 export function selfThoughtSpec(kind: string): ThoughtSpec {

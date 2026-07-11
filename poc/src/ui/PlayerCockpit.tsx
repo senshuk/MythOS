@@ -21,12 +21,18 @@ function DecisionCard({ d, onAct, onRef, busy }: { d: DecisionView; onAct: (i: I
         {d.options.map((o, i) => (
           <button
             key={i}
-            className={`decision-opt tone-${o.tone ?? 'neutral'}`}
+            className={`decision-opt tone-${o.tone ?? 'neutral'}${o.nature?.against ? ' against-nature' : ''}`}
             onClick={() => onAct(o.intent)}
             disabled={busy}
-            title={o.hint}
+            title={[o.hint, o.nature && (o.nature.against ? 'this would weigh on your conscience' : 'this is true to who you are')].filter(Boolean).join(' · ')}
           >
             {o.label}
+            {/* how it sits with the player's OWN convictions (design/26 P3) */}
+            {o.nature && (
+              <span className={`opt-nature${o.nature.against ? ' against' : ''}`}>
+                {o.nature.against ? `${o.nature.word} · against your nature` : o.nature.word}
+              </span>
+            )}
           </button>
         ))}
       </div>

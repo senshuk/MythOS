@@ -20,4 +20,10 @@ export interface Intent {
   /** a sub-flavour of the verb, for kinds that come in modes (e.g. a mental `break`
    *  is 'lash_out' | 'withdraw' | 'binge'). Plain data, replay-safe like the rest. */
   mode?: string;
+  /** the VALUE this deliberate choice enacts, when a decision option carries a moral
+   *  weight (design/26 P3): `axis` is a pack value id ('honor', 'war'…), `dir` its
+   *  sign (+1 = the honourable/warlike act, −1 = the opposite). Carried on the intent
+   *  so resolution can lay a conscience self-thought — pride for acting true to a
+   *  strongly-held value, guilt for acting against it. Plain data, replay-safe. */
+  conscience?: { axis: string; dir: 1 | -1 };
 }

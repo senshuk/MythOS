@@ -17,6 +17,7 @@
 import { type World, type EntityId, type AmbitionOffer, type ActiveAmbitionView } from './model';
 import { fullName } from './world';
 import { AMBITIONS } from './pack';
+import { tintDecision } from './conscience';
 
 /** The ambitions worth offering this player right now, each derived from their real situation. */
 export function offerableAmbitions(world: World, id: EntityId): AmbitionOffer[] {
@@ -93,11 +94,17 @@ export function buildAmbitionView(
         label: def.label(world, id, amb.target),
         targetName: amb.target !== undefined ? fullName(world, amb.target) : undefined,
         note: def.note(world, id, amb.target),
-        step: resolved ? undefined : def.nextStep(world, id, amb.target),
+        // the ambition's live step is a decision too — tint it by the player's nature (P3)
+        step: resolved ? undefined : tintStep(world, id, def.nextStep(world, id, amb.target)),
         outcome: amb.outcome,
       };
       return { ambition: active, offered: resolved ? offerableAmbitions(world, id) : [] };
     }
   }
   return { offered: offerableAmbitions(world, id) };
+}
+
+/** Tint an ambition's live step by the player's nature (P3), tolerating a stepless turn. */
+function tintStep(world: World, id: EntityId, step: ActiveAmbitionView['step']): ActiveAmbitionView['step'] {
+  return step ? tintDecision(world, id, step) : undefined;
 }

@@ -728,6 +728,12 @@ button { font-family: inherit; }
 .decision-opt.tone-good:hover:not(:disabled) { border-color: var(--jade); color: var(--jade); }
 .decision-opt.tone-bad:hover:not(:disabled) { border-color: var(--rose); color: var(--rose); }
 .decision-opt.tone-neutral:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
+/* how a choice sits with the player's OWN nature (design/26 P3): a small tag under the
+   label — quiet gold when true to a conviction, amber warning when it betrays one */
+.decision-opt { flex-direction: column; align-items: flex-start; gap: 2px; }
+.opt-nature { font-size: 10.5px; font-style: italic; letter-spacing: 0.02em; color: var(--gold-dim); text-transform: none; }
+.opt-nature.against { color: var(--amber); }
+.decision-opt.against-nature { border-style: dashed; }
 
 /* ambition — the player's self-chosen through-line (the loop's spine) */
 .ambition { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: 14px; }

@@ -39,6 +39,13 @@ import {
 import { getOrganization } from './organization';
 import { getEvent, clamp } from './world';
 
+/** A player's polity mandate (P4) lapses after this long unrenewed — so a ruler must keep
+ *  steering, and a released/dead player's old steer fades rather than binding forever. */
+const MANDATE_LAPSE = Math.round(1.5 * DAYS_PER_YEAR);
+/** A mandate is honoured only if the org itself rates the intent at least this fraction of
+ *  its own top choice — the "heavier vote, not god-hand" guard (bounded knowledge intact). */
+const MANDATE_VIABLE_FRACTION = 0.6;
+
 /** The settlement an org is seated at, if its seat is a (living) settlement. */
 function seatOf(world: World, orgId: OrgId) {
   const org = getOrganization(world, orgId);
@@ -241,14 +248,29 @@ export function evaluateIntent(world: World, orgId: OrgId): OrgIntent {
   const worldview = worldviewOf(world, orgId);
   const org = getOrganization(world, orgId)!;
 
+  const scored: { kind: string; score: number; factors: OrgIntent['factors'] }[] = [];
   let best: { kind: string; score: number; factors: OrgIntent['factors'] } | undefined;
   const alternatives: { kind: string; score: number }[] = [];
   for (const def of INTENTS) {
     const factors = def.score(perception, worldview, org);
     const score = factors.reduce((sum, f) => sum + f.value, 0);
     alternatives.push({ kind: def.id, score });
+    scored.push({ kind: def.id, score, factors });
     // strict `>` keeps the first-defined intent on a tie — deterministic, no RNG.
     if (!best || score > best.score) best = { kind: def.id, score, factors };
+  }
+
+  // A seated player's MANDATE (design/26 P4) — a heavier vote, never a god-hand. The steer
+  // is honoured ONLY while it is live AND names an intent the org ITSELF still rates a real
+  // contender (score within VIABLE_FRACTION of its own top choice). The player thus pushes
+  // the org among options its bounded perception already surfaced; it never invents one.
+  // A factor of value 0 records the steer for legibility without altering the score.
+  const mandate = world.orgMandate.get(orgId);
+  if (mandate && best && world.tick - mandate.sinceTick <= MANDATE_LAPSE) {
+    const want = scored.find((s) => s.kind === mandate.kind);
+    if (want && want.kind !== best.kind && want.score >= best.score * MANDATE_VIABLE_FRACTION && want.score > 0) {
+      best = { kind: want.kind, score: want.score, factors: [...want.factors, { id: 'ruler_mandate', group: 'disposition', value: 0 }] };
+    }
   }
 
   // collapse any -0 (e.g. Math.round of a tiny negative) → 0 so the stored intent is IDENTICAL

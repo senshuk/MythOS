@@ -37,6 +37,16 @@ const VALUE_PHRASE: Record<string, string> = {
 const overReason = (d: Record<string, number | string>): string =>
   d.reason ? ` over ${VALUE_PHRASE[d.reason as string] ?? d.reason}` : '';
 
+/** A ruler's steer, in prose (design/26 P4) — the org intent id → a course phrase. */
+const POLICY_PHRASE: Record<string, string> = {
+  remain_neutral: 'quiet, inward tending',
+  expand: 'expansion',
+  prepare_war: 'mobilisation for war',
+  protect_border: 'shoring up the marches',
+  trade: 'commerce with its neighbours',
+  recruit: 'gathering strength',
+};
+
 export const EVENT_RENDER: Record<string, RenderFn> = {
   settlement_founded: (n, d, c) =>
     c ? `${d.name} was founded by ${n(0)} with ${d.population} souls.` : `The settlement of ${d.name} was founded with ${d.population} souls.`,
@@ -119,6 +129,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
       : `${n(0)} judged for ${n(1)} against ${n(2)}${d.venue ? ` at ${d.venue}` : ''}.`,
   shrine_funding: (n, d) => `${n(0)} endowed ${d.venue ?? 'the shrine'} with ${d.amount} from the treasury.`,
   petition_dismissed: (n) => `${n(0)} turned the petitioners away from the seat.`,
+  polity_steered: (n, d) => `${n(0)} set the polity on a new course: ${POLICY_PHRASE[String(d.intent)] ?? String(d.intent)}.`,
   // negotiated interactions (2E) — one event, two histories: each court keeps its own account.
   pact_sealed: (_n, d) => `The ${d.a} and the ${d.b} sealed a ${d.kind === 'peace' ? 'pact of peace' : 'trade agreement'}.`,
   pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : 'trade'}.`,
@@ -146,6 +157,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 22; // public piety, quietly notable
     case 'petition_dismissed':
       return 8; // a closed door is minor news
+    case 'polity_steered':
+      return 26; // a turn in a polity's course is town news
     case 'apostasy':
       return 18; // renouncing faith is personal — comparable to a marriage or ascension
     case 'converted':

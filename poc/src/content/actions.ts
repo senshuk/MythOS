@@ -125,6 +125,22 @@ export const EXTRA_ACTIONS: Record<string, ActionResolver> = {
     }
   },
 
+  /**
+   * STEER THE POLITY (design/26 P4) — the seated ruler bids their own polity pursue one
+   * of the intents IT already rates. Sets a mandate (honoured yearly only while it names
+   * a real contender — the bounded vote lives in orgReason, not here) and records the
+   * steer. `mode` is the intent kind chosen. A no-op if the actor holds no seat.
+   */
+  steer_polity: (world, ruler, intent, _rng) => {
+    const kind = intent.mode;
+    if (!kind) return;
+    const h = world.homeSettlement.get(ruler);
+    const s = h !== undefined ? world.settlements[h] : undefined;
+    if (!s || s.polityId === undefined || s.currentRulerId !== ruler) return;
+    world.orgMandate.set(s.polityId, { kind, sinceTick: world.tick });
+    emit(world, 'polity_steered', [ruler], { intent: kind, ...pickVenue(world, 'polity_steered', ruler, ruler) }, []);
+  },
+
   /** AUDIENCE — turn the petitioners away. The refusal is itself an OUTCOME (recorded,
    *  suppressing the petition for the season); the spurned think a little less of the
    *  seat. `mode` names which petition was waved off. */

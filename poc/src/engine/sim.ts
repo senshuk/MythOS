@@ -156,6 +156,7 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
     operationalState: new Map(),
     lastAction: new Map(),
     orgTreasury: new Map(),
+    orgMandate: new Map(),
     orgAgreements: [],
     lastInteraction: new Map(),
     figureRngState: mixSeed(seed, 0xf16),

@@ -54,4 +54,5 @@ export const VENUE_HOSTS: Record<string, string[]> = {
   // audiences (design/26 P2): court is held in the hall; an endowment at the shrine
   judgment: ['hall', 'square'],
   shrine_funding: ['shrine'],
+  polity_steered: ['hall', 'square'], // the ruler sets a course from the hall (P4)
 };

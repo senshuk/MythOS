@@ -18,6 +18,7 @@
  */
 import { type World, type EntityId, type DecisionView } from './model';
 import { DECISIONS } from './pack';
+import { tintDecision } from './conscience';
 
 /** How many decisions to surface at once — bound the player's attention (CLAUDE.md legibility:
  *  "a living world is overwhelming; bound the player's attention so depth is felt, not drowned"). */
@@ -46,5 +47,7 @@ export function evaluateDecisions(world: World, playerId: EntityId): DecisionVie
     out.push(d);
     if (out.length >= MAX_DECISIONS) break;
   }
+  // each surfaced choice wears the player's nature (design/26 P3) — pure presentation
+  for (const d of out) tintDecision(world, playerId, d);
   return out;
 }

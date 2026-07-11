@@ -20,6 +20,7 @@ import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '.
 import { ageCompatible, escalateAnimosity } from '../engine/social';
 import { witnessDeed, perceiveEvent } from '../engine/perception';
 import { pickVenue } from '../engine/venues';
+import { applyConscience } from '../engine/conscience';
 import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
@@ -81,6 +82,9 @@ export function resolvePlayerIntent(world: World, a: EntityId, intent: Intent): 
   const prng = new Rng(world.playerRngState);
   resolveIntent(world, a, intent, prng);
   world.playerRngState = prng.state;
+  // a deliberate choice weighs on the conscience — pride for acting true to a strong
+  // conviction, guilt for betraying one (design/26 P3; no-op for untagged intents).
+  applyConscience(world, a, intent);
 }
 
 /**

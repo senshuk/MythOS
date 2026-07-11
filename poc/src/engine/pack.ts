@@ -84,6 +84,7 @@ export let temperamentProfile = FANTASY_PACK.temperamentProfile;
 export let valueAlignment = FANTASY_PACK.valueAlignment;
 export let temperamentAffinity = FANTASY_PACK.temperamentAffinity;
 export let natureOf = FANTASY_PACK.natureOf;
+export let valueWord = FANTASY_PACK.valueWord;
 export let EVALUATOR_VERSION = FANTASY_PACK.EVALUATOR_VERSION;
 export let WORLDVIEW_AXES = FANTASY_PACK.WORLDVIEW_AXES;
 export let worldviewFromValues = FANTASY_PACK.worldviewFromValues;
@@ -233,6 +234,7 @@ export function setPack(p: UniversePack): void {
   valueAlignment = p.valueAlignment;
   temperamentAffinity = p.temperamentAffinity;
   natureOf = p.natureOf;
+  valueWord = p.valueWord;
   EVALUATOR_VERSION = p.EVALUATOR_VERSION;
   WORLDVIEW_AXES = p.WORLDVIEW_AXES;
   worldviewFromValues = p.worldviewFromValues;

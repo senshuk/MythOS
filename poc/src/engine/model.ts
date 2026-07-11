@@ -1019,6 +1019,13 @@ export interface World {
    *  tithe on the seat's economy (a real transfer, never minted); spent by the action
    *  layer (an action's 'treasury' effects). */
   orgTreasury: Map<OrgId, number>;
+  /** a seated PLAYER's steer on their own polity (design/26 P4) — the intent kind they
+   *  bade it pursue, and when. The org still reasons with bounded knowledge and acts
+   *  through its own resolver; a mandate is honoured ONLY while it names an intent the
+   *  org itself still rates a real contender (a heavier vote, never a god-hand), and it
+   *  lapses if the player stops renewing it. Only ever set by a player action, so a
+   *  spectator/NPC world never has one — org behaviour there is byte-identical. */
+  orgMandate: Map<OrgId, { kind: string; sinceTick: number }>;
   /** standing AGREEMENTS between organizations (2E) — the persistent residue of accepted
    *  proposals, normalized a<b like region edges. Expired entries are pruned yearly. */
   orgAgreements: OrgAgreement[];
@@ -1547,6 +1554,12 @@ export interface DecisionOptionView {
   hint?: string;
   intent: Intent;
   tone?: string; // 'good' | 'bad' | 'neutral' — colour only
+  /** DERIVED (design/26 P3): how this option sits with the player's OWN nature — the
+   *  value it enacts, and whether choosing it would go AGAINST a conviction they hold
+   *  strongly. Present only when the option carries a conscience weight and the player
+   *  holds that value strongly; absent otherwise. Attached at snapshot time, never
+   *  stored — pure presentation, like the decision itself. */
+  nature?: { word: string; against: boolean };
 }
 
 /** A framed choice the world is presenting the player RIGHT NOW — a turning point, not a standing

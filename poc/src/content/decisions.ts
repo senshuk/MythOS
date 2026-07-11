@@ -20,7 +20,7 @@ import { computeOpinion } from '../engine/opinion';
 import { bestSuitor, strongestFeud, isRuler } from '../engine/social';
 import { treasuryOf } from '../engine/organization';
 import { getChildren } from '../engine/location';
-import { patronDeityOf } from './fixture';
+import { patronDeityOf, intentLabel } from './fixture';
 
 /** Days that count as "this week" — one player turn advances exactly this far, so a reactive
  *  decision surfaces the week just lived and is gone by the next. */
@@ -113,10 +113,10 @@ export const DECISIONS: DecisionDef[] = [
           { text: ' bring their feud before your seat, each demanding judgment against the other.' },
         ],
         options: [
-          { label: 'Bid them make peace', hint: 'impose a truce — both will remember your fairness', intent: { kind: 'adjudicate', target: a, mode: 'reconcile' }, tone: 'good' },
+          { label: 'Bid them make peace', hint: 'impose a truce — both will remember your fairness', intent: { kind: 'adjudicate', target: a, mode: 'reconcile', conscience: { axis: 'honor', dir: 1 } }, tone: 'good' },
           { label: `Rule for ${fullName(world, a)}`, hint: 'the favored will warm to you; the wronged will not forget', intent: { kind: 'adjudicate', target: a, mode: 'favor' }, tone: 'neutral' },
           { label: `Rule for ${fullName(world, b)}`, hint: 'the favored will warm to you; the wronged will not forget', intent: { kind: 'adjudicate', target: b, mode: 'favor' }, tone: 'neutral' },
-          { label: 'Turn them away', hint: 'the seat owes no answer — but the spurned remember', intent: { kind: 'dismiss_petition', target: a, mode: 'judgment' }, tone: 'bad' },
+          { label: 'Turn them away', hint: 'the seat owes no answer — but the spurned remember', intent: { kind: 'dismiss_petition', target: a, mode: 'judgment', conscience: { axis: 'honor', dir: -1 } }, tone: 'bad' },
         ],
       }];
     },
@@ -147,9 +147,54 @@ export const DECISIONS: DecisionDef[] = [
           },
         ],
         options: [
-          { label: 'Endow the shrine', hint: 'the faithful will remember your piety', intent: { kind: 'fund_shrine' }, tone: 'good' },
-          { label: 'Turn them away', hint: 'the coffers stay full; the keepers leave empty-handed', intent: { kind: 'dismiss_petition', mode: 'shrine' }, tone: 'bad' },
+          { label: 'Endow the shrine', hint: 'the faithful will remember your piety', intent: { kind: 'fund_shrine', conscience: { axis: 'tradition', dir: 1 } }, tone: 'good' },
+          { label: 'Turn them away', hint: 'the coffers stay full; the keepers leave empty-handed', intent: { kind: 'dismiss_petition', mode: 'shrine', conscience: { axis: 'tradition', dir: -1 } }, tone: 'bad' },
         ],
+      }];
+    },
+  },
+
+  // ── AUDIENCE: steer your own polity (design/26 P4) ──────────────────────────────────────────
+  // A CK council vote WITHOUT breaking org discipline: the org has already reasoned (with
+  // bounded knowledge) to a chosen intent and rated the alternatives. The ruler picks among
+  // the org's OWN top options — the pick becomes a mandate honoured only while the org still
+  // rates it a contender (engine/orgReason). Abstain and the org's own choice stands.
+  {
+    id: 'steer_polity',
+    evaluate(world, id): DecisionView[] {
+      if (!isRuler(world, id)) return [];
+      const home = world.homeSettlement.get(id);
+      const s = home !== undefined ? world.settlements[home] : undefined;
+      if (!s || s.polityId === undefined) return [];
+      const intent = world.currentIntent.get(s.polityId);
+      if (!intent) return [];
+      // renewed at most yearly — a fresh mandate this year suppresses the re-ask
+      const mandate = world.orgMandate.get(s.polityId);
+      if (mandate && world.tick - mandate.sinceTick < 350) return [];
+      // the org's chosen course + its two strongest alternatives, as the menu
+      const chosen = intent.kind;
+      const alts = [...intent.alternatives]
+        .filter((a) => a.kind !== chosen && a.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2);
+      if (alts.length === 0) return [];
+      const options: DecisionView['options'] = [
+        // hold the org's own course — an explicit mandate for what it already wants
+        { label: `Hold to ${intentLabel(chosen)}`, hint: 'affirm the council\'s own course', intent: { kind: 'steer_polity', mode: chosen }, tone: 'neutral' },
+        ...alts.map((a) => ({
+          label: `Turn to ${intentLabel(a.kind)}`,
+          hint: 'bid the polity change course — it heeds you only if it rates the move',
+          intent: { kind: 'steer_polity', mode: a.kind },
+          tone: 'good' as const,
+        })),
+      ];
+      return [{
+        id: `aud:steer:${seasonOf(world)}`,
+        urgency: 55,
+        prompt: [
+          { text: `Your council has set the polity toward ${intentLabel(chosen)}. As its head, do you affirm that course, or turn it?` },
+        ],
+        options,
       }];
     },
   },
@@ -176,8 +221,8 @@ export const DECISIONS: DecisionDef[] = [
         urgency: 78,
         prompt: [who(world, other), { text: ' slighted you this week. How do you answer?' }],
         options: [
-          { label: 'Strike back', hint: 'a slight for a slight', intent: { kind: 'provoke', target: other }, tone: 'bad' },
-          { label: 'Offer peace', hint: 'answer the insult with a kindness', intent: { kind: 'give', target: other }, tone: 'good' },
+          { label: 'Strike back', hint: 'a slight for a slight', intent: { kind: 'provoke', target: other, conscience: { axis: 'war', dir: 1 } }, tone: 'bad' },
+          { label: 'Offer peace', hint: 'answer the insult with a kindness', intent: { kind: 'give', target: other, conscience: { axis: 'war', dir: -1 } }, tone: 'good' },
           { label: 'Let it pass', hint: 'let the week go by', intent: { kind: 'idle' }, tone: 'neutral' },
         ],
       }];
@@ -229,8 +274,8 @@ export const DECISIONS: DecisionDef[] = [
         urgency: 70,
         prompt: [{ text: 'Your feud with ' }, who(world, foe), { text: ' festers. What now?' }],
         options: [
-          { label: 'Confront them', hint: 'let the enmity out', intent: { kind: 'provoke', target: foe }, tone: 'bad' },
-          { label: 'Extend an olive branch', hint: 'a kindness can end a feud', intent: { kind: 'give', target: foe }, tone: 'good' },
+          { label: 'Confront them', hint: 'let the enmity out', intent: { kind: 'provoke', target: foe, conscience: { axis: 'war', dir: 1 } }, tone: 'bad' },
+          { label: 'Extend an olive branch', hint: 'a kindness can end a feud', intent: { kind: 'give', target: foe, conscience: { axis: 'war', dir: -1 } }, tone: 'good' },
           { label: 'Keep your distance', hint: 'let the week pass', intent: { kind: 'idle' }, tone: 'neutral' },
         ],
       }];

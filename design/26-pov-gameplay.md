@@ -5,10 +5,12 @@ cleaned up and pulled toward what Crusader Kings, RimWorld and Warsim each do be
 **Companion documents:** `21-the-subjective-journal.md` (the cockpit constitution),
 `16-interaction-principles.md` (org discipline the ruler-levers must respect),
 `01-warsim-analysis.md` §2.2 (throne-room petitioners), `25-venues-adr.md`.
-**Status:** P1 (autopilot) + P2 (audiences: feud judgment, shrine endowment) SHIPPED
-(2026-07). P1 note: the standing-order lean was deferred — the aspiration-driven
-decider alone proved sufficient (a possessed actor courted and married within two
-streamed years). P3–P6 open.
+**Status:** P1 (autopilot), P2 (audiences), P3 (value-tinted choices + conscience),
+P4 (steer the polity) SHIPPED (2026-07). P1 note: the standing-order lean was
+deferred — the aspiration decider alone sufficed. P4 note: shipped as a "heavier
+vote" — the ruler picks among the org's OWN top intents, honoured only while the org
+still rates the pick a contender (bounded-knowledge intact); a mandate lapses if
+unrenewed. P5 (leaving home) + P6 (cockpit cleanups) open.
 
 ---
 

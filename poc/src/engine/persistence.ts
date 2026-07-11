@@ -83,6 +83,8 @@ export interface SaveFile {
   currentIntent?: [OrgId, OrgIntent][];
   /** per-org treasuries (2C: OrgResources). Optional for saves predating v15 (default 0). */
   orgTreasury?: [OrgId, number][];
+  /** a seated player's steer on their polity (design/26 P4). Optional; default none. */
+  orgMandate?: [OrgId, { kind: string; sinceTick: number }][];
   /** standing agreements between orgs (2E). Optional for saves predating v16 (default none). */
   orgAgreements?: OrgAgreement[];
   /** each org's memory of its last negotiation (2E). Optional for pre-v16 saves. */
@@ -195,6 +197,7 @@ export function serializeWorld(world: World): SaveFile {
     operationalState: [...world.operationalState],
     lastAction: [...world.lastAction],
     orgTreasury: [...world.orgTreasury],
+    orgMandate: [...world.orgMandate],
     orgAgreements: world.orgAgreements,
     lastInteraction: [...world.lastInteraction],
     playerInputs: world.playerInputs,
@@ -468,6 +471,7 @@ export function deserializeWorld(save: SaveFile): World {
     operationalState,
     lastAction,
     orgTreasury,
+    orgMandate: new Map(s.orgMandate ?? []),
     // v15 → v16 (interaction): no agreements or negotiation memory under an older engine.
     orgAgreements: s.orgAgreements ?? [],
     lastInteraction: new Map(s.lastInteraction ?? []),
