@@ -11,7 +11,7 @@ import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { buildLocalPlan, type LocalPlanFacts, type PlanItem } from '../content/localmap';
-import { paintTerrain, buildRoads, type TerrainLabel } from './terrain';
+import { paintTerrain, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver } from './terrain';
 import { featureName } from '../engine/pack';
 import { Icon } from './icons';
 
@@ -115,6 +115,13 @@ export function LocalMapView({
     [sub, map.nodes, map.edges],
   );
 
+  // the RIVER CURRENT in the frame — an animated ripple riding the real drainage course,
+  // its speed set by the river's discharge (a torrent hurries, a brook drifts)
+  const rivers = useMemo<LocalRiver[]>(
+    () => (sub instanceof SurfaceSubstrate ? buildLocalRivers(sub.geography, frame) : []),
+    [sub, frame],
+  );
+
   // nearby named features letter themselves (paintTerrain skips out-of-frame ones)
   const labels = useMemo<TerrainLabel[]>(
     () =>
@@ -171,6 +178,17 @@ export function LocalMapView({
             opacity={rd.kind === 'sea' ? 0.3 : 0.45}
           />
         ))}
+        {/* the river's current — an animated ripple on the water the canvas painted,
+            flowing downstream; a torrent hurries, a slow reach barely drifts */}
+        {rivers.map((rv, i) => (
+          <path
+            key={`rv${i}`}
+            className="local-river"
+            d={rv.d}
+            strokeWidth={rv.width}
+            style={{ animationDuration: `${(9 - rv.speed * 6.6).toFixed(2)}s` }}
+          />
+        ))}
         {plan && plan.items.map((it, i) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
       </svg>
 
@@ -222,7 +240,7 @@ function PlanGlyph({
   onRef: (ref: EventRef) => void;
   onPickEvent: (id: number) => void;
 }) {
-  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall' || it.kind === 'barricade') {
+  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall' || it.kind === 'barricade' || it.kind === 'packed') {
     const d = it.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ');
     return (
       <path

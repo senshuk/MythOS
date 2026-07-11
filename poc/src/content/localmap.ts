@@ -9,7 +9,7 @@
  * The ENGINE knows none of this vocabulary. A sci-fi pack would replace these steps
  * with domes and landing pads; the UI only renders PlanItems.
  */
-import { type Geography, GEO_MIN, GEO_SPAN, WATER_SEA, WATER_LAKE, WATER_RIVER } from '../engine/geography';
+import { type Geography, GEO_MIN, GEO_SPAN, WATER_SEA, WATER_LAKE, WATER_RIVER, hillinessAt, wetnessAt, HILL_MOUNTAIN } from '../engine/geography';
 import { type SettlementView, type EventRef, type EventView, type HouseholdView } from '../engine/model';
 import { Rng, mixSeed } from '../engine/rng';
 
@@ -29,7 +29,7 @@ export interface PlanBuilding {
   inhabited?: boolean;
 }
 export interface PlanPath {
-  kind: 'street' | 'pier' | 'wall' | 'barricade';
+  kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed';
   pts: { x: number; y: number }[];
   width: number; // world units
   label?: string;
@@ -97,9 +97,18 @@ function moistureAt(geo: Geography, x: number, y: number): number {
   const N = geo.size;
   return geo.moisture[Math.round(gOf(geo, y)) * N + Math.round(gOf(geo, x))];
 }
-/** is this spot dry, unflooded ground a building can stand on? */
+/** How readily a structure can stand here, 0 (submerged/impossible) … 1 (flat dry ground).
+ *  Steep or boggy ground builds hard but not never (terraces, stilts) — RimWorld's marsh
+ *  "high fertility, difficult to build on" as a threshold, not a flag (design/24 §7.2). */
+function buildability(geo: Geography, x: number, y: number): number {
+  if (waterAt(geo, x, y) !== 0 || elevAt(geo, x, y) < geo.seaLevel) return 0; // in the water
+  const slope = hillinessAt(geo, x, y) / HILL_MOUNTAIN; // 0 flat … 1 mountain
+  const wet = wetnessAt(geo, x, y); // 0 firm … 1 mire
+  return Math.max(0.12, 1 - slope * 0.6 - wet * 0.7);
+}
+/** is this spot dry, unflooded ground a building can stand on at all? */
 function buildable(geo: Geography, x: number, y: number): boolean {
-  return waterAt(geo, x, y) === 0 && elevAt(geo, x, y) >= geo.seaLevel;
+  return buildability(geo, x, y) > 0;
 }
 /** the direction (angle) of the nearest water within `maxR`, or undefined. */
 function towardWater(geo: Geography, x: number, y: number, maxR: number, kinds: number[]): number | undefined {
@@ -392,10 +401,12 @@ const Houses: LocalGenStep = {
     let nextHousehold = 0;
     for (const lot of lots) {
       if (budget <= 0) break;
-      if (!buildable(geo, lot.x, lot.y)) continue;
+      // graded buildable ground (§7.2): steep/boggy lots are cramped, the worst left empty
+      const bild = buildability(geo, lot.x, lot.y);
+      if (bild < 0.3) continue;
       // a fresh burn scar is a gap the town hasn't rebuilt yet (HistoryMarks)
       if (ctx.scars.some((sc) => (lot.x - sc.x) ** 2 + (lot.y - sc.y) ** 2 < sc.r * sc.r)) continue;
-      const sizeBase = 0.11 + rng.next() * 0.07 + wealthTier * 0.03;
+      const sizeBase = (0.11 + rng.next() * 0.07 + wealthTier * 0.03) * (0.7 + bild * 0.3);
       const hh = nextHousehold < households.length ? households[nextHousehold++] : undefined;
       plan.items.push({
         kind: 'building',
@@ -585,10 +596,32 @@ const TreesAndRuin: LocalGenStep = {
   },
 };
 
+/**
+ * WEAR (design/24 §7.2) — traffic packs the earth. A trodden band underlies every street,
+ * widest on the through-roads where feet fall most; a ruin's paths have healed back to
+ * grass. Derived from where movement actually concentrates (the streets the plan already
+ * laid), so a desire-path reads as legible cause→effect — nothing stored, no RNG. Runs
+ * right after the streets so it sits BENEATH the roads, buildings and marks drawn over it.
+ */
+const Wear: LocalGenStep = {
+  name: 'wear',
+  run(facts, _rng, plan) {
+    const ctx = ctxOf.get(plan)!;
+    if (facts.settlement.ruinedYear !== undefined) return;
+    for (const st of ctx.streets) {
+      if (st.pts.length < 2) continue;
+      // main roads (the longer reaches) wear a wider apron than minor lanes
+      const width = 0.11 + Math.min(0.09, st.reach * 0.03);
+      plan.items.push({ kind: 'packed', pts: st.pts, width });
+    }
+  },
+};
+
 /** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3).
  *  HistoryMarks runs BEFORE Houses so fresh burn scars read as gaps, not overlays. */
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   TerrainStreets,
+  Wear,
   MarketSquare,
   CivicBuildings,
   HistoryMarks,

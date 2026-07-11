@@ -1353,8 +1353,12 @@ export function terrainYields(a: Record<string, number>): Record<ResourceKey, nu
   const b = biomeOf(a);
   const coastal = (a.coast ?? 0) > 0.6;
   const fresh = a.freshWater ?? 0;
+  // soil quality varies WITHIN a biome — rich pockets and thin ground (RimWorld's Rich
+  // Soil ~140% vs Sand ~70%), read from the fertility field we already have. Centred so
+  // the biome baseline is the mean: ~0.75× on the poorest ground, ~1.25× on the richest.
+  const soil = 0.75 + (a.fertility ?? 0.5) * 0.5;
   return {
-    food: Math.max(0.2, b.yields.food + (coastal ? 0.55 : 0) + fresh * 0.18),
+    food: Math.max(0.2, b.yields.food * soil + (coastal ? 0.55 : 0) + fresh * 0.18),
     materials: Math.max(0.05, b.yields.materials),
     goods: Math.max(0.05, b.yields.goods + (coastal ? 0.5 : 0)),
   };

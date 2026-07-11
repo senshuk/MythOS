@@ -827,6 +827,46 @@ export function fluxAt(geo: Geography, x: number, y: number): number {
   return geo.flux[cellOf(geo, x, y)];
 }
 
+// --- terrain mechanics: universe-neutral fields the pack labels ---------------
+// design/24 §7 (L4 cell mechanics). RimWorld encodes movement/fertility/buildability in
+// a DISCRETE terrain enum (Marsh, Gravel, Concrete…); we keep the physical fields
+// CONTINUOUS and let a pack name them. The engine exposes NUMBERS; whether 0.8 wetness
+// reads as "mire", "swamp" or "wetland flats" is pack content, never engine code.
+
+/** How boggy a LAND cell is, 0 (firm) … 1 (mire): a wet climate pooling on flat, low,
+ *  poorly-drained ground. Open water (sea/lake/river) returns 0 — it is water, not bog,
+ *  and callers handle water crossings separately. RimWorld's Marsh/Mud as a scalar. */
+export function cellWetness(geo: Geography, ci: number): number {
+  if (geo.water[ci] !== WATER_NONE) return 0;
+  // standing water gathers near sea level and drains off the hillsides above it
+  const lowland = 1 - Math.min(1, Math.max(0, (geo.elevation[ci] - geo.seaLevel) / 0.22));
+  const flat = 1 - geo.hilliness[ci] / HILL_MOUNTAIN; // only flat ground holds it
+  return Math.min(1, geo.moisture[ci] * lowland * flat);
+}
+export function wetnessAt(geo: Geography, x: number, y: number): number {
+  return cellWetness(geo, cellOf(geo, x, y));
+}
+
+/** Impedance of crossing a LAND cell on foot: 1 = easy open ground, higher = slower.
+ *  Steep and hilly ground is dear; boggy ground drags. Water CROSSINGS are added by the
+ *  callers that care (roads ford or detour). Pure and universe-neutral — the shared basis
+ *  for road routing today and local-map pathing later (design/24 §7.2). */
+export function groundMoveCost(geo: Geography, ci: number): number {
+  return 1 + geo.elevation[ci] * 3 + geo.hilliness[ci] * 1.6 + cellWetness(geo, ci) * 2.4;
+}
+
+/** A river's current at this cell, 0 (still/none) … 1 (a torrent), from accumulated flux.
+ *  Recovers RimWorld's shallow → moving-shallow → moving-deep → deep distinction as ONE
+ *  continuous number: a trickle is an easy ford, a great river is impassable without a
+ *  bridge, and the renderer can animate the current along its true course (flowTo). */
+export function cellFlowSpeed(geo: Geography, ci: number): number {
+  if (geo.water[ci] !== WATER_RIVER) return 0;
+  return Math.min(1, Math.max(0, (geo.flux[ci] - RIVER_FLUX) / (GREAT_RIVER_FLUX - RIVER_FLUX)));
+}
+export function flowSpeedAt(geo: Geography, x: number, y: number): number {
+  return cellFlowSpeed(geo, cellOf(geo, x, y));
+}
+
 /**
  * How much population/development the land here can sustain, as a multiplier on the
  * base carrying capacity. Fertile, well-watered, coastal ground supports large cities

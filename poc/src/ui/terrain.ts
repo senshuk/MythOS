@@ -8,7 +8,7 @@
  */
 import type { SurfaceTheme, StarfieldStyle, RGB } from '../content/mapstyles';
 import { biomeOf } from '../content/biomes';
-import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, GREAT_RIVER_FLUX, REF_N, isLand } from '../engine/geography';
+import { type Geography, WATER_SEA, WATER_LAKE, WATER_RIVER, GEO_MIN, GEO_SPAN, RIVER_FLUX, GREAT_RIVER_FLUX, REF_N, isLand, groundMoveCost, cellFlowSpeed } from '../engine/geography';
 
 export interface ViewBox {
   x: number;
@@ -58,14 +58,19 @@ function worldOfCell(geo: Geography, ci: number): Pt {
 }
 
 /** Cost of routing a road through a cell: open water is near-impassable (a road detours
- *  around it or the link becomes a sea lane), high and steep ground is dear, and gentle
- *  low land is cheap — so A* finds the natural pass/valley/coast route. */
+ *  around it or the link becomes a sea lane), high and steep ground is dear, boggy ground
+ *  drags, and a river is forded at its shallows — so A* finds the natural pass/valley/
+ *  coast route and crosses rivers where they run thin. Shares `groundMoveCost` with local
+ *  pathing (design/24 §7.2); a road just adds the water-crossing terms on top. */
 function cellRoadCost(geo: Geography, ci: number): number {
   const w = geo.water[ci];
   if (w === WATER_SEA) return 60;
   if (w === WATER_LAKE) return 45;
-  const base = w === WATER_RIVER ? 3.5 : 1; // a ford costs a little
-  return base + geo.elevation[ci] * 3 + geo.hilliness[ci] * 1.6;
+  if (w === WATER_RIVER) {
+    // a ford: cheap over a trickle, dear over a torrent (the road seeks the narrows)
+    return 3.5 + cellFlowSpeed(geo, ci) * 22 + geo.elevation[ci] * 3 + geo.hilliness[ci] * 1.6;
+  }
+  return groundMoveCost(geo, ci);
 }
 
 // A* scratch buffers, reused across searches (generation-stamped so we never clear N²).
@@ -272,6 +277,16 @@ export interface MapRiver {
   width: number;
 }
 
+/** A river course within the CLOSE VIEW frame, for the animated current overlay. `speed`
+ *  (0 still … 1 torrent, from flux) drives how fast the ripple travels and `width` its
+ *  weight — so the eye reads a fast great river differently from a sluggish brook. The
+ *  polyline runs source→mouth, so animating the dash offset carries the current downstream. */
+export interface LocalRiver {
+  d: string;
+  width: number;
+  speed: number;
+}
+
 /**
  * Trace the GREAT rivers of a world into meandering polylines. Each is followed DOWNSTREAM
  * along the drainage tree (`geo.flowTo`) from a headwater — a great-river cell no other great
@@ -319,6 +334,54 @@ export function buildRivers(geo: Geography): MapRiver[] {
   return rivers;
 }
 
+/** River courses passing through the CLOSE VIEW frame — every river, not just the great
+ *  trunks, so a brook-side hamlet still shows its water moving. Each carries a `speed` from
+ *  its discharge (design/24 §7, `cellFlowSpeed`) so the overlay can ripple a torrent fast
+ *  and a sluggish reach slow. Traced source→mouth from the drainage tree (`flowTo`), the
+ *  same authoritative course the terrain canvas paints — the ripple rides the real river. */
+export function buildLocalRivers(geo: Geography, vb: ViewBox): LocalRiver[] {
+  const N = geo.size;
+  const NN = N * N;
+  const { flux, water, flowTo } = geo;
+  const scale = NN / (REF_N * REF_N); // flux thresholds are tuned at REF_N; scale to this grid
+  const riverFlux = RIVER_FLUX * scale;
+  const greatFlux = GREAT_RIVER_FLUX * scale;
+  const isRiver = (k: number) => water[k] === WATER_RIVER;
+  // a chain HEAD is a river cell no other river cell drains into (a headwater)
+  const fed = new Uint8Array(NN);
+  for (let k = 0; k < NN; k++) {
+    if (!isRiver(k)) continue;
+    const d = flowTo[k];
+    if (d >= 0 && isRiver(d)) fed[d] = 1;
+  }
+  const pad = 1.5; // keep a little course beyond the frame so a river enters, not pops in
+  const inFrame = (p: Pt) => p.x >= vb.x - pad && p.x <= vb.x + vb.w + pad && p.y >= vb.y - pad && p.y <= vb.y + vb.h + pad;
+  const visited = new Uint8Array(NN);
+  const out: LocalRiver[] = [];
+  for (let s = 0; s < NN; s++) {
+    if (!isRiver(s) || fed[s] || visited[s]) continue;
+    const cells: number[] = [];
+    let c = s;
+    while (c >= 0 && isRiver(c) && !visited[c]) {
+      visited[c] = 1;
+      cells.push(c);
+      c = flowTo[c];
+    }
+    if (c >= 0) cells.push(c); // one step into the mouth/merge so the line reaches the water
+    if (cells.length < 3) continue;
+    if (!cells.some((k) => inFrame(worldOfCell(geo, k)))) continue; // not in this frame
+    const gauge = flux[cells[Math.floor(cells.length * 0.6)]];
+    const width = Math.max(0.02, Math.min(0.13, Math.sqrt(gauge / greatFlux) * 0.1 + 0.02));
+    const speed = Math.min(1, Math.max(0, (gauge - riverFlux) / Math.max(1, greatFlux - riverFlux)));
+    const step = Math.max(1, Math.floor(cells.length / 24));
+    const pts: Pt[] = [];
+    for (let i = 0; i < cells.length; i += step) pts.push(worldOfCell(geo, cells[i]));
+    pts[pts.length - 1] = worldOfCell(geo, cells[cells.length - 1]);
+    out.push({ d: smoothPath(pts), width, speed });
+  }
+  return out;
+}
+
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerp3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
@@ -357,6 +420,7 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   const E = geo.elevation;
   const M = geo.moisture;
   const T = geo.temperature;
+  const F = geo.fertility;
   const WTR = geo.water;
   const HILL = geo.hilliness;
   const sea = geo.seaLevel;
@@ -520,6 +584,30 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         r *= s;
         g *= s;
         b *= s;
+        // CLOSE-VIEW GROUND GRAIN (design/24 §7) — a fine CHROMATIC speckle keyed to
+        // fertility & moisture, finer than the brightness detail above: fertile, well-
+        // watered ground clumps into darker green vegetation, dry barren ground scatters
+        // into paler warm grit. Gives the close view a tiled-terrain read with no art;
+        // gated by zoom (and biome-relative, so a desert never grows green).
+        if (zoomK > 1.4) {
+          const grain = Math.min(1, (zoomK - 1.4) / 1.6);
+          let gd = 0;
+          let ga = 0.5;
+          let gf = 3.3;
+          for (let o = 0; o < 3; o++) {
+            gd += ga * (vnoise(gx * gf + o * 5.9, gy * gf + o * 12.1, 2718) - 0.5);
+            ga *= 0.5;
+            gf *= 2.55;
+          }
+          const lush = M[nci] * 0.5 + F[nci] * 0.5; // 0 barren-dry … 1 lush-wet
+          const amt = gd * grain * (0.12 + lush * 0.1);
+          const lum = 1 - amt * (0.7 + lush * 0.8); // wet ground mottles darker
+          r *= lum;
+          g *= lum;
+          b *= lum;
+          g += amt * lush * 34; // a green cast where fertile clumps thicken
+          b -= amt * (1 - lush) * 10; // a warm/sandy cast on barren grit
+        }
         // RIVERS run over land — keep them crisp AND a touch wider. Where the nearest OR an
         // adjacent cell is a river, pull toward the river colour (bilinear would wash a
         // one-cell river away). Only on land, so a river mouth doesn't tint open sea.

@@ -236,3 +236,95 @@ valuable *without* it.
 6. *Special cases?* None added; ruins/starfields flow through the same pipeline.
 7. *Five years?* Two-scale worlds are the genre-proven shape (RimWorld, DF, CK); the
    lazy-deterministic approach is the only one that scales to 55 settlements.
+
+---
+
+## 7. L4 addendum — cell mechanics (the terrain proposal)
+
+**Document type:** Design note / mini-ADR for the L4 line §3.7 held open. Prompted by a
+RimWorld terrain-system study (its ~40 discrete terrain Defs — Soil/Rich Soil/Sand/
+Gravel/Marsh/Mud/Ice, moving-vs-still water, buildable-vs-impassable — each carrying
+fertility, movement, buildability and beauty numbers). The question this note answers:
+*how much of that do we adopt, and how, without betraying §3.1 or the engine philosophy?*
+
+### 7.1 The trap, and the reframe
+
+RimWorld's terrain is a **discrete enumeration** tuned to its base-building minigame:
+`Sand`, `Gravel`, `MarshyTerrain`, `Concrete`, each a named row with hardcoded stats. To
+port that list would hardcode a *fantasy-genre vocabulary* into the engine — exactly what
+"Everything Is Data" and the engine/pack boundary forbid. A sci-fi pack has no "Marsh";
+it has regolith and ash-flats. So we **do not port the terrain types**.
+
+What we port is the **mechanisms** those types encode, expressed as **continuous,
+universe-neutral fields** the engine already owns (or can derive) — and let the *pack*
+supply the labels. RimWorld says "this cell is Marsh → 0.7 fertility, slow move, hard to
+build." MythOS says "this cell has moisture 0.8, elevation just above sea, hilliness 0,
+low flux → high wetness → the pack calls it a mire, and it reads as fertile-but-boggy."
+Same texture, no enum, and it survives a pack swap.
+
+This keeps §3.1's core divergence intact: **we still do not move the social simulation
+onto a cell grid.** L4 adds mechanical *properties* to the physical substrate — things
+presentation renders and bounded local systems may read — not a pawn-pathing arena.
+
+### 7.2 The five primitives (what L4 actually adds)
+
+Each is a pure function of the existing `Geography` field (or the derived plan), so each
+adds **zero save state** (Save Philosophy — the seed already implies it):
+
+1. **`groundMoveCost(geo, cell)`** — a continuous impedance for crossing a *land* cell on
+   foot: `1 + elevation·k + hilliness·k + wetness·k`. Generalises the road router's
+   private `cellRoadCost` (`ui/terrain.ts`) so one function feeds road routing *now* and
+   local pathing *later*. RimWorld's Fast/Medium/Slow tiers become a scalar, so "roads
+   avoid the bog" falls out for free — no `Marsh` row required.
+2. **Sub-biome fertility variance** — the economy stops reading one flat biome yield and
+   blends the *raw* `fertility` field into it (`yield = biomeBase · fertilityFactor`). A
+   grassland now has rich pockets and thin ones — RimWorld's Rich Soil (140%) vs Sand
+   (~70%) *within* one biome, from the noise field we already compute. (This shifts
+   worldgen: founding viability and carrying capacity read `terrainYields`. It stays
+   deterministic, so the determinism suite holds; only the *specific* worlds change.)
+3. **Graded buildability** — `buildable()` becomes `buildability(): 0..1` (0 submerged/
+   impossible, low on steep/boggy ground, 1 on flat dry ground). The Close View places
+   fewer/smaller structures on marginal ground instead of a hard yes/no — RimWorld's
+   marsh "high fertility, difficult to build on" texture, as a threshold not a flag.
+4. **Wear / trampling** — a `wear` value that rises with local traffic; worn ground reads
+   packed (lighter, faster, less fertile). This is the one primitive that *could* imply
+   per-cell state. **Resolution: derive it, don't store it** — traffic concentrates on
+   streets and around the square, which the plan already knows, so wear is a derived
+   overlay (paths form because traffic flows, legible cause→effect), not a stored counter.
+   A future *simulated* trampling (cells accruing wear from actual movement) is the only
+   part that would need state, and is explicitly deferred past L4.
+5. **Water flow speed** — `WaterKind` already separates SEA/LAKE/RIVER; a `flowSpeed`
+   derived from `flux` recovers RimWorld's shallow / moving-shallow / moving-deep / deep
+   distinction as a continuous property (fords are cheap on a trickle, impassable on a
+   torrent; the river renders with current) — four enum rows collapse to one number.
+
+### 7.3 What stays out of scope even at L4
+
+- **Real-time pawn pathing / per-tile combat as the sim's arena.** L4 delivers the
+  *fields*; it does not make the local map the place simulation *runs*. If a future system
+  reads `groundMoveCost` for a bounded outcome (a raid resolves faster over open ground
+  than through a mire), that consumer is held to the org-intent disciplines — bounded
+  knowledge, outcomes-only history — exactly as §3.7 required.
+- **Per-cell beauty / cover as combat mechanics.** RimWorld's beauty and cover numbers
+  are base-building-and-firefight coupling we have no arena for. Deferred until (and
+  unless) there is a system that consumes them.
+- **Discrete terrain Defs.** We never introduce a `TerrainDef` enum. If a pack wants to
+  *name* zones ("mire", "shingle", "hardpan"), that is a pure labelling function over the
+  continuous fields (like `biomeOf`), living in pack content — never in the engine.
+
+### 7.4 Decision-filter check
+
+1. *Improves the simulation?* Yes — #2 gives the economy real sub-biome texture; the rest
+   makes terrain legible and lays the substrate future bounded systems can read.
+2. *Generic across universes?* Yes — all five are continuous physical fields; the pack
+   owns every label. A pack swap changes vocabulary, not engine code.
+3. *Data-driven?* The fields are seed-derived; the labels and yield curves are pack data.
+4. *Emergent gameplay?* Rich-soil pockets steer where farms and wealth concentrate; worn
+   paths emerge from traffic; fords open and close with the season's river — all derived,
+   none scripted.
+5. *Legible & traceable?* Cause→effect throughout: the path is worn *because* traffic
+   flows there; the ford is impassable *because* the river is in flood.
+6. *Special cases?* None — starfield packs simply supply no surface fields; the same
+   functions return their neutral defaults.
+7. *Five years?* Continuous-field terrain with pack-owned vocabulary is the only shape
+   that lets a new universe reuse the mechanics without re-tuning an enum of terrain rows.

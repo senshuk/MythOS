@@ -997,6 +997,9 @@ button { font-family: inherit; }
 .local-none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 
 /* the town plan's glyphs — the Atlas line-work language, in world units */
+/* WEAR (design/24 §7) — trodden ground: packed bare earth reads LIGHTER and warmer than
+   the grassy country around it, so a desire-path is visible as the mark of traffic. */
+.plan-packed { stroke: #a89372; opacity: 0.4; stroke-linecap: round; }
 .plan-street { stroke: #b4a682; opacity: 0.75; }
 .plan-pier { stroke: #8a7a5c; opacity: 0.95; }
 .plan-wall { stroke: #6d6154; opacity: 0.95; }
@@ -1025,6 +1028,20 @@ button { font-family: inherit; }
 .plan-mark { cursor: pointer; }
 .plan-mark:hover .plan-scorch { stroke: var(--cyan); stroke-width: 0.02; }
 .plan-barricade { stroke: var(--rose); opacity: 0.85; stroke-dasharray: 0.09 0.05; cursor: help; }
+
+/* WATER FLOW (design/24 §7) — a ripple riding the painted river, drifting downstream. The
+   dash pattern is the ripple; per-river animation-duration (set inline from flux) makes a
+   torrent hurry and a brook barely move. Honours reduced-motion by holding still. */
+.local-river {
+  fill: none;
+  stroke: #cfe8f2;
+  opacity: 0.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.13 0.28;
+  animation: river-flow linear infinite;
+}
+@keyframes river-flow { to { stroke-dashoffset: -0.82; } }
+@media (prefers-reduced-motion: reduce) { .local-river { animation: none; opacity: 0.34; } }
 .plan-building.role-monument rect { fill: #7a705c; stroke: var(--gold-dim); stroke-width: 0.014; }
 .plan-building.role-stone rect { fill: #6b6a66; stroke: #4a4946; stroke-width: 0.012; }
 .plan-building.role-tomb circle { stroke: #8a8578; stroke-width: 0.016; }

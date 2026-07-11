@@ -81,6 +81,7 @@ describe('resolving a war', () => {
     addExhaustion(w, war, agg, 10);
     w.tick += 5 * 365; // past the minimum war duration for terms
     const before = w.events.length;
+    const loserBefore = treasuryOf(w, def);
     warYearly(w);
     expect(w.wars.length).toBe(0);
     const ended = w.events.slice(before).find((e) => e.type === 'war_ended');
@@ -89,7 +90,9 @@ describe('resolving a war', () => {
     expect(Number(ended?.data.tribute)).toBeGreaterThan(0); // reparations exacted
     expect(activeAgreement(w, 'non_aggression', agg, def)).toBeDefined();
     expect(treasuryOf(w, agg)).toBeGreaterThan(victorBefore); // the coin actually moved
-    expect(treasuryOf(w, def)).toBeLessThan(100);
+    // the tribute drained the loser's coffers — the invariant, not a fixed figure (the
+    // loser's pre-war wealth varies with its terrain, so an absolute threshold is brittle)
+    expect(treasuryOf(w, def)).toBeLessThan(loserBefore);
   });
 
   it('does not force capitulation before the minimum war duration, however lopsided', () => {
