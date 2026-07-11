@@ -137,6 +137,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   tribute_refused: (_n, d) => `The ${d.b} defied the ${d.a}'s demand for tribute.`,
   // mutual defense with real force (2E alliance): an ally answers the call and turns a razing aside.
   alliance_answered: (_n, d) => `The ${d.ally} answered the call, marching to the defense of ${d.defended} against ${d.against}.`,
+  // annexation (2E): a victor takes a rival's seat instead of razing it — the town survives as a province.
+  annexed: (_n, d) => `The ${d.victor} annexed ${d.annexed}, which now answers to the ${d.realm}.`,
   // formal wars (2E): declared when a clash becomes open war, joined by allies, resolved with terms.
   war_declared: (_n, d) => `War broke out between the ${d.aggressor} and the ${d.defender}.`,
   war_joined: (_n, d) => `The ${d.ally} entered the war at the side of the ${d.friend}.`,
@@ -253,6 +255,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 30;
     case 'tribute_refused':
       return 28; // defiance of a stronger neighbour — the seed of wars
+    case 'annexed':
+      return 39; // a realm swallowing a rival whole — the map itself redrawn
     case 'war_declared':
       return 40; // open war between powers — a defining turn of an age
     case 'alliance_answered':

@@ -812,20 +812,47 @@ export function geographyYearly(world: World): void {
       const allies = alliesOf(world, weak.polityId, strong.polityId);
       const support = allies.reduce((sum, a) => sum + allyPop(world, a), 0) * ALLY_FORCE_FRACTION;
       if (strong.macro.population > (weak.macro.population + support) * 1.28 && rng.chance(0.82)) {
-        // a decisive CONQUEST — the weaker is razed under the victor's ruler.
-        // Geography makes these mismatches: a fertile great city against a poor village.
-        // We only empty it here (the war's cause); recordRuins then registers the fall as
-        // a 'ruined' landmark naming the FALLEN settlement's last ruler — a razed town is
-        // still a ruin on the map, however it died.
-        weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
+        // a decisive victory over a far weaker neighbour. The victor's aim decides its fate:
+        // an EXPANSIONIST realm TAKES the town (annexation — a geography-changing world action,
+        // the only thing in 2E that may redraw the map, design/16 principle 5); any other
+        // victor RAZES it. The stability toll is drawn either way so the geo RNG stream stays
+        // aligned — only the OUTCOME differs, not the sequence.
         strong.macro.stability = clamp(strong.macro.stability - rng.range(2, 6), -100, 100);
         const subjects = strong.currentRulerId !== undefined ? [strong.currentRulerId] : [];
-        const conqId = emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
-        houseConquers(world, strong); // the victor's House gains prestige (the loser's line
-        //                               falls when recordRuins registers the emptied town)
-        // razing a city brands the victor's POLITY with lasting infamy (2C: OrgReputation).
-        if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
-        drawInAllies(world, weak, strong); // the fallen town's allies are drawn against the conqueror (2E)
+        // A conqueror TAKES a prize worth keeping — a substantial city, or any town when its aim
+        // is expansion — and RAZES the rest. Deterministic (reads population and the 2C intent, no
+        // RNG), so the geo stream is untouched and only worthless/hated targets still burn.
+        const annex =
+          strong.polityId !== undefined &&
+          weak.polityId !== undefined &&
+          weak.polityId !== strong.polityId &&
+          (weak.macro.population >= ANNEX_WORTH_POP || world.currentIntent.get(strong.polityId)?.kind === 'expand');
+        if (annex) {
+          // ANNEX — the town is taken, not emptied. Its old dynasty is deposed and its polity
+          // dissolves; the settlement survives and passes to the victor's realm as a PROVINCE
+          // (governed from the capital — figuresYearly raises no fresh local line for it).
+          const year = Math.floor(world.tick / DAYS_PER_YEAR);
+          const realm = getOrganization(world, strong.polityId)?.name ?? strong.name;
+          const annexId = emit(world, 'annexed', subjects, { victor: strong.name, annexed: weak.name, realm }, [], [strong.id, weak.id]);
+          endHouseAt(world, weak, year, annexId); // the old House falls; its polity dissolves
+          weak.polityId = strong.polityId; // the town now answers to the victor's realm
+          weak.currentRulerId = undefined; // a province — no local lord
+          houseConquers(world, strong);
+          recordDeed(world, strong.polityId!, 'org_conquest', { cause: annexId }); // taking a rival is dominance too
+          drawInAllies(world, weak, strong);
+        } else {
+          // a decisive CONQUEST — the weaker is razed under the victor's ruler.
+          // Geography makes these mismatches: a fertile great city against a poor village.
+          // We only empty it here (the war's cause); recordRuins then registers the fall as
+          // a 'ruined' landmark naming the FALLEN settlement's last ruler.
+          weak.macro = { ...weak.macro, population: 0, children: 0, adults: 0, elders: 0 };
+          const conqId = emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
+          houseConquers(world, strong); // the victor's House gains prestige (the loser's line
+          //                               falls when recordRuins registers the emptied town)
+          // razing a city brands the victor's POLITY with lasting infamy (2C: OrgReputation).
+          if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
+          drawInAllies(world, weak, strong); // the fallen town's allies are drawn against the conqueror (2E)
+        }
       } else {
         // an inconclusive BATTLE — open war. Declare (or continue) a formal war between the
         // two courts; allies drawn in below JOIN it as co-belligerents (2E). A conquest, by
@@ -900,6 +927,8 @@ export function geographyYearly(world: World): void {
 
 /** How sharply an ally's border with an aggressor sours when it is drawn into a war. */
 const ALLY_DRAWN_IN = 14;
+/** A conquered town of at least this size is a prize worth ruling — annexed, not razed. */
+const ANNEX_WORTH_POP = 120;
 /** The fraction of an ally's population that counts as committed force in a neighbour's
  *  defense — not all of a distant friend's strength reaches the front. */
 const ALLY_FORCE_FRACTION = 0.5;

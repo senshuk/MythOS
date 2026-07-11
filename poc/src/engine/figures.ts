@@ -25,7 +25,7 @@ import { propagateCoronation } from './news';
 import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from './pack';
 import { givenName, houseName } from './pack';
 import { startCivilWarClock } from './factions';
-import { appointLeader, dissolve } from './organization';
+import { appointLeader, dissolve, getOrganization } from './organization';
 
 // ------------------------------------------------------------- houses --------
 // Prestige weights — how much standing a House's deeds earn it. Engine constants for
@@ -279,6 +279,10 @@ export function figuresYearly(world: World): void {
 
   for (const s of world.settlements) {
     if (s.ruinedYear !== undefined || s.macro.population <= 0) continue; // no rule in a dying town
+    // an annexed PROVINCE (its polity's seat is another town) is ruled from the capital — it
+    // raises no local line of its own (2E annexation). Its polity's succession runs at the seat.
+    const owner = getOrganization(world, s.polityId);
+    if (owner && owner.seatId !== undefined && owner.seatId !== s.id) continue;
     const gov = governmentById(s.governmentId);
     if (gov.succession === 'none') continue; // leaderless — no rulers, ever
 

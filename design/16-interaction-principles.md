@@ -37,8 +37,21 @@ own funds API). This is deliberately ECONOMIC and political, never territorial: 
 changing hands is geography, and per principle 5 that stays with an explicit annex/relocate
 world action (deferred — the 2D geography actions), NOT the diplomacy layer. Still RNG-free
 (thresholds on recorded casualties + fixed reparations), so a fifth consecutive slice needed
-no seed re-pin. Deferred next: annexation/contested seats as an explicit geography-changing
-world action, and espionage.
+no seed re-pin.
+
+**Annexation shipped — the first deliberate GEOGRAPHY change.** When a realm decisively
+overwhelms a far weaker neighbour, an expansionist victor (or any victor taking a city worth
+ruling) ANNEXES rather than razes: the town survives, its old dynasty is deposed and its polity
+dissolves, and it passes into the victor's realm as a PROVINCE (its `polityId` re-points to the
+victor's polity; it raises no local line — `figuresYearly` skips a settlement whose polity is
+seated elsewhere). This is a WORLD ACTION inside the sim's war layer (`geographyYearly`), NOT
+the diplomacy layer — principle 5 holds: diplomacy still never moves the map; only these gated
+war outcomes do (annexation now joins razing as the second). The choice is deterministic (reads
+population + the 2C intent) and keeps the geo RNG stream aligned (the stability toll is drawn on
+either path), so even this map-changing slice needed no seed re-pin. Full multi-settlement
+empires (a polity's tithe/membership/succession spanning its provinces) remain a larger
+follow-on; today a province is governed from the capital with the seat's institutions. Deferred
+next: espionage (a new interaction class — intelligence and subversion rather than open force).
 
 ---
 
