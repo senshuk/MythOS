@@ -1629,6 +1629,9 @@ export interface PlayerView {
   /** pack line shown when dead with no heir — the line has truly ended. */
   lineEnds?: string;
   settlement: string;
+  /** the id of the settlement the player currently lives in — lets the UI gate "leave
+   *  for here" (never offered on your own home) and know where a move would depart from. */
+  homeSettlementId?: SettlementId;
   needs: Needs;
   /** each need as a lived word + tone (design/21 §5) — presentation of `needs`, shown in the journal. */
   needFeels: NeedFeel[];

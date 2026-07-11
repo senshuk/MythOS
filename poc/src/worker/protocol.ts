@@ -46,6 +46,7 @@ export type SimRequest =
   | { kind: 'possess'; actorId: number }
   | { kind: 'release' }
   | { kind: 'inherit' } // dead player takes up their heir's life (death as a transition)
+  | { kind: 'leaveFor'; id: number } // living player emigrates; attention follows (design/26 P5)
   | { kind: 'playerTurn'; intent: Intent }
   | { kind: 'chooseAmbition'; ambitionId: string; target?: number }
   | { kind: 'abandonAmbition' }

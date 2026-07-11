@@ -55,7 +55,7 @@ describe('the steer decision', () => {
   });
 
   it('picking a contender sets a mandate the council then honours', () => {
-    const { w, ruler, orgId } = ruledWorld();
+    const { w, orgId } = ruledWorld();
     const intent = w.currentIntent.get(orgId)!;
     const alt = intent.alternatives
       .filter((a) => a.kind !== intent.kind && a.score >= intent.score * 0.6 && a.score > 0)

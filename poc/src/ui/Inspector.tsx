@@ -109,6 +109,8 @@ export function Inspector({
   venueDetail,
   settlements,
   playerId,
+  playerAlive,
+  playerHomeId,
   nav,
   onPickActor,
   onPickEvent,
@@ -116,6 +118,7 @@ export function Inspector({
   onFocus,
   onPossess,
   onWalk,
+  onLeaveFor,
   onClose,
 }: {
   actorDetail: ActorDetail | null;
@@ -129,6 +132,10 @@ export function Inspector({
   venueDetail: VenueDetail | null;
   settlements: SettlementView[];
   playerId?: number;
+  /** whether the possessed actor is alive — a dead player cannot pack up and leave. */
+  playerAlive?: boolean;
+  /** the settlement the player currently lives in — "leave for here" is never offered on it. */
+  playerHomeId?: number;
   nav?: InspectorNav;
   onPickActor: (id: number) => void;
   onPickEvent: (id: number) => void;
@@ -137,6 +144,8 @@ export function Inspector({
   onPossess: (id: number) => void;
   /** enter a settlement's CLOSE VIEW — walk its streets (ruins welcome). */
   onWalk?: (id: number) => void;
+  /** the living player leaves home to settle here (attention follows the life). */
+  onLeaveFor?: (id: number) => void;
   onClose: () => void;
 }) {
   if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail && !venueDetail) {
@@ -539,6 +548,19 @@ export function Inspector({
               walk its streets
             </button>
           )}
+          {onLeaveFor &&
+            playerId !== undefined &&
+            playerAlive &&
+            playerHomeId !== settlementDetail.settlementId &&
+            settV?.ruinedYear === undefined && (
+              <button
+                className="play-inline"
+                onClick={() => onLeaveFor(settlementDetail.settlementId)}
+                title="pack up your life and settle here — your gaze follows"
+              >
+                ⇴ leave home for {settV?.name ?? 'here'}
+              </button>
+            )}
           <h4>Local history</h4>
           {settlementDetail.events.length === 0 ? (
             <p className="muted">Nothing recorded yet.</p>

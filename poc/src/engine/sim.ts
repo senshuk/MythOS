@@ -82,7 +82,7 @@ import { reactToBeliefs } from './reactions';
 
 export { focusSettlement } from './lod';
 export { ensureFocusedVenues } from './venues';
-export { possess, release, schedulePlayerIntent, inheritHeir } from './player';
+export { possess, release, schedulePlayerIntent, inheritHeir, leaveFor } from './player';
 import { schedulePlayerIntent, heirOf } from './player';
 
 /**
@@ -1347,6 +1347,7 @@ function buildPlayerView(world: World, actors: EntityId[]): PlayerView | undefin
     succession,
     lineEnds,
     settlement: homeId !== undefined ? world.settlements[homeId]?.name ?? '?' : '?',
+    homeSettlementId: homeId,
     needs: { ...world.needs.get(id)! },
     needFeels: buildNeedFeels(world, id),
     mood: buildMoodView(world, id),

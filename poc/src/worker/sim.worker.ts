@@ -30,6 +30,7 @@ import {
   possess,
   release,
   inheritHeir,
+  leaveFor,
   playerTurn,
   checkPlayerGoal,
   reviewPlayerAmbition,
@@ -150,6 +151,13 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       if (!world) reset(0);
       inheritHeir(world!); // no-op unless the player is dead and an heir exists
       checkPlayerGoal(world!); // baseline the heir's goal (no event)
+      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      break;
+    }
+    case 'leaveFor': {
+      if (!world) reset(0);
+      leaveFor(world!, msg.id); // living player emigrates; attention follows (no-op if not sensible)
+      checkPlayerGoal(world!); // re-baseline the goal in the new town (no event)
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }

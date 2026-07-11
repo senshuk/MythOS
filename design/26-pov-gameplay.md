@@ -6,11 +6,14 @@ cleaned up and pulled toward what Crusader Kings, RimWorld and Warsim each do be
 `16-interaction-principles.md` (org discipline the ruler-levers must respect),
 `01-warsim-analysis.md` §2.2 (throne-room petitioners), `25-venues-adr.md`.
 **Status:** P1 (autopilot), P2 (audiences), P3 (value-tinted choices + conscience),
-P4 (steer the polity) SHIPPED (2026-07). P1 note: the standing-order lean was
-deferred — the aspiration decider alone sufficed. P4 note: shipped as a "heavier
-vote" — the ruler picks among the org's OWN top intents, honoured only while the org
-still rates the pick a contender (bounded-knowledge intact); a mandate lapses if
-unrenewed. P5 (leaving home) + P6 (cockpit cleanups) open.
+P4 (steer the polity), P5 (leaving home) SHIPPED (2026-07). P1 note: the
+standing-order lean was deferred — the aspiration decider alone sufficed. P4 note:
+shipped as a "heavier vote" — the ruler picks among the org's OWN top intents,
+honoured only while the org still rates the pick a contender (bounded-knowledge
+intact); a mandate lapses if unrenewed. P5 note: a RAILS operation (`leaveFor`,
+beside possess/inherit), not an act-loop action — a focus shift demotes/promotes
+whole casts and cannot run mid-week; the player leaves alone in v1 (family follows
+later). P6 (cockpit cleanups) open.
 
 ---
 
@@ -102,11 +105,19 @@ still perceives with bounded knowledge and executes through its own resolver; th
 player is a heavier vote, not a god-hand. Pack adds role affordances the same
 data-driven way PLAYER_ACTIONS works today.
 
-### P5 — Leaving home (medium)
-"Leave for X" as a player action: rides the emigration machinery, the focus
-follows (as it already does for inheritance), arrival at the town gate in the
-close view. Opens courtship/feuds/claims in a second town — the world stops being
-one village deep, per POV life.
+### P5 — Leaving home (medium) — SHIPPED
+"Leave home for X" as a player rails operation (`engine/player.ts` `leaveFor`,
+beside possess/inherit): rides the same emigration bookkeeping any adult uses —
+drop to the summary tier, rehome, move one head between the towns' ledgers — then
+`focusSettlement` moves attention, exactly as inheritance follows an heir; the
+destination's promote raises the now-summary player back to full. A rails op, NOT
+an act-loop action: a focus shift demotes/promotes whole casts and would free
+actors mid-`actWeekly`. Also hardened `demote()` so a possessed actor is always a
+survivor — a shifting gaze moves attention, never erases the life. Player leaves
+ALONE in v1 (spouse/children stay; ties persist as a story). Opens
+courtship/feuds/claims in a second town — the world stops being one village deep.
+Future: family-follows, transit time via `travel.ts`, arrival-at-the-gate close
+view.
 
 ### P6 — Cockpit cleanups (small, anytime)
 The week answers back: after each turn (and each held year), a compact "your

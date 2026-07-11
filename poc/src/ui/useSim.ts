@@ -211,6 +211,12 @@ export function useSim(initialSeed: number) {
     send({ kind: 'playerTurn', intent });
   }, [send]);
 
+  // the living player leaves home for another settlement — attention follows the life
+  const leaveFor = useCallback((id: number) => {
+    setBusy(true);
+    send({ kind: 'leaveFor', id });
+  }, [send]);
+
   const chooseAmbition = useCallback((ambitionId: string, target?: number) => {
     setBusy(true);
     send({ kind: 'chooseAmbition', ambitionId, target });
@@ -267,6 +273,7 @@ export function useSim(initialSeed: number) {
     possess,
     release,
     inherit,
+    leaveFor,
     playerAct,
     chooseAmbition,
     abandonAmbition,

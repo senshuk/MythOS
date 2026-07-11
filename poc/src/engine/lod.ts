@@ -596,6 +596,10 @@ export function demote(world: World, s: Settlement): void {
   // survive), then fill the remaining slots with the most-connected locals.
   const byConnections = [...full].sort((a, b) => relCount(world, b) - relCount(world, a));
   const survivors = new Set<EntityId>();
+  // The possessed actor always survives demotion: shifting the gaze moves ATTENTION,
+  // never erases the life being lived. Without this, focusing another town while
+  // possessed could free the player's actor and leave the possession dangling.
+  if (world.playerId !== undefined && full.includes(world.playerId)) survivors.add(world.playerId);
   for (const id of byConnections) {
     if (survivors.size >= MAX_SUMMARIES_PER_SETTLEMENT) break;
     if (hasCrossTie(world, id, s.id)) survivors.add(id);

@@ -131,6 +131,48 @@ export function inheritHeir(world: World): void {
 }
 
 /**
+ * Leaving home (design/26 P5): the player moves their LIFE to another settlement,
+ * riding the same bookkeeping migrationYearly applies to any adult who chooses to
+ * leave — drop to the summary tier, rehome, move one head between the towns'
+ * ledgers — and then attention follows the life, exactly as it follows an heir at
+ * inheritance. A RAILS operation (between turns, like possess/inherit), never an
+ * act-loop action: a focus shift demotes and promotes whole casts, which cannot
+ * happen mid-week while the act loop iterates. Spouse and children stay behind —
+ * distance is a story, not an erasure; the ties and rels persist. No-op when
+ * nothing sensible can happen (no player, dead, same town, a ruin).
+ */
+export function leaveFor(world: World, destId: number): void {
+  const p = world.playerId;
+  if (p === undefined || !isAlive(world, p)) return;
+  if (destId < 0 || destId >= world.settlements.length) return;
+  const from = world.homeSettlement.get(p);
+  if (from === undefined || destId === from) return;
+  const dest = world.settlements[destId];
+  if (dest.ruinedYear !== undefined) return; // no one settles a ruin
+
+  // Ledger rule (as in migrationYearly): an UNFOCUSED town's macro headcount is
+  // maintained by hand; the focused town's is retallied from its full actors at
+  // demote time, so it needs no manual entry on either side of the move.
+  if (from !== world.focusedSettlementId) {
+    const m = world.settlements[from].macro;
+    m.population = Math.max(0, m.population - 1);
+  }
+  world.fidelity.set(p, 'summary');
+  world.homeSettlement.set(p, destId);
+  emit(world, 'emigrated', [p], { from: world.settlements[from].name, to: dest.name }, [], [from, destId]);
+
+  if (destId !== world.focusedSettlementId) {
+    dest.macro.population += 1; // one more head for promote to materialize
+    // attention follows the life: promoting the destination raises the player —
+    // now one of its summary residents — back to full fidelity.
+    focusSettlement(world, destId);
+  } else {
+    // moving INTO the already-watched town: immigrant mechanics, no focus shift
+    world.fidelity.set(p, 'full');
+  }
+}
+
+/**
  * The player's intent for the current tick, or `idle` if none is scheduled. Pure
  * read (no mutation), so replay from the same log is deterministic. Scans from the
  * end so the most recently scheduled intent for a tick wins; O(n) is fine for the

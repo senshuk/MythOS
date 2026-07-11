@@ -433,6 +433,8 @@ export default function App() {
                 venueDetail={sim.venueDetail}
                 settlements={stat.settlements}
                 playerId={stat.player?.id}
+                playerAlive={stat.player?.alive}
+                playerHomeId={stat.player?.homeSettlementId}
                 nav={nav}
                 onPickActor={inspectActor}
                 onPickEvent={inspectEvent}
@@ -440,6 +442,7 @@ export default function App() {
                 onFocus={(id) => sim.focusSettlement(id)}
                 onPossess={(id) => sim.possess(id)}
                 onWalk={(id) => setCloseViewId(id)}
+                onLeaveFor={(id) => sim.leaveFor(id)}
                 onClose={closeInspect}
               />
             </div>
