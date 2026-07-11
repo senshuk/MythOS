@@ -191,37 +191,43 @@ function smoothPath(pts: Pt[]): string {
  * water becomes a gently-curved `sea` lane instead. Pure function of geography + node
  * positions (deterministic), computed once per snapshot, never stored.
  */
-export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[]): MapRoad[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const roads: MapRoad[] = [];
-  for (const e of edges) {
-    if (e.relation <= -20) continue; // a hostile border is not a road
-    const a = byId.get(e.a);
-    const b = byId.get(e.b);
-    if (!a || !b || a.ruined || b.ruined) continue;
-    const width = 0.4 + Math.min(1.4, e.tradeVolume / 7);
+/** Road GEOMETRY per settlement pair — the A* course and the sea-lane test depend only
+ *  on the immutable geography and the pair's fixed positions, so they are computed ONCE
+ *  per world and reused across every snapshot (and shared by the world map AND the close
+ *  view, which read the same cached Geography instance). Relations, ruins and trade
+ *  volume stay per-call — a road opens, closes and thickens without re-pathing. */
+const roadGeomCache = new WeakMap<Geography, Map<string, { kind: 'sea' | 'road'; d: string }>>();
 
-    // is the pair mostly separated by open water? then it's a sea lane, not a road.
-    let water = 0;
-    const SEA_SAMPLES = 12;
-    for (let s = 0; s <= SEA_SAMPLES; s++) {
-      const t = s / SEA_SAMPLES;
-      if (!isLand(geo, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) water++;
-    }
-    if (water / (SEA_SAMPLES + 1) > 0.42) {
-      // a gently-bowed shipping lane (perpendicular midpoint offset), dashed when drawn
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const bow = Math.min(6, len * 0.12);
-      const cx = mx + (-dy / len) * bow;
-      const cy = my + (dx / len) * bow;
-      roads.push({ d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`, kind: 'sea', width: 0.3 });
-      continue;
-    }
+function roadGeometry(geo: Geography, a: RoadNode, b: RoadNode): { kind: 'sea' | 'road'; d: string } {
+  let perGeo = roadGeomCache.get(geo);
+  if (!perGeo) {
+    perGeo = new Map();
+    roadGeomCache.set(geo, perGeo);
+  }
+  const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+  const hit = perGeo.get(key);
+  if (hit) return hit;
 
+  let geom: { kind: 'sea' | 'road'; d: string };
+  // is the pair mostly separated by open water? then it's a sea lane, not a road.
+  let water = 0;
+  const SEA_SAMPLES = 12;
+  for (let s = 0; s <= SEA_SAMPLES; s++) {
+    const t = s / SEA_SAMPLES;
+    if (!isLand(geo, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)) water++;
+  }
+  if (water / (SEA_SAMPLES + 1) > 0.42) {
+    // a gently-bowed shipping lane (perpendicular midpoint offset), dashed when drawn
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const bow = Math.min(6, len * 0.12);
+    const cx = mx + (-dy / len) * bow;
+    const cy = my + (dx / len) * bow;
+    geom = { kind: 'sea', d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}` };
+  } else {
     // an overland road: least-cost path through the terrain, downsampled and smoothed.
     const path = aStarRoad(geo, cellOfWorld(geo, a.x, a.y), cellOfWorld(geo, b.x, b.y));
     let pts: Pt[];
@@ -233,7 +239,26 @@ export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[])
     } else {
       pts = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }]; // unreachable → a straight fallback
     }
-    roads.push({ d: smoothPath(pts), kind: 'road', width });
+    geom = { kind: 'road', d: smoothPath(pts) };
+  }
+  perGeo.set(key, geom);
+  return geom;
+}
+
+export function buildRoads(geo: Geography, nodes: RoadNode[], edges: RoadEdge[]): MapRoad[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const roads: MapRoad[] = [];
+  for (const e of edges) {
+    if (e.relation <= -20) continue; // a hostile border is not a road
+    const a = byId.get(e.a);
+    const b = byId.get(e.b);
+    if (!a || !b || a.ruined || b.ruined) continue;
+    const geom = roadGeometry(geo, a, b); // cached: A* runs once per pair per world
+    roads.push(
+      geom.kind === 'sea'
+        ? { d: geom.d, kind: 'sea', width: 0.3 }
+        : { d: geom.d, kind: 'road', width: 0.4 + Math.min(1.4, e.tradeVolume / 7) },
+    );
   }
   return roads;
 }
