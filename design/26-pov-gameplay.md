@@ -94,6 +94,21 @@ simulation: audiences are a legible WINDOW onto systems already running, and eve
 verdict flows through existing intents/effects. This single feature makes the
 seat a job and closes the loop the `rise` ambition currently drops.
 
+**P2 envoy — SHIPPED (2026-07, the 2E player-diplomacy slice).** The line above
+("a neighbour polity's envoy carries its real 2E proposal") is now built.
+INCOMING: when the NPC diplomacy pass (`orgInteractionYearly`) addresses a proposal
+to the polity the player RULES, it is PARKED (`world.pendingEnvoy`, player-only)
+instead of auto-resolved; the `audience_envoy` DecisionDef surfaces it and the
+player's accept/reject (`answer_envoy`) replaces the recipient's `evaluate()`,
+flowing through the same shared outcome tail (`applyProposalOutcome`) — so a pact
+the player seals binds exactly as one the world negotiates without them (two
+histories, institutional stance, agreement-with-teeth). OUTGOING: a ruler-player
+proposes a pact (trade / non-aggression) to a neighbour from the settlement
+inspector (`SettlementDetail.diplomacy` → `propose_pact`); the NEIGHBOUR's own
+bounded view decides (the player is a proposer, never a god-hand). Player-only:
+an NPC/spectator world never parks an envoy, so its diplomacy is byte-identical
+(determinism suite green). See the interaction pipeline in `design/16`.
+
 ### P3 — Choices wear your character (small)
 `DecisionOption` gains an optional value-axis tint: options aligned with the
 actor's strongest values read marked ("*honour*"); choosing an option OPPOSED to

@@ -71,7 +71,7 @@ import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
-import { orgInteractionYearly } from './orgInteraction';
+import { orgInteractionYearly, playerRuledPolity, neighbourPolities, activeAgreement } from './orgInteraction';
 import { orgActionYearly } from './orgAction';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -515,7 +515,24 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
     .map((eid) => getEvent(world, eid))
     .filter((ev): ev is WorldEvent => ev !== undefined)
     .map((ev) => eventView(world, ev));
-  return { settlementId: id, events };
+
+  // OUTGOING DIPLOMACY (2E): if the player rules a polity and this settlement is a
+  // neighbouring polity's seat, offer the pacts not already in force. The neighbour's own
+  // bounded view decides any proposal (propose_pact → resolveProposal).
+  let diplomacy: SettlementDetail['diplomacy'];
+  const ruledId = playerRuledPolity(world);
+  if (ruledId !== undefined && s.polityId !== undefined && s.polityId !== ruledId && s.ruinedYear === undefined) {
+    const ruledOrg = getOrganization(world, ruledId);
+    const other = getOrganization(world, s.polityId);
+    if (ruledOrg && other && other.dissolvedYear === undefined && neighbourPolities(world, ruledOrg).some((o) => o.id === other.id)) {
+      diplomacy = {
+        otherName: other.name,
+        canTrade: activeAgreement(world, 'trade_agreement', ruledId, other.id) === undefined,
+        canPeace: activeAgreement(world, 'non_aggression', ruledId, other.id) === undefined,
+      };
+    }
+  }
+  return { settlementId: id, events, ...(diplomacy ? { diplomacy } : {}) };
 }
 
 /**

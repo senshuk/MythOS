@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
 
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -89,6 +89,9 @@ export interface SaveFile {
   orgAgreements?: OrgAgreement[];
   /** each org's memory of its last negotiation (2E). Optional for pre-v16 saves. */
   lastInteraction?: [OrgId, OrgInteractionRecord][];
+  /** a neighbour's proposal parked for a ruler-player's answer (2E envoy). Player-only,
+   *  optional; absent in NPC/spectator worlds and pre-envoy saves. */
+  pendingEnvoy?: World['pendingEnvoy'];
   /** per-org operational state + last action as entries. Optional for saves predating v14
    *  (operational state then defaults to baseline; lastAction empty). */
   operationalState?: [OrgId, OperationalState][];
@@ -200,6 +203,7 @@ export function serializeWorld(world: World): SaveFile {
     orgMandate: [...world.orgMandate],
     orgAgreements: world.orgAgreements,
     lastInteraction: [...world.lastInteraction],
+    pendingEnvoy: world.pendingEnvoy,
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -475,6 +479,8 @@ export function deserializeWorld(save: SaveFile): World {
     // v15 → v16 (interaction): no agreements or negotiation memory under an older engine.
     orgAgreements: s.orgAgreements ?? [],
     lastInteraction: new Map(s.lastInteraction ?? []),
+    // v22 → v23 (envoy): a parked incoming proposal is player-only; absent in older saves.
+    pendingEnvoy: s.pendingEnvoy,
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

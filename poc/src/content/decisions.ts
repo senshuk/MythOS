@@ -14,13 +14,14 @@
  *     turn advances exactly one week, so "this week's news" naturally stops being this week's).
  *   - STANDING decisions derive from durable state (a feud, a warming bond) and clear when it does.
  */
-import { type World, type EntityId, type DecisionDef, type DecisionView, type EventPart } from '../engine/model';
+import { type World, type EntityId, type DecisionDef, type DecisionView, type EventPart, DAYS_PER_YEAR } from '../engine/model';
 import { fullName, isKin, isAlive, getEvent } from '../engine/world';
 import { computeOpinion } from '../engine/opinion';
 import { bestSuitor, strongestFeud, isRuler } from '../engine/social';
-import { treasuryOf } from '../engine/organization';
+import { treasuryOf, getOrganization } from '../engine/organization';
 import { getChildren } from '../engine/location';
-import { patronDeityOf, intentLabel } from './fixture';
+import { interactionById } from '../engine/orgInteraction';
+import { patronDeityOf, intentLabel, ORG_INTERACTION } from './fixture';
 
 /** Days that count as "this week" — one player turn advances exactly this far, so a reactive
  *  decision surfaces the week just lived and is gone by the next. */
@@ -150,6 +151,56 @@ export const DECISIONS: DecisionDef[] = [
           { label: 'Endow the shrine', hint: 'the faithful will remember your piety', intent: { kind: 'fund_shrine', conscience: { axis: 'tradition', dir: 1 } }, tone: 'good' },
           { label: 'Turn them away', hint: 'the coffers stay full; the keepers leave empty-handed', intent: { kind: 'dismiss_petition', mode: 'shrine', conscience: { axis: 'tradition', dir: -1 } }, tone: 'bad' },
         ],
+      }];
+    },
+  },
+
+  // ── AUDIENCE: a neighbour's envoy stands before your seat (2E, design/26 P2) ─────────────────
+  // A neighbour polity's REAL proposal (its yearly diplomacy, parked because it is addressed
+  // to the polity YOU rule) brought to the throne. Your answer is the recipient's will — it
+  // flows through the same interaction outcome an NPC recipient's evaluate() would, so a pact
+  // you seal binds exactly as one the world negotiates without you.
+  {
+    id: 'audience_envoy',
+    evaluate(world, id): DecisionView[] {
+      const env = world.pendingEnvoy;
+      if (!env) return [];
+      // you must still hold the very seat the envoy was sent to
+      const home = world.homeSettlement.get(id);
+      const s = home !== undefined ? world.settlements[home] : undefined;
+      if (!s || s.polityId !== env.to || s.currentRulerId !== id) return [];
+      // an unanswered envoy grows stale and is withdrawn (the same window the sim replaces it in)
+      if ((world.tick - env.sinceTick) / DAYS_PER_YEAR >= ORG_INTERACTION.cooldownYears) return [];
+      const def = interactionById(env.defId);
+      const from = getOrganization(world, env.from);
+      if (!def || !from || from.dissolvedYear !== undefined) return [];
+      const envoyOf: EventPart = from.seatId !== undefined
+        ? { text: `the ${from.name}`, ref: { kind: 'settlement', id: from.seatId } }
+        : { text: `the ${from.name}` };
+
+      // per-interaction phrasing: what is being asked, and how accepting/refusing reads
+      let ask: string;
+      let accept: DecisionView['options'][number];
+      let refuse: DecisionView['options'][number];
+      if (env.defId === 'demand_tribute') {
+        const amount = Number(env.terms.amount);
+        ask = ` demands tribute of ${amount} under the shadow of its strength. Do you pay?`;
+        accept = { label: `Pay the ${amount}`, hint: 'buy peace with coin — your coffers, their goodwill', intent: { kind: 'answer_envoy', mode: 'accept', conscience: { axis: 'honor', dir: -1 } }, tone: 'neutral' };
+        refuse = { label: 'Defy them', hint: 'keep your gold and your pride — and risk the reprisal', intent: { kind: 'answer_envoy', mode: 'reject', conscience: { axis: 'war', dir: 1 } }, tone: 'bad' };
+      } else if (env.defId === 'non_aggression') {
+        ask = ' offers to swear peace along your shared border. Do you accept?';
+        accept = { label: 'Swear the peace', hint: 'stay both courts’ hands while it holds', intent: { kind: 'answer_envoy', mode: 'accept', conscience: { axis: 'war', dir: -1 } }, tone: 'good' };
+        refuse = { label: 'Refuse', hint: 'keep your sword arm free', intent: { kind: 'answer_envoy', mode: 'reject', conscience: { axis: 'war', dir: 1 } }, tone: 'neutral' };
+      } else {
+        ask = ' proposes a trade agreement — favoured commerce between your peoples. Do you accept?';
+        accept = { label: 'Seal the agreement', hint: 'merchants move under the pact’s protection', intent: { kind: 'answer_envoy', mode: 'accept' }, tone: 'good' };
+        refuse = { label: 'Decline', hint: 'keep your markets your own', intent: { kind: 'answer_envoy', mode: 'reject' }, tone: 'neutral' };
+      }
+      return [{
+        id: `aud:envoy:${env.sinceTick}:${env.from}`,
+        urgency: 72,
+        prompt: [{ text: 'An envoy of ' }, envoyOf, { text: ask }],
+        options: [accept, refuse],
       }];
     },
   },

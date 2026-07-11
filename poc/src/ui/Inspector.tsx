@@ -119,6 +119,7 @@ export function Inspector({
   onPossess,
   onWalk,
   onLeaveFor,
+  onProposePact,
   onClose,
 }: {
   actorDetail: ActorDetail | null;
@@ -146,6 +147,8 @@ export function Inspector({
   onWalk?: (id: number) => void;
   /** the living player leaves home to settle here (attention follows the life). */
   onLeaveFor?: (id: number) => void;
+  /** a ruler-player proposes a pact to this neighbouring polity's seat (2E outgoing). */
+  onProposePact?: (seatId: number, pact: 'trade_agreement' | 'non_aggression') => void;
   onClose: () => void;
 }) {
   if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail && !venueDetail) {
@@ -561,6 +564,30 @@ export function Inspector({
                 ⇴ leave home for {settV?.name ?? 'here'}
               </button>
             )}
+          {/* OUTGOING DIPLOMACY (2E): a ruler-player addresses a pact to this neighbour polity;
+              its own bounded view decides. Shown only when the engine says it is proposable. */}
+          {onProposePact && settlementDetail.diplomacy && (
+            <div className="diplomacy-verbs">
+              {settlementDetail.diplomacy.canTrade && (
+                <button
+                  className="play-inline"
+                  onClick={() => onProposePact(settlementDetail.settlementId, 'trade_agreement')}
+                  title={`propose favoured commerce with the ${settlementDetail.diplomacy.otherName} — they decide`}
+                >
+                  ⇋ propose a trade agreement
+                </button>
+              )}
+              {settlementDetail.diplomacy.canPeace && (
+                <button
+                  className="play-inline"
+                  onClick={() => onProposePact(settlementDetail.settlementId, 'non_aggression')}
+                  title={`offer peace to the ${settlementDetail.diplomacy.otherName} — they decide`}
+                >
+                  ☮ offer a non-aggression pact
+                </button>
+              )}
+            </div>
+          )}
           <h4>Local history</h4>
           {settlementDetail.events.length === 0 ? (
             <p className="muted">Nothing recorded yet.</p>

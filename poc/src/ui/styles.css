@@ -674,6 +674,9 @@ button { font-family: inherit; }
 .play-btn:disabled { color: var(--muted); cursor: default; }
 .play-inline { margin-left: 8px; }
 .play-inline:hover, .play-btn:hover:not(:disabled) { border-color: var(--cyan); }
+/* outgoing diplomacy verbs (2E) — situated on a neighbour polity's seat */
+.diplomacy-verbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.diplomacy-verbs .play-inline { margin-left: 0; }
 
 /* the primary "live the week" advance — the free tail's hero button (design/26 P6) */
 .act-primary { font-weight: 600; }

@@ -1032,6 +1032,14 @@ export interface World {
   /** each org's memory of its most recent interaction — its OWN side of the story (the
    *  two-histories principle: proposer and recipient keep different records, one event). */
   lastInteraction: Map<OrgId, OrgInteractionRecord>;
+  /** a neighbour polity's diplomatic proposal PARKED for a ruler-player's answer (2E,
+   *  design/26 P2's envoy). When a neighbour's yearly proposal is addressed to the polity
+   *  the player currently RULES, the engine does not auto-resolve it — the recipient's
+   *  will is the player's, not an evaluate() threshold — but parks the offer here for a
+   *  throne-room audience, then clears it on the answer. Only ever set while a player rules
+   *  the recipient polity, so a spectator/NPC world never has one: NPC diplomacy is
+   *  byte-identical. One at a time; a stale unanswered envoy is replaced. */
+  pendingEnvoy?: { from: OrgId; to: OrgId; defId: string; terms: Record<string, number | string>; sinceTick: number };
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -1235,6 +1243,11 @@ export interface FigureDetail {
 export interface SettlementDetail {
   settlementId: SettlementId;
   events: EventView[];
+  /** OUTGOING DIPLOMACY (2E): when the player RULES a polity and this settlement is a
+   *  neighbouring polity's seat, the pacts they may still propose here (a kind already in
+   *  force is omitted). Absent unless the player rules a polity adjacent to this one — the
+   *  neighbour's own bounded view will decide any proposal. */
+  diplomacy?: { otherName: string; canTrade: boolean; canPeace: boolean };
 }
 
 export interface RelationView {

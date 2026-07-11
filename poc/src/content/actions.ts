@@ -25,9 +25,10 @@ import { emit, getRel, isAlive } from '../engine/world';
 import { addThought } from '../engine/opinion';
 import { strongestFeud } from '../engine/social';
 import { witnessDeed } from '../engine/perception';
-import { adjustTreasury, treasuryOf } from '../engine/organization';
+import { adjustTreasury, treasuryOf, getOrganization } from '../engine/organization';
 import { pickVenue } from '../engine/venues';
-import { patronDeityOf } from './fixture';
+import { applyProposalOutcome, resolveProposal, interactionById } from '../engine/orgInteraction';
+import { patronDeityOf, ORG_INTERACTION } from './fixture';
 
 /** The actions offered to the player this turn. (NPC choice is in systems/decide.ts.) */
 export const PLAYER_ACTIONS: PlayerActionView[] = [
@@ -139,6 +140,48 @@ export const EXTRA_ACTIONS: Record<string, ActionResolver> = {
     if (!s || s.polityId === undefined || s.currentRulerId !== ruler) return;
     world.orgMandate.set(s.polityId, { kind, sinceTick: world.tick });
     emit(world, 'polity_steered', [ruler], { intent: kind, ...pickVenue(world, 'polity_steered', ruler, ruler) }, []);
+  },
+
+  /**
+   * ENVOY AUDIENCE (2E, design/26 P2) — answer a neighbour polity's parked proposal. The
+   * player IS the recipient's will, so their `mode` ('accept'|'reject') replaces the org's
+   * evaluate() score; the shared outcome tail then seals/refuses, emits the one event both
+   * courts cite, and writes each side's record. A no-op if the player no longer rules the
+   * addressed polity or the envoy has gone (dissolved proposer, cleared). The envoy is
+   * consumed either way — an answer given is an answer given.
+   */
+  answer_envoy: (world, ruler, intent, _rng) => {
+    const env = world.pendingEnvoy;
+    if (!env) return;
+    const h = world.homeSettlement.get(ruler);
+    const s = h !== undefined ? world.settlements[h] : undefined;
+    if (!s || s.polityId !== env.to || s.currentRulerId !== ruler) return; // must still hold the seat addressed
+    world.pendingEnvoy = undefined; // consumed on answer, accepted or not
+    const def = interactionById(env.defId);
+    const from = getOrganization(world, env.from);
+    const to = getOrganization(world, env.to);
+    if (!def || !from || !to || from.dissolvedYear !== undefined || to.dissolvedYear !== undefined) return;
+    applyProposalOutcome(world, def, from, to, env.terms, intent.mode === 'accept');
+  },
+
+  /**
+   * PROPOSE A PACT (2E outgoing) — a ruler-player addresses a peaceful pact to a neighbour
+   * polity. `target` is the neighbour's SEAT settlement; `mode` the interaction id
+   * ('trade_agreement' | 'non_aggression'). The player proposes; the NEIGHBOUR's OWN bounded
+   * view decides (resolveProposal runs its evaluate()) — the player is a proposer, never a
+   * god-hand. A no-op if the actor holds no seat or the target is not a living polity's seat.
+   */
+  propose_pact: (world, ruler, intent, _rng) => {
+    const h = world.homeSettlement.get(ruler);
+    const s = h !== undefined ? world.settlements[h] : undefined;
+    if (!s || s.polityId === undefined || s.currentRulerId !== ruler) return;
+    const from = getOrganization(world, s.polityId);
+    const ts = intent.target !== undefined ? world.settlements[intent.target] : undefined;
+    if (!from || !ts || ts.ruinedYear !== undefined || ts.polityId === undefined || ts.polityId === s.polityId) return;
+    const to = getOrganization(world, ts.polityId);
+    const def = interactionById(intent.mode ?? '');
+    if (!to || to.dissolvedYear !== undefined || !def) return;
+    resolveProposal(world, def, from, to, { years: ORG_INTERACTION.agreementYears });
   },
 
   /** AUDIENCE — turn the petitioners away. The refusal is itself an OUTCOME (recorded,

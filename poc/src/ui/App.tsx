@@ -443,6 +443,7 @@ export default function App() {
                 onPossess={(id) => sim.possess(id)}
                 onWalk={(id) => setCloseViewId(id)}
                 onLeaveFor={(id) => sim.leaveFor(id)}
+                onProposePact={(seatId, pact) => sim.playerAct({ kind: 'propose_pact', target: seatId, mode: pact })}
                 onClose={closeInspect}
               />
             </div>

@@ -35,6 +35,17 @@ import { perceive, worldviewOf } from './orgReason';
 import { applyEffects } from './orgAction';
 import { getOrganization, orgOpinionOf, noteOrgThought, seatSettlement } from './organization';
 
+/** The polity a possessed player currently RULES (seated at their home settlement), or
+ *  undefined — the seam that hands an incoming proposal to the player instead of evaluate(). */
+export function playerRuledPolity(world: World): OrgId | undefined {
+  const p = world.playerId;
+  if (p === undefined) return undefined;
+  const home = world.homeSettlement.get(p);
+  const s = home !== undefined ? world.settlements[home] : undefined;
+  if (!s || s.polityId === undefined || s.currentRulerId !== p) return undefined;
+  return s.polityId;
+}
+
 export function interactionById(id: string): InteractionDef | undefined {
   return INTERACTIONS.find((d) => d.id === id);
 }
@@ -116,8 +127,17 @@ export function resolveProposal(world: World, def: InteractionDef, from: Organiz
   // the recipient's own view of the offer — never the world's
   const factors = def.evaluate(perceive(world, to.id), worldviewOf(world, to.id), orgOpinionOf(world, to.id, from.id), terms, from);
   const score = factors.reduce((s, f) => s + f.value, 0);
-  const accepted = score > 0;
+  return applyProposalOutcome(world, def, from, to, terms, score > 0);
+}
 
+/**
+ * Apply a DECIDED proposal — the outcome tail shared by NPC negotiation (acceptance from
+ * `evaluate`) and a ruler-player's audience (acceptance is the player's own will). Given who
+ * accepted, the pack's pure `outcome()` describes the consequences; the engine applies them,
+ * seals any agreement, emits ONE event both parties cite, writes TWO records (each side's
+ * summary), and moves the institutional stance. The single mutator for an interaction.
+ */
+export function applyProposalOutcome(world: World, def: InteractionDef, from: Organization, to: Organization, terms: Record<string, number | string>, accepted: boolean): boolean {
   const outcome = def.outcome(world, from, to, terms, accepted); // PURE — describes only
   for (const pe of outcome.effects) {
     applyEffects(world, pe.party === 'from' ? from : to, [pe.effect]);
@@ -147,6 +167,7 @@ export function resolveProposal(world: World, def: InteractionDef, from: Organiz
  */
 export function orgInteractionYearly(world: World): void {
   pruneAgreements(world);
+  const ruled = playerRuledPolity(world); // the polity (if any) whose envoys await the player
   for (const org of world.organizations) {
     if (org.dissolvedYear !== undefined) continue;
     if (!offCooldown(world, org.id)) continue;
@@ -161,6 +182,20 @@ export function orgInteractionYearly(world: World): void {
     if (!proposal) continue; // nothing worth proposing — not history (invariant 8)
     const to = getOrganization(world, proposal.to);
     if (!to || to.dissolvedYear !== undefined) continue;
+
+    // If the proposal is addressed to the polity a PLAYER rules, the answer is theirs to
+    // give (design/26 P2): park it for an audience instead of auto-resolving. One envoy
+    // waits at a time — a fresh offer only displaces a stale one (an unanswered overture
+    // ages out), so the throne room is never buried. Player-only: an NPC/spectator world
+    // never enters this branch, so its diplomacy is byte-identical.
+    if (proposal.to === ruled) {
+      const held = world.pendingEnvoy;
+      const stale = held !== undefined && (world.tick - held.sinceTick) / DAYS_PER_YEAR >= ORG_INTERACTION.cooldownYears;
+      if (held === undefined || stale) {
+        world.pendingEnvoy = { from: org.id, to: to.id, defId: def.id, terms: proposal.terms, sinceTick: world.tick };
+      }
+      continue; // parked, not resolved — a considered proposal is not yet history
+    }
 
     resolveProposal(world, def, org, to, proposal.terms);
   }
