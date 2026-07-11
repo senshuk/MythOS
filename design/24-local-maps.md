@@ -14,8 +14,12 @@ sketches below: (1) growth rings deferred — the sim keeps no population histor
 band building ages from; (2) **L2 shipped as a DERIVED reading, not Location-tree
 state**: households are computed from ties at request time (couples co-housed, the
 unwed under a parent's roof, eldest heads the hearth) — same player experience,
-zero new world state. Populating the Location tree remains L4's opening move,
-when locations become sim-meaningful. L4 open.
+zero new world state. **L4 v1 SHIPPED as VENUES (design/25 is its ADR):** the
+focused settlement mints its public venues (square, shrine, tavern, ruler's hall)
+as real Locations at promote; weddings, brawls, friendships and feuds name their
+venue in prose ("married at the shrine of the Windwalker"), venues are inspectable
+("what happened here"), and the close view's drawn buildings link to them. Venue
+choice is a pure hash — no stream perturbation, verified by the determinism suite.
 
 ---
 
