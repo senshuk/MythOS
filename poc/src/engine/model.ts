@@ -1247,7 +1247,7 @@ export interface SettlementDetail {
    *  neighbouring polity's seat, the pacts they may still propose here (a kind already in
    *  force is omitted). Absent unless the player rules a polity adjacent to this one — the
    *  neighbour's own bounded view will decide any proposal. */
-  diplomacy?: { otherName: string; canTrade: boolean; canPeace: boolean };
+  diplomacy?: { otherName: string; canTrade: boolean; canPeace: boolean; canAlly: boolean };
 }
 
 export interface RelationView {

@@ -148,7 +148,7 @@ export function Inspector({
   /** the living player leaves home to settle here (attention follows the life). */
   onLeaveFor?: (id: number) => void;
   /** a ruler-player proposes a pact to this neighbouring polity's seat (2E outgoing). */
-  onProposePact?: (seatId: number, pact: 'trade_agreement' | 'non_aggression') => void;
+  onProposePact?: (seatId: number, pact: 'trade_agreement' | 'non_aggression' | 'alliance') => void;
   onClose: () => void;
 }) {
   if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail && !venueDetail) {
@@ -584,6 +584,15 @@ export function Inspector({
                   title={`offer peace to the ${settlementDetail.diplomacy.otherName} — they decide`}
                 >
                   ☮ offer a non-aggression pact
+                </button>
+              )}
+              {settlementDetail.diplomacy.canAlly && (
+                <button
+                  className="play-inline"
+                  onClick={() => onProposePact(settlementDetail.settlementId, 'alliance')}
+                  title={`bind the ${settlementDetail.diplomacy.otherName} in mutual defense — they decide`}
+                >
+                  ⚔ propose an alliance
                 </button>
               )}
             </div>

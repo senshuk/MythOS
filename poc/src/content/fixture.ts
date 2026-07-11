@@ -1181,6 +1181,44 @@ export const INTERACTIONS: InteractionDef[] = [
           };
     },
   },
+  {
+    id: 'alliance', displayName: 'Alliance',
+    description: 'Bind two courts in mutual defense — an attack on one draws in the other.',
+    propose: (world, from, candidates) => {
+      // a friend warm enough to bleed for — a higher bar than mere trade; not already allied
+      let best: Organization | undefined;
+      let bestRel = 40;
+      for (const c of candidates) {
+        if (hasPact(world, 'alliance', from, c)) continue;
+        const rel = relationBetween(world, from.seatId, c.seatId);
+        if (rel > bestRel) { bestRel = rel; best = c; }
+      }
+      return best ? { to: best.id, terms: { years: ORG_INTERACTION.agreementYears } } : undefined;
+    },
+    evaluate: (p, w, stance, _terms, _from) => [
+      // an alliance is a bond of warmth AND a shield — sought most where one is threatened
+      { id: 'kinship', group: 'relations', value: Math.round(stance * 0.2) },
+      { id: 'militaristic_lean', group: 'disposition', value: Math.round((w.militaristic ?? 0) * 0.2) },
+      { id: 'under_threat', group: 'military', value: (p.find((f) => f.id === 'border_raids')?.value ?? 0) * 6 },
+      { id: 'entanglement', group: 'baseline', value: -8 }, // a shield is also a burden — someone else's wars become yours
+    ],
+    outcome: (_world, from, to, terms, accepted) => accepted
+      ? {
+          accepted,
+          effects: to.seatId !== undefined ? [{ party: 'from' as const, effect: { target: 'relation' as const, neighbourId: to.seatId, delta: 10 } }] : [],
+          agreement: { kind: 'alliance', years: Number(terms.years) },
+          summaryFrom: `forged an alliance with the ${to.name}`,
+          summaryTo: `forged an alliance with the ${from.name}`,
+          eventType: 'pact_sealed', eventData: { kind: 'alliance', a: from.name, b: to.name },
+        }
+      : {
+          accepted,
+          effects: [],
+          summaryFrom: `was rebuffed in seeking an alliance with the ${to.name}`,
+          summaryTo: `turned aside an alliance with the ${from.name}`,
+          eventType: 'pact_refused', eventData: { kind: 'alliance', a: from.name, b: to.name },
+        },
+  },
 ];
 
 /** Which interaction each current intent inclines an org toward. Absent intents interact
@@ -1189,6 +1227,7 @@ export const INTENT_TO_INTERACTION: Record<string, string> = {
   trade: 'trade_agreement',
   protect_border: 'non_aggression',
   expand: 'demand_tribute',
+  prepare_war: 'alliance', // a polity readying for war rallies its friends first
 };
 
 export function speciesById(id: string): Species {

@@ -42,7 +42,7 @@ import {
 import { addThought } from './opinion';
 import { registerLocation } from './location';
 import { ensureVenues } from './venues';
-import { foundPolity, noteOrgThought, orgOpinionOf } from './organization';
+import { foundPolity, noteOrgThought, orgOpinionOf, getOrganization } from './organization';
 import { activeAgreement } from './orgInteraction';
 import { recordDeed } from './reputation';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
@@ -780,10 +780,13 @@ export function geographyYearly(world: World): void {
 
     // a sworn peace (2E) stays both courts' hands while it holds: no war, no raid. The
     // pact does not stop relations souring — a cold peace is still a peace, until it lapses.
+    // An ALLIANCE binds tighter still — allies never turn on one another (a cold alliance
+    // is a peace too), and beyond that draws each into the other's wars (drawInAllies below).
     const atPeace =
       A.polityId !== undefined &&
       B.polityId !== undefined &&
-      activeAgreement(world, 'non_aggression', A.polityId, B.polityId) !== undefined;
+      (activeAgreement(world, 'non_aggression', A.polityId, B.polityId) !== undefined ||
+        activeAgreement(world, 'alliance', A.polityId, B.polityId) !== undefined);
 
     if (
       !atPeace &&
@@ -815,6 +818,7 @@ export function geographyYearly(world: World): void {
         //                               falls when recordRuins registers the emptied town)
         // razing a city brands the victor's POLITY with lasting infamy (2C: OrgReputation).
         if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
+        drawInAllies(world, weak, strong); // the fallen town's allies are drawn against the conqueror (2E)
       } else {
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);
@@ -851,9 +855,39 @@ export function geographyYearly(world: World): void {
       // infamy on the raider's institution.
       if (raider.polityId !== undefined && victim.polityId !== undefined) noteOrgThought(world, raider.polityId, victim.polityId, 'raided', raidId);
       if (raider.polityId !== undefined) recordDeed(world, raider.polityId, 'org_aggression', { cause: raidId });
+      drawInAllies(world, victim, raider); // the raided court's allies are drawn against the raider (2E)
     }
   }
   world.geoRngState = rng.state;
+}
+
+/** How sharply an ally's border with an aggressor sours when it is drawn into a war. */
+const ALLY_DRAWN_IN = 14;
+
+/**
+ * MUTUAL DEFENSE (2E alliance): when a polity is raided or conquered, each polity ALLIED to
+ * the victim is drawn toward the quarrel — its border with the aggressor sours, so an
+ * alliance chain can widen a war into a coalition (and, over time, kindle its own raids).
+ * Deterministic and RNG-FREE: a fixed souring on the ally↔aggressor edge that draws NOTHING
+ * from the geo stream, so a world with no alliances is byte-identical. An ally is drawn in
+ * only where it shares a BORDER with the aggressor — you can come to blows only with a
+ * neighbour; a distant ally's sympathy has no front (design/16: diplomacy nudges relations,
+ * it does not move armies across the map).
+ */
+export function drawInAllies(world: World, victim: Settlement, aggressor: Settlement): void {
+  if (victim.polityId === undefined || aggressor.polityId === undefined) return;
+  for (const g of world.orgAgreements) {
+    if (g.kind !== 'alliance' || g.expiresTick <= world.tick) continue;
+    const allyPolity = g.a === victim.polityId ? g.b : g.b === victim.polityId ? g.a : undefined;
+    if (allyPolity === undefined || allyPolity === aggressor.polityId) continue;
+    const allySeat = getOrganization(world, allyPolity)?.seatId;
+    if (allySeat === undefined) continue;
+    for (const e2 of world.edges) {
+      if ((e2.a === allySeat && e2.b === aggressor.id) || (e2.b === allySeat && e2.a === aggressor.id)) {
+        e2.relation = clamp(e2.relation - ALLY_DRAWN_IN, -100, 100);
+      }
+    }
+  }
 }
 
 function raidMacro(m: MacroPop, toll: number): void {

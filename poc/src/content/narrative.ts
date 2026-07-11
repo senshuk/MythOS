@@ -131,8 +131,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   petition_dismissed: (n) => `${n(0)} turned the petitioners away from the seat.`,
   polity_steered: (n, d) => `${n(0)} set the polity on a new course: ${POLICY_PHRASE[String(d.intent)] ?? String(d.intent)}.`,
   // negotiated interactions (2E) — one event, two histories: each court keeps its own account.
-  pact_sealed: (_n, d) => `The ${d.a} and the ${d.b} sealed a ${d.kind === 'peace' ? 'pact of peace' : 'trade agreement'}.`,
-  pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : 'trade'}.`,
+  pact_sealed: (_n, d) => `The ${d.a} and the ${d.b} sealed ${d.kind === 'peace' ? 'a pact of peace' : d.kind === 'alliance' ? 'an alliance' : 'a trade agreement'}.`,
+  pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : d.kind === 'alliance' ? 'alliance' : 'trade'}.`,
   tribute_paid: (_n, d) => `The ${d.b} paid tribute of ${d.amount} to the ${d.a}.`,
   tribute_refused: (_n, d) => `The ${d.b} defied the ${d.a}'s demand for tribute.`,
 };

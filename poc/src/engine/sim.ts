@@ -529,6 +529,7 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
         otherName: other.name,
         canTrade: activeAgreement(world, 'trade_agreement', ruledId, other.id) === undefined,
         canPeace: activeAgreement(world, 'non_aggression', ruledId, other.id) === undefined,
+        canAlly: activeAgreement(world, 'alliance', ruledId, other.id) === undefined,
       };
     }
   }

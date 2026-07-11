@@ -191,6 +191,10 @@ export const DECISIONS: DecisionDef[] = [
         ask = ' offers to swear peace along your shared border. Do you accept?';
         accept = { label: 'Swear the peace', hint: 'stay both courts’ hands while it holds', intent: { kind: 'answer_envoy', mode: 'accept', conscience: { axis: 'war', dir: -1 } }, tone: 'good' };
         refuse = { label: 'Refuse', hint: 'keep your sword arm free', intent: { kind: 'answer_envoy', mode: 'reject', conscience: { axis: 'war', dir: 1 } }, tone: 'neutral' };
+      } else if (env.defId === 'alliance') {
+        ask = ' seeks an alliance — mutual defense, each bound to the other’s wars. Do you accept?';
+        accept = { label: 'Forge the alliance', hint: 'a shield, and a share in their quarrels', intent: { kind: 'answer_envoy', mode: 'accept' }, tone: 'good' };
+        refuse = { label: 'Stand alone', hint: 'owe no one your sword', intent: { kind: 'answer_envoy', mode: 'reject' }, tone: 'neutral' };
       } else {
         ask = ' proposes a trade agreement — favoured commerce between your peoples. Do you accept?';
         accept = { label: 'Seal the agreement', hint: 'merchants move under the pact’s protection', intent: { kind: 'answer_envoy', mode: 'accept' }, tone: 'good' };

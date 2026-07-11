@@ -8,6 +8,16 @@ organization↔organization interaction (Phase 2E) from tangling. The frozen con
 is **feature-complete — Organizations v1**. No new organization features unless a roadmap
 item requires them; otherwise Organizations risk becoming a "god subsystem."
 
+**2E shipped so far (2026-07):** the negotiated pipeline (`engine/orgInteraction.ts`) with
+`trade_agreement`, `non_aggression`, `demand_tribute` (NPC↔NPC); the PLAYER as a party to it
+(parked incoming envoy audiences + outgoing proposals, design/26 P2); and the **alliance**
+pact — a mutual-defense agreement whose teeth are legible in `geographyYearly`: allies never
+turn on one another, and when one is raided or conquered its allies that share a border with
+the aggressor are drawn toward the quarrel (a fixed, RNG-free souring, so alliance-free worlds
+stay byte-identical). This obeys principle 5: the alliance nudges relations, it does not move
+armies. Deferred next slices: mutual-defense that fields actual forces, war resolution with
+real outcomes, espionage — each within "diplomacy never changes geography."
+
 ---
 
 ## Why this note exists
