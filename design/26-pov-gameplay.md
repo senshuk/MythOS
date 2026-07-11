@@ -1,0 +1,132 @@
+# 26 — POV Gameplay: Living One Life Well
+
+**Document type:** Assessment + staged proposal — how "live as one of them" gets
+cleaned up and pulled toward what Crusader Kings, RimWorld and Warsim each do best.
+**Companion documents:** `21-the-subjective-journal.md` (the cockpit constitution),
+`16-interaction-principles.md` (org discipline the ruler-levers must respect),
+`01-warsim-analysis.md` §2.2 (throne-room petitioners), `25-venues-adr.md`.
+**Status:** P1 (autopilot) + P2 (audiences: feud judgment, shrine endowment) SHIPPED
+(2026-07). P1 note: the standing-order lean was deferred — the aspiration-driven
+decider alone proved sufficient (a possessed actor courted and married within two
+streamed years). P3–P6 open.
+
+---
+
+## 1. What already stands (and must not be broken)
+
+- **Possession is philosophically perfect.** `playerId` is the only difference; the
+  player's intents ride the same act loop, the same resolver, their own rng stream,
+  and a replayable input log. Mental breaks preempt the player's chosen intent with
+  no exemption — the design pillar, working.
+- **The cockpit speaks from inside one head** (design/21): situation, mood with
+  reasons, one attention feed, the journal. The Decisions chassis (pure-read
+  `DecisionDef`s over real state) and the Ambitions ladder are the right shape.
+- **Death is a transition** — heirOf/inheritHeir, the line followed across
+  settlements. Time flow now holds on new decisions and on death.
+
+## 2. The gaps, each named against its inspiration
+
+### G1 — Your character stops living when time runs (the biggest flaw)
+`takePlayerIntent` falls back to `{kind:'idle'}` for any week with no scheduled
+input. Press play as a possessed character and they **rest for years**: no income,
+no bonds, mood decaying — the streaming-time feature actively punishes possession.
+CK's model: the character keeps living; the player *intervenes*.
+
+### G2 — Verbs are generic and placeless; the action bar is a form
+Six universal verbs + two dropdowns + "(1 week)". Everyone from farmer to lord has
+the same menu, aimed via a `<select>` of names. CK grants verbs by POSITION;
+Warsim by SITUATION (menus of things in front of you); RimWorld's verbs emerge
+from context. We now have venues, households, and attention lines — the world is
+full of clickable *situations* the action system ignores.
+
+### G3 — The seat is a trophy, not a job
+The `rise` ambition ends at `press_claim`; `fulfilled: isRuler` — and then the
+ruler has exactly the verbs a farmhand has. CK is entirely "the job of being your
+position"; Warsim's crown jewel is the **throne room**: a stream of petitioners
+brought TO you. Our polity org reasons yearly with legible factors, settlements
+hold real feuds/factions/economies — everything an audience system needs already
+exists as state.
+
+### G4 — Choices don't express character
+CK options are trait-gated and acting against your nature costs stress. MythOS
+already has per-actor values/temperament AND the precepts→conscience machinery
+(guilt/pride self-thoughts into mood) — but decision options are the same for
+every soul, and choosing against your nature costs nothing.
+
+### G5 — Acting gives no answer
+Click "Work ▸" and the snapshot silently swaps. Every inspiration answers an
+action (RimWorld letters, CK event outcomes, Warsim's report lines). The data for
+"what your week became" already exists (story beats, attention diffs) — it just
+isn't SURFACED at the moment of action.
+
+### G6 — You can never leave home
+No travel verb. Emigration exists as a sim event, travel as engine machinery, and
+inheritance already moves the focus across the map — but a living player is
+pinned to their birthplace.
+
+## 3. The proposal, in priority order
+
+### P1 — The autopilot: your character lives; you steer (small, transformative)
+When no player input is scheduled for the week, fall through to the **same NPC
+decider** every other soul uses (aspiration-driven), instead of idling. Purity
+bonus: this is *more* aligned with "every character is equal", not less. Add a
+**standing order** (a persisted lean: pursue ambition / work / rest) the decider
+weighs, so play mode reads: press play → watch your life unfold on the map →
+time holds when the world asks → choose → play. Determinism unaffected:
+possession is an input; the decider draws the same streams it always does.
+
+### P2 — Audiences: Warsim's throne room from real state (the jewel)
+Ruler-only `DecisionDef`s that read the settlement and bring its troubles to the
+seat: two households in open feud ask judgment (real `rels` edges — siding emits
+real opinion/reputation effects); the shrine asks funds (real treasury); a faction
+split asks recognition; an exile begs return; a neighbour polity's envoy carries
+its real 2E proposal. Cadence-gated (a petition a season, not a spam). ZERO new
+simulation: audiences are a legible WINDOW onto systems already running, and every
+verdict flows through existing intents/effects. This single feature makes the
+seat a job and closes the loop the `rise` ambition currently drops.
+
+### P3 — Choices wear your character (small)
+`DecisionOption` gains an optional value-axis tint: options aligned with the
+actor's strongest values read marked ("*honour*"); choosing an option OPPOSED to
+a strong value emits the existing conscience self-thought into mood (guilt), and
+aligned choices a small pride. Reuses precepts wholesale; suddenly two different
+souls play the same dilemma differently — CK's trait-gating, derived not scripted.
+
+### P4 — Role verbs through the org, bounded (medium)
+The seated player steers the polity the CK-council way WITHOUT breaking org
+discipline (design/16): once a year the org's reasoning surfaces its top intents
+— the ruler picks among them (or abstains → the org's own choice stands). The org
+still perceives with bounded knowledge and executes through its own resolver; the
+player is a heavier vote, not a god-hand. Pack adds role affordances the same
+data-driven way PLAYER_ACTIONS works today.
+
+### P5 — Leaving home (medium)
+"Leave for X" as a player action: rides the emigration machinery, the focus
+follows (as it already does for inheritance), arrival at the town gate in the
+close view. Opens courtship/feuds/claims in a second town — the world stops being
+one village deep, per POV life.
+
+### P6 — Cockpit cleanups (small, anytime)
+The week answers back: after each turn (and each held year), a compact "your
+week/year" strip of beats that touched YOU. Retire the target `<select>`: acting
+happens from the world (attention lines, inspector, households, venues) with the
+form as fallback. Rename "release" → "step out of this life"; "(1 week)" →
+"live the week". A handful of new commoner decisions from real state (a marriage
+offer via bestSuitor, a child's coming of age, a conversion squeeze during a zeal
+split) — pack content, each a pure read.
+
+## 4. What NOT to do
+
+No scripted quest chains (decision content must stay pure reads of real state);
+no player-only mechanics or stats (the equality pillar); no CK lifestyle/XP trees
+unless they arrive as pack data for ALL actors; no free-text command parsing
+(surfaced affordances, per the constitution).
+
+## 5. Decision-filter check
+
+Simulation-first: P2/P4 expose running systems, they don't add scripted ones.
+Generic: verbs, audiences, tints are pack data. Emergent: every audience is
+generated by real edges and treasuries. Legible: each petition names its cause
+and each verdict lands as traceable events. Equal: P1 makes the player MORE like
+an NPC, not less. Five years: the org-mediated ruler is the only shape that
+survives multi-settlement realms.

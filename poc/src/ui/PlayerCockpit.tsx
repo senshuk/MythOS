@@ -419,6 +419,11 @@ export function PlayerPanel({
               </button>
               <span className="muted action-hint">{action.hint}</span>
             </div>
+            {/* the AUTOPILOT (design/26 P1), told plainly: acting seizes a week; unseized
+                weeks are lived by the character's own nature while the years run */}
+            <p className="autopilot-note muted">
+              Weeks you don't seize, {player.name.split(' ')[0]} lives by their own nature — press ▶ and watch.
+            </p>
           </div>
 
           {/* QUESTION 2 — one feed, people and events merged, sorted by importance. */}

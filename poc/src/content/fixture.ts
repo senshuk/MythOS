@@ -1338,6 +1338,12 @@ export const THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   // admiration for someone whose public generosity you WITNESSED — the positive twin of
   // `feared`. Warms onlookers toward a renowned giver (can ripen into friendship).
   admired: { base: 80, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 4, mult: 0.85, label: 'admired their generosity' },
+  // AUDIENCE verdicts (design/26 P2) — how a ruling at the seat lands on its parties.
+  // A judged truce is strong and slow to fade (it must lift a feud's weight for a
+  // while); favor warms the winner to the judge; a wrong verdict is long resented.
+  judgment_truce: { base: 260, durationTicks: 5 * DAYS_PER_YEAR, stackLimit: 2, mult: 0.85, label: 'a truce imposed at the seat' },
+  judgment_favor: { base: 120, durationTicks: 5 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.85, label: 'judged fairly at the seat' },
+  judgment_wrong: { base: -150, durationTicks: 6 * DAYS_PER_YEAR, stackLimit: 3, mult: 0.85, label: 'wronged by a judgment' },
   // moral revulsion: witnessed a deed the community considers a cultural profanity
   // (ethics weight ≥ 2.0). Stronger and more durable than mere dread — this is not
   // just fear of a violent person but outrage at a transgression against shared belief.

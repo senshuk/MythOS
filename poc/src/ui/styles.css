@@ -659,6 +659,7 @@ button { font-family: inherit; }
 .wv-item.c-rumor { border-left-color: var(--muted); color: var(--ink-dim); }
 
 .act-lead { margin-top: var(--space-4); margin-bottom: var(--space-1); }
+.autopilot-note { margin: 8px 0 0; font-size: var(--fs-xs); font-style: italic; }
 .action-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-btn {
   background: linear-gradient(180deg, #9cc4ff, var(--cyan)); color: #0b1220; border: none; font-weight: 600;

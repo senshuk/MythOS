@@ -112,6 +112,13 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   org_patrol: (_n, d) => `The ${d.org} set patrols on its marches.`,
   org_trade_pact: (_n, d) => `The ${d.org} opened a trade pact with ${d.with}.`,
   org_festival: (_n, d) => `The ${d.org} held a great festival.`,
+  // AUDIENCES at the seat (design/26 P2) — a ruler's verdicts are public history.
+  judgment: (n, d) =>
+    d.verdict === 'reconcile'
+      ? `${n(0)} judged the feud between ${n(1)} and ${n(2)}, and bade them make peace${d.venue ? ` at ${d.venue}` : ''}.`
+      : `${n(0)} judged for ${n(1)} against ${n(2)}${d.venue ? ` at ${d.venue}` : ''}.`,
+  shrine_funding: (n, d) => `${n(0)} endowed ${d.venue ?? 'the shrine'} with ${d.amount} from the treasury.`,
+  petition_dismissed: (n) => `${n(0)} turned the petitioners away from the seat.`,
   // negotiated interactions (2E) — one event, two histories: each court keeps its own account.
   pact_sealed: (_n, d) => `The ${d.a} and the ${d.b} sealed a ${d.kind === 'peace' ? 'pact of peace' : 'trade agreement'}.`,
   pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : 'trade'}.`,
@@ -133,6 +140,12 @@ export function eventInterest(type: string, data: Record<string, number | string
     case 'contested_succession': return 42; // a power shift between factions — between ascension and dynasty
     case 'condemned':
       return 55; // a named divine condemnation is notable but not as grave as a death
+    case 'judgment':
+      return 30; // a ruling from the seat is town news — remembered by both parties
+    case 'shrine_funding':
+      return 22; // public piety, quietly notable
+    case 'petition_dismissed':
+      return 8; // a closed door is minor news
     case 'apostasy':
       return 18; // renouncing faith is personal — comparable to a marriage or ascension
     case 'converted':

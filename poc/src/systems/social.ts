@@ -15,7 +15,7 @@ import { isAlive } from '../engine/world';
 import { takePlayerIntent } from '../engine/player';
 import { maybeBreak } from '../engine/mood';
 import { Rng } from '../engine/rng';
-import { isAdult, decideActor } from './decide';
+import { isAdult, decideActor, decideCourse } from './decide';
 import { resolveIntent, resolvePlayerIntent } from './resolve';
 
 export function actWeekly(world: World, actors: EntityId[]): void {
@@ -34,7 +34,16 @@ export function actWeekly(world: World, actors: EntityId[]): void {
       const prng = new Rng(world.playerRngState);
       const broke = maybeBreak(world, a, prng);
       world.playerRngState = prng.state;
-      resolvePlayerIntent(world, a, broke ?? takePlayerIntent(world));
+      const scheduled = takePlayerIntent(world);
+      if (broke ?? scheduled) {
+        resolvePlayerIntent(world, a, (broke ?? scheduled)!);
+      } else {
+        // AUTOPILOT (design/26 P1): an UNDIRECTED week is lived by the same course
+        // and the same streams as every other soul — the character keeps living
+        // (works when hungry, deepens bonds, pursues their aspiration) and the
+        // player INTERVENES. Streaming years no longer mean years of idling.
+        resolveIntent(world, a, decideCourse(world, a, adults), world.rng);
+      }
     } else {
       // intent producer #1: the NPC decider, resolved on the settlement stream.
       resolveIntent(world, a, decideActor(world, a, adults), world.rng);

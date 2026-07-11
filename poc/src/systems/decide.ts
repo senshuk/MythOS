@@ -66,7 +66,13 @@ export function decideActor(world: World, a: EntityId, adults: EntityId[]): Inte
   // Drawn from the settlement stream — the same stream this producer's other choices use.
   const broke = maybeBreak(world, a, world.rng);
   if (broke) return broke;
+  return decideCourse(world, a, adults);
+}
 
+/** The decider MINUS the break check — the course a sound mind sets. The player's
+ *  AUTOPILOT (design/26 P1) uses this directly: their break was already rolled on the
+ *  player stream, and an undirected week is then lived by this same policy as anyone. */
+export function decideCourse(world: World, a: EntityId, adults: EntityId[]): Intent {
   // subsistence first: hunger (or poverty) motivates plying your profession.
   const needs = world.needs.get(a)!;
   if (needs[SUBSISTENCE_NEED] < 300 || needs[WEALTH_NEED] < 250) return { kind: 'work' };

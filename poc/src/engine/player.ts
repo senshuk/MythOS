@@ -136,9 +136,13 @@ export function inheritHeir(world: World): void {
  * end so the most recently scheduled intent for a tick wins; O(n) is fine for the
  * PoC (a production engine would index by tick).
  */
-export function takePlayerIntent(world: World): Intent {
+/** The player's scheduled intent for THIS tick, or undefined when the week is
+ *  undirected — in which case the act loop lets the character live by the same
+ *  decider as every other soul (the AUTOPILOT, design/26 P1). The player
+ *  intervenes; the character lives. */
+export function takePlayerIntent(world: World): Intent | undefined {
   for (let i = world.playerInputs.length - 1; i >= 0; i--) {
     if (world.playerInputs[i].tick === world.tick) return world.playerInputs[i].intent;
   }
-  return { kind: 'idle' };
+  return undefined;
 }
