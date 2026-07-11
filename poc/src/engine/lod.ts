@@ -44,6 +44,7 @@ import { registerLocation } from './location';
 import { ensureVenues } from './venues';
 import { foundPolity, noteOrgThought, orgOpinionOf, getOrganization } from './organization';
 import { activeAgreement } from './orgInteraction';
+import { declareOrContinueWar, warBetween, joinWar } from './war';
 import { recordDeed } from './reputation';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
@@ -826,6 +827,10 @@ export function geographyYearly(world: World): void {
         if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
         drawInAllies(world, weak, strong); // the fallen town's allies are drawn against the conqueror (2E)
       } else {
+        // an inconclusive BATTLE — open war. Declare (or continue) a formal war between the
+        // two courts; allies drawn in below JOIN it as co-belligerents (2E). A conquest, by
+        // contrast, is decisive and needs no standing war — the razing itself is the story.
+        if (strong.polityId !== undefined && weak.polityId !== undefined) declareOrContinueWar(world, strong.polityId, weak.polityId);
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);
         const bToll = Math.round(rng.range(6, 20) * proximity);
@@ -923,15 +928,18 @@ function allyPop(world: World, orgId: number): number {
  */
 export function drawInAllies(world: World, victim: Settlement, aggressor: Settlement): void {
   if (victim.polityId === undefined || aggressor.polityId === undefined) return;
+  // if this clash is part of a formal war, allies drawn in JOIN it (offense, 2E war layer)
+  const war = warBetween(world, aggressor.polityId, victim.polityId);
   for (const g of world.orgAgreements) {
     if (g.kind !== 'alliance' || g.expiresTick <= world.tick) continue;
     const allyPolity = g.a === victim.polityId ? g.b : g.b === victim.polityId ? g.a : undefined;
     if (allyPolity === undefined || allyPolity === aggressor.polityId) continue;
+    if (war) joinWar(world, war, allyPolity, victim.polityId); // declares for its friend (offense)
     const allySeat = getOrganization(world, allyPolity)?.seatId;
     if (allySeat === undefined) continue;
     for (const e2 of world.edges) {
       if ((e2.a === allySeat && e2.b === aggressor.id) || (e2.b === allySeat && e2.a === aggressor.id)) {
-        e2.relation = clamp(e2.relation - ALLY_DRAWN_IN, -100, 100);
+        e2.relation = clamp(e2.relation - ALLY_DRAWN_IN, -100, 100); // a material front where they share a border
       }
     }
   }

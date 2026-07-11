@@ -72,6 +72,7 @@ import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
 import { orgInteractionYearly, playerRuledPolity, neighbourPolities, activeAgreement } from './orgInteraction';
+import { warYearly, activeWarsOf } from './war';
 import { orgActionYearly } from './orgAction';
 import { needsDaily } from '../systems/needs';
 import { actWeekly } from '../systems/social';
@@ -159,6 +160,7 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
     orgMandate: new Map(),
     orgAgreements: [],
     lastInteraction: new Map(),
+    wars: [],
     figureRngState: mixSeed(seed, 0xf16),
     playerId: undefined,
     playerRngState: mixSeed(seed, 0x91a), // independent stream for player actions
@@ -209,7 +211,8 @@ export function stepTick(world: World): void {
     if (hasFocus && MODULES.religion) statePreceptsYearly(world); // the creed judges how each soul LIVES (mood)
     if (hasFocus && MODULES.factions) factionYearly(world); // faction split recomputed before succession check
     macroYearly(world); // every other settlement, aggregate
-    geographyYearly(world); // relations drift & raids along the region graph
+    geographyYearly(world); // relations drift & raids along the region graph (declares wars)
+    warYearly(world); // resolve formal wars: a fallen belligerent, or a long quiet, ends one
     economyYearly(world); // production, prices & goods trade along the routes
     orgTitheYearly(world); // polities draw their tithe (2C: OrgResources — funds the action layer)
     summaryYearly(world); // named people living elsewhere, coarse fidelity
@@ -872,6 +875,16 @@ function settlementView(world: World, fullCount: number, summariesByHome: Map<nu
             const li = world.lastInteraction.get(org.id);
             return li ? { summary: li.summary, year: Math.floor(li.sinceTick / DAYS_PER_YEAR) } : undefined;
           })(),
+          wars: activeWarsOf(world, org.id).map((wr) => {
+            const onA = wr.sideA.includes(org.id);
+            const ourSide = onA ? wr.sideA : wr.sideB;
+            const foePrimary = onA ? wr.sideB[0] : wr.sideA[0];
+            return {
+              against: getOrganization(world, foePrimary)?.name ?? 'a fallen power',
+              alliesCount: ourSide.length - 1, // co-belligerents fighting alongside us
+              sinceYear: Math.floor(wr.startTick / DAYS_PER_YEAR),
+            };
+          }),
         };
       })(),
       specialization: s.econ.specialization,
@@ -1928,6 +1941,10 @@ export function canonicalize(world: World): string {
   // standing agreements (2E) — normalized a<b, in seal order
   for (const g of world.orgAgreements) {
     parts.push(`G${g.kind}:${g.a}-${g.b}.s${g.sinceTick}.e${g.expiresTick}`);
+  }
+  // active formal wars (2E) — sides in join order, in declaration order
+  for (const w of world.wars) {
+    parts.push(`W${w.id}:[${w.sideA.join(',')}]v[${w.sideB.join(',')}].s${w.startTick}.c${w.lastClashTick}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

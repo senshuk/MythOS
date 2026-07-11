@@ -19,9 +19,18 @@ razing into a battle the town survives, the aggressor bloodied and the allies pa
 own blood (an `alliance_answered` event names the coalition). Principle 5 holds: the pact
 itself never razes or moves anyone — `geographyYearly` (the sim's own war layer) does, now
 reading the alliance; and it stays RNG-FREE so alliance-free worlds are byte-identical (no
-seed re-pin was needed for either the alliance or the fielding-force slice). Deferred next
-slices: a formal war state an ally can join by campaign, war resolution with richer outcomes
-(imposed tribute, contested seats), espionage — each within "diplomacy never changes geography."
+seed re-pin was needed for either the alliance or the fielding-force slice).
+
+**Formal WARS shipped (`engine/war.ts`).** When a clash escalates to open BATTLE, a named,
+persistent `War` is declared between the two polities; allies drawn toward the fight JOIN it
+by campaign (offense — co-belligerents, not merely the alliance's defensive weight); and
+`warYearly` resolves it — a fallen primary belligerent hands the other side victory and an
+imposed non-aggression peace on the survivors, a long quiet gutters out in a stalemate. It is
+a legibility + resolution layer OVER the edge-level clashes: the war itself moves no armies
+and razes no town (principle 5). RNG-free — a war-free world is byte-identical, so a fourth
+consecutive slice needed no seed re-pin. Deferred next slices: richer war resolution (imposed
+tribute, contested seats — the first to brush against "diplomacy vs. geography" carefully),
+and espionage — each within "diplomacy never changes geography."
 
 ---
 

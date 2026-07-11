@@ -515,10 +515,17 @@ export function Inspector({
               {settV.polity.lastAction ? ` — last: ${settV.polity.lastAction.summary} (y${settV.polity.lastAction.year})` : ''}
             </p>
           )}
+          {settV?.polity && settV.polity.wars.length > 0 && (
+            <p className="polity-wars">
+              ⚔ at war: {settV.polity.wars.map((wr) =>
+                `with the ${wr.against}${wr.alliesCount > 0 ? ` (${wr.alliesCount} ally${wr.alliesCount > 1 ? 'ies' : ''} at your side)` : ''} since y${wr.sinceYear}`,
+              ).join(' · ')}
+            </p>
+          )}
           {settV?.polity && (settV.polity.agreements.length > 0 || settV.polity.lastInteraction) && (
             <p className="polity-diplomacy muted">
               {settV.polity.agreements.length > 0
-                ? `sworn: ${settV.polity.agreements.map((g) => `${g.kind === 'non_aggression' ? 'peace' : 'trade'} with ${g.with} (to y${g.untilYear})`).join(' · ')}`
+                ? `sworn: ${settV.polity.agreements.map((g) => `${g.kind === 'non_aggression' ? 'peace' : g.kind === 'alliance' ? 'alliance' : 'trade'} with ${g.with} (to y${g.untilYear})`).join(' · ')}`
                 : ''}
               {settV.polity.lastInteraction
                 ? `${settV.polity.agreements.length > 0 ? ' — ' : ''}${settV.polity.lastInteraction.summary} (y${settV.polity.lastInteraction.year})`

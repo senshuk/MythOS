@@ -488,6 +488,20 @@ export interface OrgInteractionRecord {
   eventId: EventId;
 }
 
+/** A formal WAR between polities (2E) — a persistent, named conflict that emerges when a
+ *  clash escalates to open battle, that ALLIES join by campaign (offense, not just defense),
+ *  and that resolves with an outcome (a victor's imposed peace, or an exhausted stalemate).
+ *  A legibility+resolution layer OVER the edge-level clashes geographyYearly already resolves:
+ *  the war itself moves no armies and razes no town (design/16 principle 5). `sideA` leads with
+ *  the aggressor, `sideB` with the defender; co-belligerents append to their side. */
+export interface War {
+  id: EntityId;
+  sideA: OrgId[];
+  sideB: OrgId[];
+  startTick: number;
+  lastClashTick: number; // reset on every clash between belligerents; a long quiet ends the war
+}
+
 /**
  * A pack-defined interaction type + how to negotiate it. Mirrors IntentDef/ActionDef: the
  * pack supplies the vocabulary and behaviour, the engine runs the pipeline. `propose` and
@@ -1040,6 +1054,10 @@ export interface World {
    *  the recipient polity, so a spectator/NPC world never has one: NPC diplomacy is
    *  byte-identical. One at a time; a stale unanswered envoy is replaced. */
   pendingEnvoy?: { from: OrgId; to: OrgId; defId: string; terms: Record<string, number | string>; sinceTick: number };
+  /** active formal WARS between polities (2E) — declared when a clash escalates to open battle,
+   *  joined by allies, resolved (and removed) by warYearly. The war_declared/joined/ended events
+   *  remain as history once a war is gone. */
+  wars: War[];
   /** dedicated RNG stream for minting historical figures during worldgen. */
   figureRngState: number;
 
@@ -1325,6 +1343,8 @@ export interface SettlementView {
     agreements: { kind: string; with: string; untilYear: number }[];
     /** this org's OWN memory of its last negotiation (two histories, one event). */
     lastInteraction?: { summary: string; year: number };
+    /** the formal wars this polity is currently fighting (2E), each naming its chief foe. */
+    wars: { against: string; alliesCount: number; sinceYear: number }[];
   };
   // economy
   specialization: Specialization;

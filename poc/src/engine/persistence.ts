@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
 
-export const SAVE_VERSION = 23;
+export const SAVE_VERSION = 24;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -92,6 +92,8 @@ export interface SaveFile {
   /** a neighbour's proposal parked for a ruler-player's answer (2E envoy). Player-only,
    *  optional; absent in NPC/spectator worlds and pre-envoy saves. */
   pendingEnvoy?: World['pendingEnvoy'];
+  /** active formal wars between polities (2E). Optional for saves predating v24 (default none). */
+  wars?: World['wars'];
   /** per-org operational state + last action as entries. Optional for saves predating v14
    *  (operational state then defaults to baseline; lastAction empty). */
   operationalState?: [OrgId, OperationalState][];
@@ -204,6 +206,7 @@ export function serializeWorld(world: World): SaveFile {
     orgAgreements: world.orgAgreements,
     lastInteraction: [...world.lastInteraction],
     pendingEnvoy: world.pendingEnvoy,
+    wars: world.wars,
     playerInputs: world.playerInputs,
 
     homeSettlement: [...world.homeSettlement],
@@ -481,6 +484,8 @@ export function deserializeWorld(save: SaveFile): World {
     lastInteraction: new Map(s.lastInteraction ?? []),
     // v22 → v23 (envoy): a parked incoming proposal is player-only; absent in older saves.
     pendingEnvoy: s.pendingEnvoy,
+    // v23 → v24 (war): formal wars; older saves simply have none in progress.
+    wars: s.wars ?? [],
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

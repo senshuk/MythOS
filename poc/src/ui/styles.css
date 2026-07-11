@@ -421,6 +421,7 @@ button { font-family: inherit; }
 .faction-low  { color: var(--amber); }
 /* civil war tension: an active conflict clock ticking toward resolution */
 .civil-war-tension { margin: var(--space-1) 0; font-size: var(--fs-xs); color: #c0504d; letter-spacing: 0.03em; }
+.polity-wars { margin: var(--space-1) 0; font-size: var(--fs-xs); color: #c0504d; letter-spacing: 0.02em; }
 /* exile status: shown in an actor's Nature line when they've been expelled */
 .exile-status { color: var(--amber); }
 /* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
