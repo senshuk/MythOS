@@ -12,11 +12,16 @@ item requires them; otherwise Organizations risk becoming a "god subsystem."
 `trade_agreement`, `non_aggression`, `demand_tribute` (NPC↔NPC); the PLAYER as a party to it
 (parked incoming envoy audiences + outgoing proposals, design/26 P2); and the **alliance**
 pact — a mutual-defense agreement whose teeth are legible in `geographyYearly`: allies never
-turn on one another, and when one is raided or conquered its allies that share a border with
-the aggressor are drawn toward the quarrel (a fixed, RNG-free souring, so alliance-free worlds
-stay byte-identical). This obeys principle 5: the alliance nudges relations, it does not move
-armies. Deferred next slices: mutual-defense that fields actual forces, war resolution with
-real outcomes, espionage — each within "diplomacy never changes geography."
+turn on one another; when one is raided or conquered its allies that share a border with the
+aggressor are drawn toward the quarrel (a fixed, RNG-free souring); and, fielding real force,
+an ally's strength counts in a defender's favour — enough allied weight turns a would-be
+razing into a battle the town survives, the aggressor bloodied and the allies paying in their
+own blood (an `alliance_answered` event names the coalition). Principle 5 holds: the pact
+itself never razes or moves anyone — `geographyYearly` (the sim's own war layer) does, now
+reading the alliance; and it stays RNG-FREE so alliance-free worlds are byte-identical (no
+seed re-pin was needed for either the alliance or the fielding-force slice). Deferred next
+slices: a formal war state an ally can join by campaign, war resolution with richer outcomes
+(imposed tribute, contested seats), espionage — each within "diplomacy never changes geography."
 
 ---
 

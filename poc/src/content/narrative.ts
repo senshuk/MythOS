@@ -135,6 +135,8 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   pact_refused: (_n, d) => `The ${d.b} refused the ${d.a}'s offer of ${d.kind === 'peace' ? 'peace' : d.kind === 'alliance' ? 'alliance' : 'trade'}.`,
   tribute_paid: (_n, d) => `The ${d.b} paid tribute of ${d.amount} to the ${d.a}.`,
   tribute_refused: (_n, d) => `The ${d.b} defied the ${d.a}'s demand for tribute.`,
+  // mutual defense with real force (2E alliance): an ally answers the call and turns a razing aside.
+  alliance_answered: (_n, d) => `The ${d.ally} answered the call, marching to the defense of ${d.defended} against ${d.against}.`,
 };
 
 /**
@@ -245,6 +247,8 @@ export function eventInterest(type: string, data: Record<string, number | string
       return 30;
     case 'tribute_refused':
       return 28; // defiance of a stronger neighbour — the seed of wars
+    case 'alliance_answered':
+      return 36; // a coalition turning a conquest aside — the stuff of legend
     case 'pact_refused':
       return 14;
     default:

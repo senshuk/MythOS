@@ -75,6 +75,56 @@ describe('allies do not turn on one another', () => {
   });
 });
 
+describe('mutual defense fields real force', () => {
+  /** Set up a strong aggressor adjacent to a weak town it could raze, plus a third governed
+   *  polity to serve as the weak town's ally. Returns the pieces and the forced-war driver. */
+  function siege(w: ReturnType<typeof createWorld>) {
+    // two adjacent, non-focused, governed neighbours
+    let strongId = -1, weakId = -1;
+    for (const e of w.edges) {
+      const A = w.settlements[e.a], B = w.settlements[e.b];
+      if (A.polityId !== undefined && B.polityId !== undefined && !A.detailed && !B.detailed &&
+          A.ruinedYear === undefined && B.ruinedYear === undefined) { strongId = e.a; weakId = e.b; break; }
+    }
+    expect(strongId).toBeGreaterThanOrEqual(0);
+    const setPop = (id: number, pop: number) => {
+      const m = w.settlements[id].macro;
+      m.population = pop; m.adults = Math.round(pop * 0.7); m.children = Math.round(pop * 0.2); m.elders = pop - m.adults - m.children;
+    };
+    setPop(strongId, 400); // strong.pop (400) > weak.pop (200) * 1.28 = 256 → would raze, absent allies
+    setPop(weakId, 200);
+    const ally = w.settlements.find((s) => s.polityId !== undefined && !s.detailed && s.ruinedYear === undefined &&
+      s.id !== strongId && s.id !== weakId)!;
+    setPop(ally.id, 1000); // an ally strong enough that (200 + 1000*0.5) * 1.28 = 896 > 400 → the raze is repelled
+    const edge = edgeBetween(w, strongId, weakId)!;
+    const drive = () => { edge.relation = -100; geographyYearly(w); }; // force the border to the brink each year
+    return { strongId, weakId, ally, drive, weakName: w.settlements[weakId].name };
+  }
+
+  it('a strong ally turns a would-be conquest into a battle the town survives', () => {
+    const w = forged();
+    w.orgAgreements = [];
+    const { weakId, ally, drive, weakName } = siege(w);
+    sealAgreement(w, 'alliance', w.settlements[weakId].polityId!, ally.polityId!, 60);
+    const before = w.events.length;
+    for (let i = 0; i < 150 && w.settlements[weakId].macro.population > 25; i++) drive();
+    const since = w.events.slice(before);
+    // the town was never razed, and its ally is recorded answering the call
+    expect(since.some((e) => e.type === 'conquest' && e.data.fallen === weakName)).toBe(false);
+    expect(since.some((e) => e.type === 'alliance_answered' && e.data.defended === weakName)).toBe(true);
+  });
+
+  it('without that ally, the same weak town is conquered', () => {
+    const w = forged();
+    w.orgAgreements = []; // no alliance to shield it
+    const { weakId, drive, weakName } = siege(w);
+    const before = w.events.length;
+    for (let i = 0; i < 200 && w.settlements[weakId].ruinedYear === undefined && w.settlements[weakId].macro.population > 0; i++) drive();
+    // left to face the aggressor alone, the town falls (a conquest names it fallen)
+    expect(w.events.slice(before).some((e) => e.type === 'conquest' && e.data.fallen === weakName)).toBe(true);
+  });
+});
+
 describe('an ally is drawn into a neighbour\'s war', () => {
   it('souring the ally\'s border with the aggressor — but only where they share one', () => {
     const w = forged();

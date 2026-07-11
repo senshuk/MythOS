@@ -804,7 +804,13 @@ export function geographyYearly(world: World): void {
       const weak = strong === A ? B : A;
       e.relation = clamp(e.relation - rng.range(4, 10), -100, 100);
       e.tradeVolume = 0;
-      if (strong.macro.population > weak.macro.population * 1.28 && rng.chance(0.82)) {
+      // MUTUAL DEFENSE with real force (2E): the weak side's allies commit strength to its
+      // defense. Enough allied weight turns a would-be razing into a battle the aggressor
+      // cannot win outright. RNG-FREE (a strength comparison, no draw), so an alliance-free
+      // world is byte-identical: support is 0 and the condition is exactly as it was.
+      const allies = alliesOf(world, weak.polityId, strong.polityId);
+      const support = allies.reduce((sum, a) => sum + allyPop(world, a), 0) * ALLY_FORCE_FRACTION;
+      if (strong.macro.population > (weak.macro.population + support) * 1.28 && rng.chance(0.82)) {
         // a decisive CONQUEST — the weaker is razed under the victor's ruler.
         // Geography makes these mismatches: a fertile great city against a poor village.
         // We only empty it here (the war's cause); recordRuins then registers the fall as
@@ -833,6 +839,24 @@ export function geographyYearly(world: World): void {
         const battleId = emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
         // both courts remember meeting in battle (2C: an org-scale thought on the pair).
         if (A.polityId !== undefined && B.polityId !== undefined) noteOrgThought(world, A.polityId, B.polityId, 'wartorn', battleId);
+        // if the weak side's ALLIES stood with it (2E mutual defense fielding force), they
+        // bloodied the aggressor and paid in their own blood — the entanglement made real —
+        // and their courts are now drawn against it. RNG-FREE tolls so alliance-free worlds
+        // are byte-identical.
+        if (support > 0) {
+          raidMacro(strong.macro, Math.min(30, Math.round(support * 0.25)));
+          strong.macro.population = strong.macro.children + strong.macro.adults + strong.macro.elders;
+          for (const a of allies) {
+            const seat = getOrganization(world, a)?.seatId;
+            const as = seat !== undefined ? world.settlements[seat] : undefined;
+            if (!as || as.ruinedYear !== undefined || as.detailed) continue; // the focused town keeps full actors
+            raidMacro(as.macro, Math.min(10, Math.round(as.macro.population * 0.04)));
+            as.macro.population = as.macro.children + as.macro.adults + as.macro.elders;
+          }
+          const answerer = getOrganization(world, allies[0])?.name ?? 'an ally';
+          emit(world, 'alliance_answered', subjects, { ally: answerer, defended: weak.name, against: strong.name }, [battleId], [weak.id, strong.id]);
+          drawInAllies(world, weak, strong); // having fought the aggressor, the allies' borders sour
+        }
       }
     } else if (!atPeace && e.relation < -25 && rng.chance(0.022 + proximity * 0.03)) {
       // a raid along a hostile border. The weaker, non-focused side is the victim;
@@ -863,6 +887,29 @@ export function geographyYearly(world: World): void {
 
 /** How sharply an ally's border with an aggressor sours when it is drawn into a war. */
 const ALLY_DRAWN_IN = 14;
+/** The fraction of an ally's population that counts as committed force in a neighbour's
+ *  defense — not all of a distant friend's strength reaches the front. */
+const ALLY_FORCE_FRACTION = 0.5;
+
+/** The polities allied to `defender` (excluding the `aggressor` itself), from active pacts. */
+function alliesOf(world: World, defender: number | undefined, aggressor: number | undefined): number[] {
+  if (defender === undefined) return [];
+  const out: number[] = [];
+  for (const g of world.orgAgreements) {
+    if (g.kind !== 'alliance' || g.expiresTick <= world.tick) continue;
+    const ally = g.a === defender ? g.b : g.b === defender ? g.a : undefined;
+    if (ally === undefined || ally === aggressor) continue;
+    out.push(ally);
+  }
+  return out;
+}
+
+/** A polity's fielding strength — the population of its seat (0 if fallen). */
+function allyPop(world: World, orgId: number): number {
+  const seat = getOrganization(world, orgId)?.seatId;
+  const s = seat !== undefined ? world.settlements[seat] : undefined;
+  return s && s.ruinedYear === undefined ? s.macro.population : 0;
+}
 
 /**
  * MUTUAL DEFENSE (2E alliance): when a polity is raided or conquered, each polity ALLIED to

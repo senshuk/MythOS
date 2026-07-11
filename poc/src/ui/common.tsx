@@ -25,6 +25,7 @@ export const TYPE_TONE: Record<string, string> = {
   ruined: 'bad',
   battle: 'bad',
   conquest: 'bad',
+  alliance_answered: 'focus',
   beast: 'bad',
   died: 'neutral',
   widowed: 'neutral',
