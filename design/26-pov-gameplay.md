@@ -13,7 +13,11 @@ honoured only while the org still rates the pick a contender (bounded-knowledge
 intact); a mandate lapses if unrenewed. P5 note: a RAILS operation (`leaveFor`,
 beside possess/inherit), not an act-loop action — a focus shift demotes/promotes
 whole casts and cannot run mid-week; the player leaves alone in v1 (family follows
-later). P6 (cockpit cleanups) open.
+later). P6 (cockpit cleanups) SHIPPED: the week answers back (a UI-diff strip of
+your new story beats after each deed/held year), the target picker retired behind
+an "act on your own" fallback so situated verbs lead, copy ("step out of this
+life", "live the week"), and a new `family_birth` commoner decision. All of
+design/26 is now shipped.
 
 ---
 
@@ -119,14 +123,24 @@ courtship/feuds/claims in a second town — the world stops being one village de
 Future: family-follows, transit time via `travel.ts`, arrival-at-the-gate close
 view.
 
-### P6 — Cockpit cleanups (small, anytime)
-The week answers back: after each turn (and each held year), a compact "your
-week/year" strip of beats that touched YOU. Retire the target `<select>`: acting
-happens from the world (attention lines, inspector, households, venues) with the
-form as fallback. Rename "release" → "step out of this life"; "(1 week)" →
-"live the week". A handful of new commoner decisions from real state (a marriage
-offer via bestSuitor, a child's coming of age, a conversion squeeze during a zeal
-split) — pack content, each a pure read.
+### P6 — Cockpit cleanups (small, anytime) — SHIPPED
+The week answers back: `useFreshBeats` (PlayerCockpit) diffs `player.story`
+between snapshots purely in the PRESENTATION layer (the engine stays a pure read)
+and renders a compact "Since last you looked" strip of the beats that touched YOU;
+every action clears it first, so the strip that follows is exactly what that deed
+became, and a held year accumulates the year's beats (capped ~6). Baselines on a
+`playerId` change so an inherited soul isn't greeted by a flood. Retired the
+always-open target `<select>`: the "live the week" primary + situated verbs
+(Pursue, the world's decisions, attention lines) lead; the action/target form
+folds into an "act on your own" fallback disclosure. Copy: "release" → "step out
+of this life"; "(1 week)" → "live the week". New commoner decision `family_birth`
+(content/decisions.ts): a `born` event of the past week where the player is a
+parent → rejoice with the co-parent / provide (work) / hold them close (idle) —
+a pure read over the three generic verbs, no new mechanism. Courtship (marriage
+offer via `bestSuitor`) already existed; coming-of-age deferred (no maturity event
+to key off). Verified live: a 10-year autopilot run surfaced a five-beat strip
+(goal met, a child born, a quarrel, a kindness, a friendship) AND the family_birth
+decision in the same frame.
 
 ## 4. What NOT to do
 

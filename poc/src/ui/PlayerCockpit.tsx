@@ -3,11 +3,64 @@
  * attention feed, your subjective world-view, and the reflective journal. One
  * panel that reads top-to-bottom like a thought (design/21).
  */
-import { useState } from 'react';
-import type { EventRef, PlayerView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
+import { useState, useRef, useEffect } from 'react';
+import type { EventRef, PlayerView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer, StoryBeat } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import { TYPE_TONE, onActivate, EventText, useStableOrder } from './common';
 import { Glyph, Icon, TONE_ICON } from './icons';
+
+/** A story beat's icon, from the shared drawn set (used to be emoji). */
+const beatIcon = (tone: string) => <Icon name={TONE_ICON[tone] ?? 'dot'} />;
+
+/** THE WEEK ANSWERS BACK (design/26 P6): every action (or held year) should land as a
+ *  reply, not a silent snapshot swap. This tracks which of the player's story beats are
+ *  NEW since we last cleared, purely in the presentation layer — the engine stays a pure
+ *  read. A new life (playerId change) re-baselines to the whole story so an inherited
+ *  soul isn't greeted by a flood of a life it didn't live. `clear()` is called the moment
+ *  the player acts, so the strip that follows is exactly "what this deed became". */
+const beatKey = (b: StoryBeat) => `${b.year}|${b.tone}|${b.parts.map((p) => p.text).join('')}`;
+function useFreshBeats(playerId: number, story: StoryBeat[]) {
+  const seen = useRef<Set<string>>(new Set());
+  const lastPlayer = useRef<number | undefined>(undefined);
+  const [fresh, setFresh] = useState<StoryBeat[]>([]);
+  useEffect(() => {
+    if (lastPlayer.current !== playerId) {
+      lastPlayer.current = playerId;
+      seen.current = new Set(story.map(beatKey)); // baseline the new life; announce nothing
+      setFresh([]);
+      return;
+    }
+    const added: StoryBeat[] = [];
+    for (const b of story) {
+      const k = beatKey(b);
+      if (!seen.current.has(k)) { seen.current.add(k); added.push(b); }
+    }
+    if (added.length) setFresh((prev) => [...prev, ...added].slice(-6)); // keep the strip compact
+  }, [playerId, story]);
+  return { fresh, clear: () => setFresh([]) };
+}
+
+/** The compact "what your week (or year) became" strip — the beats that touched YOU since you
+ *  last acted, rendered where you'll see the reply the instant it lands. Dismissable. */
+function WeekAnswer({ beats, onRef, onDismiss }: { beats: StoryBeat[]; onRef: (ref: EventRef) => void; onDismiss: () => void }) {
+  if (beats.length === 0) return null;
+  return (
+    <div className="week-answer" role="status">
+      <div className="wa-head">
+        <span className="wa-tag">Since last you looked</span>
+        <button className="link wa-dismiss" onClick={onDismiss} title="dismiss">×</button>
+      </div>
+      <ul className="wa-beats">
+        {beats.slice().reverse().map((b, i) => (
+          <li key={i} className={`ev ${TYPE_TONE[b.tone] ?? 'neutral'}`}>
+            <span className="beat-icon" aria-hidden="true">{beatIcon(b.tone)}</span> <EventText parts={b.parts} onRef={onRef} />
+            {b.note && <span className="muted"> — {b.note}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** A framed choice with option buttons — shared by the world's decisions and an ambition's next
  *  step. Each option is an Intent taken through the normal player turn. */
@@ -100,9 +153,6 @@ function AmbitionBanner({
     </div>
   );
 }
-
-/** A story beat's icon, from the shared drawn set (used to be emoji). */
-const beatIcon = (tone: string) => <Icon name={TONE_ICON[tone] ?? 'dot'} />;
 
 /** A block of live threads — present tensions, beliefs, opportunities, or worries. Each is a short
  *  line, clickable when it points at a person. Hidden when empty unless an `emptyText` is given. */
@@ -269,6 +319,11 @@ export function PlayerPanel({
   const [actionKind, setActionKind] = useState<PlayerView['actions'][number]['kind']>('work');
   const [targetId, setTargetId] = useState<number | ''>('');
 
+  // THE WEEK ANSWERS BACK (P6): track the beats that arrive after each deed. Every action
+  // clears the strip first, so what follows reads as the reply to *this* choice.
+  const { fresh, clear: clearWeek } = useFreshBeats(player.id, player.story);
+  const act = (intent: Intent) => { clearWeek(); onAct(intent); };
+
   const action = player.actions.find((a) => a.kind === actionKind) ?? player.actions[0];
   const needsTarget = action.needsTarget;
   const canAct = player.alive && !busy && (!needsTarget || targetId !== '');
@@ -278,7 +333,7 @@ export function PlayerPanel({
     const intent: Intent = needsTarget
       ? ({ kind: actionKind, target: Number(targetId) } as Intent)
       : ({ kind: actionKind } as Intent);
-    onAct(intent);
+    act(intent);
   };
 
   return (
@@ -293,10 +348,11 @@ export function PlayerPanel({
             — {player.species} {player.profession}, {player.ageYears}y · {player.settlement}
           </span>
         </div>
-        <button className="link" onClick={onRelease} disabled={busy}>
-          release
+        <button className="link" onClick={onRelease} disabled={busy} title="stop living this life; keep watching the world">
+          step out of this life
         </button>
       </div>
+      {player.alive && <WeekAnswer beats={fresh} onRef={onRef} onDismiss={clearWeek} />}
 
       {!player.alive ? (
         // DEATH AS A TRANSITION — the Dynasty step. If the line has an heir, the story
@@ -333,7 +389,7 @@ export function PlayerPanel({
           <AmbitionBanner
             ambition={player.ambition}
             offered={player.offeredAmbitions}
-            onAct={onAct}
+            onAct={act}
             onRef={onRef}
             onChoose={onChooseAmbition}
             onAbandon={onAbandonAmbition}
@@ -342,7 +398,7 @@ export function PlayerPanel({
           {player.decisions.length > 0 && (
             <div className="decisions" aria-label="the world asks">
               {player.decisions.map((d) => (
-                <DecisionCard key={d.id} d={d} onAct={onAct} onRef={onRef} busy={busy} />
+                <DecisionCard key={d.id} d={d} onAct={act} onRef={onRef} busy={busy} />
               ))}
             </div>
           )}
@@ -360,7 +416,7 @@ export function PlayerPanel({
                   {player.aspiration.suggested && (
                     <button
                       className="act-btn goal-pursue"
-                      onClick={() => onAct(player.aspiration.suggested!)}
+                      onClick={() => act(player.aspiration.suggested!)}
                       disabled={busy}
                       title="take the action your character is driven toward"
                     >
@@ -393,38 +449,47 @@ export function PlayerPanel({
                 here's where I stand, so here's what I'll do (design/21 §7). With a committed ambition
                 (whose step shows above), the derived-goal read is hidden and this is the free tail. */}
             {player.ambition && <span className="situation-tag act-lead">Or — do something else</span>}
+            {/* The situated affordances (Pursue, the world's decisions, the attention verbs)
+                lead; the raw action form is the FALLBACK (design/26 P6). The primary button
+                just lives the week at the chosen deed — the target picker no longer sits
+                always-open on the page but folds into "act on your own" below. */}
             <div className="action-bar">
-              <select
-                value={actionKind}
-                onChange={(e) => setActionKind(e.target.value as typeof actionKind)}
-                disabled={busy}
-              >
-                {player.actions.map((a) => (
-                  <option key={a.kind} value={a.kind}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-              {needsTarget && (
-                <select
-                  value={targetId}
-                  onChange={(e) => setTargetId(e.target.value === '' ? '' : Number(e.target.value))}
-                  disabled={busy}
-                >
-                  <option value="">— choose someone —</option>
-                  {player.targets.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.relation}
-                      {t.relation !== 'stranger' ? ` ${t.valence >= 0 ? '+' : ''}${t.valence}` : ''})
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button className="act-btn" onClick={submit} disabled={!canAct}>
-                {action.label} ▸ (1 week)
+              <button className="act-btn act-primary" onClick={submit} disabled={!canAct}>
+                {action.label} ▸ live the week
               </button>
               <span className="muted action-hint">{action.hint}</span>
             </div>
+            <details className="action-choose">
+              <summary className="action-choose-head">Act on your own — choose a deed{needsTarget ? ', and whom' : ''}</summary>
+              <div className="action-form">
+                <select
+                  value={actionKind}
+                  onChange={(e) => { setActionKind(e.target.value as typeof actionKind); setTargetId(''); }}
+                  disabled={busy}
+                >
+                  {player.actions.map((a) => (
+                    <option key={a.kind} value={a.kind}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+                {needsTarget && (
+                  <select
+                    value={targetId}
+                    onChange={(e) => setTargetId(e.target.value === '' ? '' : Number(e.target.value))}
+                    disabled={busy}
+                  >
+                    <option value="">— choose someone —</option>
+                    {player.targets.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.relation}
+                        {t.relation !== 'stranger' ? ` ${t.valence >= 0 ? '+' : ''}${t.valence}` : ''})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </details>
             {/* the AUTOPILOT (design/26 P1), told plainly: acting seizes a week; unseized
                 weeks are lived by the character's own nature while the years run */}
             <p className="autopilot-note muted">
@@ -433,7 +498,7 @@ export function PlayerPanel({
           </div>
 
           {/* QUESTION 2 — one feed, people and events merged, sorted by importance. */}
-          <Attention items={player.attention} onRef={onRef} onAct={onAct} busy={busy} />
+          <Attention items={player.attention} onRef={onRef} onAct={act} busy={busy} />
 
           {/* QUESTION 3 — what you currently believe to be true. Everything else is one click away. */}
           <WorldView items={player.belief} onRef={onRef} />

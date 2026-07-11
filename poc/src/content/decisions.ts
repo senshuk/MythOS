@@ -282,6 +282,46 @@ export const DECISIONS: DecisionDef[] = [
     },
   },
 
+  // ── REACTIVE: a child is born to you ────────────────────────────────────────────────────────
+  // A `born` event of the past week where the player is a parent (subjects are [child, bearer,
+  // mate]). A commoner's turning point drawn straight from the lifecycle — no new mechanism, just
+  // the three generic verbs answering "what does this week become for you?".
+  {
+    id: 'family_birth',
+    evaluate(world, id): DecisionView[] {
+      let child: EntityId | undefined;
+      let coParent: EntityId | undefined;
+      let latest = -1;
+      for (const eid of world.eventsBySubject.get(id) ?? []) {
+        const ev = getEvent(world, eid);
+        if (!ev || ev.type !== 'born' || ev.tick <= world.tick - WEEK) continue;
+        if (ev.subjects[0] === id) continue; // the player is the parent here, not the newborn
+        if (ev.subjects[1] !== id && ev.subjects[2] !== id) continue; // must be a parent of this child
+        const kid = ev.subjects[0];
+        if (kid === undefined || !isAlive(world, kid)) continue;
+        if (ev.tick > latest) {
+          latest = ev.tick;
+          child = kid;
+          const other = ev.subjects[1] === id ? ev.subjects[2] : ev.subjects[1];
+          coParent = other !== undefined && isAlive(world, other) ? other : undefined;
+        }
+      }
+      if (child === undefined) return [];
+      return [{
+        id: `family_birth:${child}`,
+        urgency: 65,
+        prompt: [{ text: 'A child, ' }, who(world, child), { text: ', is born to you. How do you meet the week?' }],
+        options: [
+          ...(coParent !== undefined
+            ? [{ label: 'Rejoice with ' + fullName(world, coParent), hint: 'share the joy of it', intent: { kind: 'socialize', target: coParent }, tone: 'good' as const }]
+            : []),
+          { label: 'Set to providing for them', hint: 'a new mouth — throw yourself into your work', intent: { kind: 'work' }, tone: 'neutral' },
+          { label: 'Hold them close', hint: 'let the week be theirs', intent: { kind: 'idle' }, tone: 'good' },
+        ],
+      }];
+    },
+  },
+
   // ── STANDING: a courtship at a crossroads ───────────────────────────────────────────────────
   // A warm, marriageable prospect exists (bestSuitor already gates on eligibility). Lower urgency —
   // an opening, not a crisis.

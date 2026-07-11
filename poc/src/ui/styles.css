@@ -675,6 +675,35 @@ button { font-family: inherit; }
 .play-inline { margin-left: 8px; }
 .play-inline:hover, .play-btn:hover:not(:disabled) { border-color: var(--cyan); }
 
+/* the primary "live the week" advance — the free tail's hero button (design/26 P6) */
+.act-primary { font-weight: 600; }
+
+/* the raw action form, retired to a fallback disclosure (P6): situated verbs lead */
+.action-choose { margin-top: var(--space-2); }
+.action-choose-head {
+  cursor: pointer; color: var(--muted); font-size: var(--fs-xs);
+  letter-spacing: 0.04em; list-style: none; padding: 4px 0;
+}
+.action-choose-head:hover { color: var(--ink-dim); }
+.action-choose[open] .action-choose-head { color: var(--ink-dim); }
+.action-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0 2px; }
+
+/* THE WEEK ANSWERS BACK (P6): a compact reply-strip of the beats that touched you since
+   you last acted — so a deed lands as an answer, not a silent snapshot swap (design/21 §5). */
+.week-answer {
+  margin: 10px 0 14px; padding: 10px 14px;
+  border-radius: var(--radius-sm); border-left: 3px solid var(--gold-dim);
+  background: var(--panel-2);
+  animation: wa-in 220ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .week-answer { animation: none; } }
+@keyframes wa-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.wa-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.wa-tag { color: var(--gold-dim); font-weight: 600; font-size: 0.76em; letter-spacing: 0.09em; text-transform: uppercase; }
+.wa-dismiss { font-size: 16px; line-height: 1; padding: 0 4px; }
+.wa-beats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wa-beats .ev { font-size: 0.95em; line-height: 1.4; }
+
 /* onboard / goal / celebration */
 .onboard {
   display: flex; align-items: flex-start; gap: var(--space-3);
