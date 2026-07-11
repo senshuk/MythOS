@@ -153,6 +153,9 @@ button { font-family: inherit; }
 .time-inline { display: inline-flex; gap: 6px; }
 .time-inline button { color: var(--gold); border-color: var(--line); }
 .time-inline button:hover:not(:disabled) { border-color: var(--gold); }
+/* play/pause — the one time control that stays LIVE while the years run */
+.time-play { display: inline-flex; align-items: center; gap: 5px; }
+.hud-hold { color: var(--gold); font-size: var(--fs-xs); font-style: italic; }
 .menu-toggle {
   display: none; align-items: center; justify-content: center;
   width: var(--tap); height: var(--tap); margin-left: auto;

@@ -22,6 +22,8 @@ export type SimRequest =
   | { kind: 'reset'; seed: number }
   | { kind: 'genesis'; seed: number; years: number; storyteller?: string }
   | { kind: 'advanceYears'; years: number }
+  // halt a streaming advance at the end of the year in progress (time flow)
+  | { kind: 'stopAdvance' }
   | { kind: 'focusSettlement'; id: number }
   | { kind: 'setStoryteller'; id: string }
   | { kind: 'inspectActor'; id: number }
@@ -54,6 +56,10 @@ export type SimRequest =
 
 export type SimResponse =
   | { kind: 'snapshot'; snapshot: Snapshot }
+  // one tick of a STREAMING advance (time flow): the date visibly advances year by
+  // year instead of freezing for the whole batch. `done` carries the final year;
+  // `interrupted` is CK's rule — a NEW decision (or the player's death) holds time.
+  | { kind: 'advance'; snapshot: Snapshot; done: boolean; total: number; left: number; interrupted?: 'decision' | 'death' }
   | { kind: 'actorDetail'; detail: ActorDetail | null }
   | { kind: 'eventChain'; chain: EventChain | null }
   | { kind: 'figureDetail'; detail: FigureDetail | null }

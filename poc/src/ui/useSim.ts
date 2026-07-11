@@ -29,6 +29,14 @@ export function useSim(initialSeed: number) {
   const [venueDetail, setVenueDetail] = useState<VenueDetail | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [busy, setBusy] = useState(false);
+  /** a STREAMING advance in flight (time flow): how far along, and — once done — whether
+   *  time was HELD by an interrupt (a new decision, or the player's death). */
+  const [advanceProgress, setAdvanceProgress] = useState<{
+    total: number;
+    left: number;
+    running: boolean;
+    interrupted?: 'decision' | 'death';
+  } | null>(null);
   // hover peeks resolve out-of-band: each request carries a token; the matching
   // reply settles its promise. Hovering never disturbs the open inspection.
   const peekSeq = useRef(0);
@@ -59,6 +67,17 @@ export function useSim(initialSeed: number) {
       if (msg.kind === 'snapshot') {
         setSnapshot(msg.snapshot);
         setBusy(false);
+        setAdvanceProgress(null); // any ordinary action clears a lingering hold-notice
+      } else if (msg.kind === 'advance') {
+        // a streaming advance tick: the date moves NOW, not when the batch ends
+        setSnapshot(msg.snapshot);
+        if (msg.done) {
+          setBusy(false);
+          // keep the notice visible when time was held; clear silently otherwise
+          setAdvanceProgress(msg.interrupted ? { total: msg.total, left: msg.left, running: false, interrupted: msg.interrupted } : null);
+        } else {
+          setAdvanceProgress({ total: msg.total, left: msg.left, running: true });
+        }
       } else if (msg.kind === 'actorDetail') {
         setActorDetail(msg.detail);
       } else if (msg.kind === 'eventChain') {
@@ -111,7 +130,13 @@ export function useSim(initialSeed: number) {
 
   const advance = useCallback((years: number) => {
     setBusy(true);
+    setAdvanceProgress({ total: years, left: years, running: true });
     send({ kind: 'advanceYears', years });
+  }, [send]);
+
+  /** Halt a streaming advance at the end of the year in progress. */
+  const stopAdvance = useCallback(() => {
+    send({ kind: 'stopAdvance' });
   }, [send]);
 
   const focusSettlement = useCallback((id: number) => {
@@ -219,9 +244,11 @@ export function useSim(initialSeed: number) {
     venueDetail,
     saves,
     busy,
+    advanceProgress,
     reset,
     genesis,
     advance,
+    stopAdvance,
     focusSettlement,
     setStoryteller,
     inspectActor,

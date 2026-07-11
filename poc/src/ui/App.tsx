@@ -58,6 +58,10 @@ const NAV_TABS = [
   },
 ];
 
+/** "Play" is just a very long streaming advance — the worker ticks a year at a time
+ *  and a pause (or an interrupt) halts it, so no separate mode is needed. */
+const PLAY_YEARS = 100000;
+
 /** One stop on the inspector's trail — everything inspectable, as plain data. */
 type NavTarget = { kind: 'ref'; ref: EventRef } | { kind: 'event'; id: number };
 const sameTarget = (a: NavTarget, b: NavTarget) =>
@@ -220,6 +224,15 @@ export default function App() {
               <button onClick={() => sim.advance(1)} disabled={sim.busy}>+1y</button>
               <button onClick={() => sim.advance(10)} disabled={sim.busy}>+10y</button>
               <button onClick={() => sim.advance(60)} disabled={sim.busy}>+60y</button>
+              {sim.advanceProgress?.running ? (
+                <button className="time-play" onClick={sim.stopAdvance} title="pause — time halts at the year's end">
+                  <Icon name="pause" />
+                </button>
+              ) : (
+                <button className="time-play" onClick={() => sim.advance(PLAY_YEARS)} disabled={sim.busy} title="let the years run (a new decision, or death, holds time)">
+                  <Icon name="play" />
+                </button>
+              )}
             </span>
             <span className="ctl-sep" />
             <input
@@ -259,7 +272,15 @@ export default function App() {
                 ))}
               </select>
             )}
-            {sim.busy && <span className="busy">simulating…</span>}
+            {sim.busy && (
+              <span className="busy">
+                {sim.advanceProgress?.running
+                  ? sim.advanceProgress.total >= PLAY_YEARS
+                    ? 'the years run…'
+                    : `${sim.advanceProgress.left} year${sim.advanceProgress.left === 1 ? '' : 's'} to go…`
+                  : 'simulating…'}
+              </span>
+            )}
           </div>
         </header>
 
@@ -310,7 +331,16 @@ export default function App() {
               </span>
               <span className="hud-sep" />
               <span className="hud-place" title="where your gaze rests">{stat.settlementName}</span>
-              {sim.busy && <span className="hud-busy">· simulating…</span>}
+              {sim.busy && (
+                <span className="hud-busy">
+                  · {sim.advanceProgress?.running ? 'the years turn…' : 'simulating…'}
+                </span>
+              )}
+              {!sim.busy && sim.advanceProgress?.interrupted && (
+                <span className="hud-hold">
+                  · time holds — {sim.advanceProgress.interrupted === 'decision' ? 'the world asks something of you' : 'your story has ended'}
+                </span>
+              )}
             </div>
 
             {/* LEFT DOCK — the cockpit (you) and the world panel */}
@@ -418,7 +448,15 @@ export default function App() {
           <div className="time-bar">
             <button onClick={() => sim.advance(1)} disabled={sim.busy}>+1 year</button>
             <button onClick={() => sim.advance(10)} disabled={sim.busy}>+10 years</button>
-            <button onClick={() => sim.advance(60)} disabled={sim.busy}>+60 years</button>
+            {sim.advanceProgress?.running ? (
+              <button className="time-play" onClick={sim.stopAdvance}>
+                <Icon name="pause" /> pause
+              </button>
+            ) : (
+              <button className="time-play" onClick={() => sim.advance(PLAY_YEARS)} disabled={sim.busy}>
+                <Icon name="play" /> play
+              </button>
+            )}
           </div>
           <div className="tabs" role="tablist">
             {NAV_TABS.map((t) => (

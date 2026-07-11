@@ -23,6 +23,8 @@ import {
   buildLocalChronicle,
   buildHouseholds,
   ensureFocusedVenues,
+  isPlayerAlive,
+  pendingDecisionIds,
   focusSettlement,
   setStoryteller,
   possess,
@@ -50,6 +52,10 @@ function reset(seed: number): void {
   world = createWorld(seed);
 }
 
+/** The one streaming advance in flight (time flow). `cancelled` is set by stopAdvance;
+ *  the loop yields to the event queue between years, so the stop can land mid-batch. */
+let advancing: { cancelled: boolean } | null = null;
+
 ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
   const msg = e.data;
   switch (msg.kind) {
@@ -67,10 +73,42 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
     }
     case 'advanceYears': {
       if (!world) reset(0);
-      runYears(world!, msg.years);
-      checkPlayerGoal(world!); // a goal may have been fulfilled while time passed
-      reviewPlayerAmbition(world!); // …as may the player's committed ambition
-      ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
+      if (advancing) break; // one advance at a time (the UI is busy-guarded anyway)
+      const run = { cancelled: false };
+      advancing = run;
+      const total = msg.years;
+      // TIME FLOW: advance a year at a time, streaming a snapshot per year so the date
+      // ticks and the chronicle scrolls live — watching, not waiting. The yield between
+      // years lets a stopAdvance (and read-only inspects) land mid-batch. Chunking is
+      // exact: runYears(1)×N is the same tick sequence as runYears(N).
+      // CK's rule, baselined: only a decision that APPEARS during the advance holds
+      // time — one already on the table when play was pressed must not stall each year.
+      const baseline = new Set(pendingDecisionIds(world!));
+      const wasAlive = isPlayerAlive(world!);
+      const w = world!; // the world THIS advance runs — bail if it is ever replaced
+      void (async () => {
+        let left = total;
+        let interrupted: 'decision' | 'death' | undefined;
+        while (left > 0 && !run.cancelled && !interrupted && world === w) {
+          runYears(w, 1);
+          checkPlayerGoal(w); // fulfilments surface the year they happen…
+          reviewPlayerAmbition(w); // …not at the end of the batch
+          left--;
+          if (wasAlive && !isPlayerAlive(w)) interrupted = 'death';
+          else if (pendingDecisionIds(w).some((id) => !baseline.has(id))) interrupted = 'decision';
+          if (left > 0 && !interrupted) {
+            ctx.postMessage({ kind: 'advance', snapshot: buildSnapshot(w), done: false, total, left });
+            await new Promise((r) => setTimeout(r, 0)); // let a stop land
+          }
+        }
+        // a replaced world means someone else owns the stage now — end silently done
+        if (world === w) ctx.postMessage({ kind: 'advance', snapshot: buildSnapshot(w), done: true, total, left, interrupted });
+        advancing = null;
+      })();
+      break;
+    }
+    case 'stopAdvance': {
+      if (advancing) advancing.cancelled = true;
       break;
     }
     case 'focusSettlement': {

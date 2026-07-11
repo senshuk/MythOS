@@ -235,6 +235,22 @@ export function runYears(world: World, years: number): void {
   runDays(world, years * DAYS_PER_YEAR);
 }
 
+/** Is the possessed actor alive? (False when nobody is possessed.) Used by the worker's
+ *  streaming advance to HOLD TIME the year the player's life ends (time flow). */
+export function isPlayerAlive(world: World): boolean {
+  return world.playerId !== undefined && world.lifecycle.get(world.playerId)?.alive === true;
+}
+
+/** The ids of the framed choices the world is presenting the player right now (empty when
+ *  none / nobody possessed). The streaming advance compares these against its baseline so
+ *  only a decision that APPEARS mid-advance holds time — one already on the table when the
+ *  player pressed play must not stall every single year. Pure read. */
+export function pendingDecisionIds(world: World): string[] {
+  const id = world.playerId;
+  if (id === undefined || !world.lifecycle.get(id)?.alive) return [];
+  return evaluateDecisions(world, id).map((d) => d.id);
+}
+
 /**
  * One player turn: schedule the player's chosen intent for the next weekly act
  * tick, then advance the world *exactly* to that tick — so the action resolves and
