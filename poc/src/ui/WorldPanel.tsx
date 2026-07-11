@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import type { Snapshot } from '../engine/model';
 import { Icon } from './icons';
+import { useStableOrder } from './common';
 
 // Presentation of a settlement's staple buffer. The label is deliberately pack-flavoured
 // (a food pack reads "starving/fed"); the underlying number is the role-neutral
@@ -48,6 +49,9 @@ export function WorldPanel({
   const orderedSettlements = [...stat.settlements].sort((a, b) => (b.detailed ? 1 : 0) - (a.detailed ? 1 : 0));
   const visibleSettlements = showAllSettlements ? orderedSettlements : orderedSettlements.slice(0, SETTLEMENT_CAP);
   const hiddenCount = stat.settlements.length - visibleSettlements.length;
+  // while time streams, the roster's CONTENT should change, not its furniture —
+  // survivors hold their row; the newly notable join at the tail
+  const notable = useStableOrder(stat.notable, (a) => a.id);
 
   return (
     <section className="panel dashboard">
@@ -76,7 +80,7 @@ export function WorldPanel({
         </div>
         <h4 className="live-as-head">Notable folk — press <Icon name="play" size={0.8} /> to live one of their lives</h4>
         <ul className="notable">
-          {stat.notable.map((a) => (
+          {notable.map((a) => (
             <li key={a.id}>
               <button
                 className="play-btn"

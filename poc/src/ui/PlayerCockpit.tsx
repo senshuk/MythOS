@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import type { EventRef, PlayerView, Tension, DecisionView, ActiveAmbitionView, AmbitionOffer } from '../engine/model';
 import type { Intent } from '../engine/intent';
-import { TYPE_TONE, onActivate, EventText } from './common';
+import { TYPE_TONE, onActivate, EventText, useStableOrder } from './common';
 import { Glyph, Icon, TONE_ICON } from './icons';
 
 /** A framed choice with option buttons — shared by the world's decisions and an ambition's next
@@ -169,12 +169,15 @@ function WorldView({ items, onRef }: { items: Tension[]; onRef: (ref: EventRef) 
  *  openings and worries merged (design/21 §7). Where a line has an obvious response, the verb sits
  *  ON the notification (CK's action items) and flows through the ordinary player turn. */
 function Attention({ items, onRef, onAct, busy }: { items: Tension[]; onRef: (ref: EventRef) => void; onAct: (i: Intent) => void; busy: boolean }) {
+  // hold each notification's row while it survives — re-ranking every streamed
+  // year would make the cockpit read as churn (keyed by text: tensions carry no id)
+  const stable = useStableOrder(items, (t) => `${t.icon}:${t.text}`);
   if (items.length === 0) return null;
   return (
     <div className="attention">
       <h4 className="wh-head">What deserves your attention</h4>
       <ul className="att-list">
-        {items.map((t, i) => (
+        {stable.map((t, i) => (
           <li key={i} className="att-item">
             <span className="att-icon" aria-hidden="true"><Glyph glyph={t.icon} /></span>
             {t.ref ? (

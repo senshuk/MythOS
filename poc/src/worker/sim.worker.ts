@@ -56,6 +56,11 @@ function reset(seed: number): void {
  *  the loop yields to the event queue between years, so the stop can land mid-batch. */
 let advancing: { cancelled: boolean } | null = null;
 
+/** Interim snapshots stream no faster than this — a fast world simulating a year in
+ *  ~300ms would otherwise re-render the whole UI three times a second, which reads as
+ *  churn, not life. The sim still runs at full speed; only the POSTS are paced. */
+const STREAM_MIN_MS = 650;
+
 ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
   const msg = e.data;
   switch (msg.kind) {
@@ -89,6 +94,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       void (async () => {
         let left = total;
         let interrupted: 'decision' | 'death' | undefined;
+        let lastPost = 0;
         while (left > 0 && !run.cancelled && !interrupted && world === w) {
           runYears(w, 1);
           checkPlayerGoal(w); // fulfilments surface the year they happen…
@@ -97,7 +103,11 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
           if (wasAlive && !isPlayerAlive(w)) interrupted = 'death';
           else if (pendingDecisionIds(w).some((id) => !baseline.has(id))) interrupted = 'decision';
           if (left > 0 && !interrupted) {
-            ctx.postMessage({ kind: 'advance', snapshot: buildSnapshot(w), done: false, total, left });
+            const now = performance.now();
+            if (now - lastPost >= STREAM_MIN_MS) {
+              lastPost = now;
+              ctx.postMessage({ kind: 'advance', snapshot: buildSnapshot(w), done: false, total, left });
+            }
             await new Promise((r) => setTimeout(r, 0)); // let a stop land
           }
         }

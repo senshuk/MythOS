@@ -3,7 +3,7 @@
  * the clickable-prose renderer, keyboard activation, persisted view prefs, and
  * the pack's culture colours. No component here owns state that matters.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { EventPart, EventRef } from '../engine/model';
 import { CULTURES } from '../engine/pack';
 import { usePeek } from './peek';
@@ -84,6 +84,23 @@ export function usePersistentState<T>(key: string, initial: T): [T, (v: T | ((p:
 // read through the engine's pack boundary, so a different universe recolours the map for free.
 export const cultureColor = (id: string) => CULTURES.find((c) => c.id === id)?.color ?? '#8a8f9e';
 export const cultureName = (id: string) => CULTURES.find((c) => c.id === id)?.name ?? id;
+
+/** Keep a list VISUALLY STILL across re-ranks: items keep the relative order they first
+ *  appeared in for as long as they survive; newcomers append at the tail. While time
+ *  streams (a snapshot a second), a roster that re-sorts every tick reads as churn —
+ *  the CONTENT should change under the player's eyes, not the furniture. */
+export function useStableOrder<T>(items: T[], keyOf: (item: T) => string | number): T[] {
+  const order = useRef<(string | number)[]>([]);
+  const byKey = new Map(items.map((it) => [keyOf(it), it]));
+  // retain survivors in their remembered order, then append the newly arrived
+  const kept = order.current.filter((k) => byKey.has(k));
+  for (const it of items) {
+    const k = keyOf(it);
+    if (!kept.includes(k)) kept.push(k);
+  }
+  order.current = kept;
+  return kept.map((k) => byKey.get(k)!);
+}
 
 /** Renders an event's prose with its named settlements & people as clickable links.
  *  Hovering a name floats a peek card (via the PeekLayer); clicking inspects. */

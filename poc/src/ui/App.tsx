@@ -272,15 +272,17 @@ export default function App() {
                 ))}
               </select>
             )}
-            {sim.busy && (
-              <span className="busy">
-                {sim.advanceProgress?.running
+            {/* always rendered — an appearing/vanishing span would push the whole
+                (right-aligned) control row sideways at every run start and end */}
+            <span className="busy" aria-live="polite">
+              {sim.busy
+                ? sim.advanceProgress?.running
                   ? sim.advanceProgress.total >= PLAY_YEARS
                     ? 'the years run…'
                     : `${sim.advanceProgress.left} year${sim.advanceProgress.left === 1 ? '' : 's'} to go…`
-                  : 'simulating…'}
-              </span>
-            )}
+                  : 'simulating…'
+                : ''}
+            </span>
           </div>
         </header>
 

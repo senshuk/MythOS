@@ -67,14 +67,16 @@ export function LocalMapView({
     ro?.observe(wrap);
     return () => ro?.disconnect();
   }, []);
+  // keyed by VALUES, not the node object (a streamed snapshot re-creates the views
+  // every year — the frame must hold still or the terrain canvas repaints per tick)
+  const nx = node?.x ?? 0;
+  const ny = node?.y ?? 0;
   const frame = useMemo(() => {
-    const cx = node?.x ?? 0;
-    const cy = node?.y ?? 0;
     const A = boxSize.w > 1 && boxSize.h > 1 ? boxSize.w / boxSize.h : 1;
     const w = A >= 1 ? FRAME * A : FRAME;
     const h = A >= 1 ? FRAME : FRAME / A;
-    return { x: cx - w / 2, y: cy - h / 2, w, h };
-  }, [node, boxSize]);
+    return { x: nx - w / 2, y: ny - h / 2, w, h };
+  }, [nx, ny, boxSize]);
 
   // road entries: the directions the settlement's real graph-neighbours lie toward —
   // the world's roads and the town's streets meet at the frame's edge (continuity).

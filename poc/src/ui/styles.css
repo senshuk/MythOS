@@ -163,7 +163,13 @@ button { font-family: inherit; }
   border-radius: var(--radius-sm); font-size: 18px; cursor: pointer;
 }
 .ctl-sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
-.busy { color: var(--cyan); font-size: 12px; font-style: italic; }
+/* the countdown must not PUSH the (right-aligned) controls around as its digits
+   change — reserve its slot and keep the numbers monospace-stable */
+.busy {
+  color: var(--cyan); font-size: 12px; font-style: italic;
+  display: inline-block; min-width: 118px; text-align: left;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ------------------------------------------------- layout: THE STAGE ------ */
 /* The map IS the screen (the CK/Civ idiom); panels dock over it. The stage owns
@@ -225,7 +231,7 @@ button { font-family: inherit; }
   background: rgba(16, 18, 24, 0.92); border: 1px solid var(--line);
   border-radius: var(--radius-pill); padding: 6px 18px; white-space: nowrap;
 }
-.hud-year { font-family: var(--serif); font-weight: 600; font-size: var(--fs-lg); color: var(--gold); }
+.hud-year { font-family: var(--serif); font-weight: 600; font-size: var(--fs-lg); color: var(--gold); font-variant-numeric: tabular-nums; }
 .hud-souls { color: var(--ink-dim); font-size: var(--fs-sm); }
 .hud-place { font-family: var(--serif); font-style: italic; color: var(--parchment); font-size: var(--fs-sm); }
 .hud-sep { width: 1px; align-self: stretch; background: var(--line); }
