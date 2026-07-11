@@ -27,10 +27,18 @@ by campaign (offense — co-belligerents, not merely the alliance's defensive we
 `warYearly` resolves it — a fallen primary belligerent hands the other side victory and an
 imposed non-aggression peace on the survivors, a long quiet gutters out in a stalemate. It is
 a legibility + resolution layer OVER the edge-level clashes: the war itself moves no armies
-and razes no town (principle 5). RNG-free — a war-free world is byte-identical, so a fourth
-consecutive slice needed no seed re-pin. Deferred next slices: richer war resolution (imposed
-tribute, contested seats — the first to brush against "diplomacy vs. geography" carefully),
-and espionage — each within "diplomacy never changes geography."
+and razes no town (principle 5). RNG-free — a war-free world is byte-identical.
+
+**Richer war resolution shipped.** Wars now carry EXHAUSTION (per-side cumulative casualties,
+fed by the battle tolls), so a long, one-sided war ends by CAPITULATION — the far-more-bled
+side sues for peace — without any seat needing to fall. On any victory the victor imposes a
+non-aggression peace AND exacts one-time REPARATIONS (a real treasury transfer via the org's
+own funds API). This is deliberately ECONOMIC and political, never territorial: a town
+changing hands is geography, and per principle 5 that stays with an explicit annex/relocate
+world action (deferred — the 2D geography actions), NOT the diplomacy layer. Still RNG-free
+(thresholds on recorded casualties + fixed reparations), so a fifth consecutive slice needed
+no seed re-pin. Deferred next: annexation/contested seats as an explicit geography-changing
+world action, and espionage.
 
 ---
 

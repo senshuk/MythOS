@@ -14,13 +14,22 @@
  */
 import { type World, type OrgId, type War, DAYS_PER_YEAR } from './model';
 import { emit } from './world';
-import { getOrganization } from './organization';
+import { getOrganization, adjustTreasury, treasuryOf } from './organization';
 import { sealAgreement, activeAgreement } from './orgInteraction';
 
 /** A war peters out into an uneasy peace after this many years without a fresh clash. */
 const WAR_QUIET_YEARS = 8;
 /** How long a peace imposed by a war's victor stands. */
 const IMPOSED_PEACE_YEARS = 15;
+/** A war must last at least this long before attrition can force a side to capitulate. */
+const WAR_MIN_YEARS_FOR_TERMS = 4;
+/** A side capitulates when it has borne at least this many cumulative casualties… */
+const CAPITULATE_LOSSES = 45;
+/** …AND far more than its enemy (this ratio) — a long, one-sided bleeding. */
+const CAPITULATE_RATIO = 1.8;
+/** Reparations a victor exacts: this fraction of the loser's treasury, up to the cap. */
+const REPARATIONS_FRACTION = 0.4;
+const REPARATIONS_CAP = 60;
 
 const nameOf = (world: World, id: OrgId): string => getOrganization(world, id)?.name ?? 'a fallen power';
 
@@ -63,10 +72,19 @@ export function declareOrContinueWar(world: World, aggressor: OrgId, defender: O
     sideB: [defender],
     startTick: world.tick,
     lastClashTick: world.tick,
+    exhaustionA: 0,
+    exhaustionB: 0,
   };
   world.wars.push(war);
   emit(world, 'war_declared', [], { aggressor: nameOf(world, aggressor), defender: nameOf(world, defender) }, [], seatsOf(world, [aggressor, defender]));
   return war;
+}
+
+/** Add casualties a belligerent bore this clash to its side's war-weariness (orientation-safe:
+ *  the polity may be on either side, and a war's orientation is fixed at declaration). RNG-free. */
+export function addExhaustion(_world: World, war: War, polity: OrgId, casualties: number): void {
+  if (war.sideA.includes(polity)) war.exhaustionA += casualties;
+  else if (war.sideB.includes(polity)) war.exhaustionB += casualties;
 }
 
 /** Enrol an ally as a co-belligerent on the side of `friend` (already a belligerent). No-op if
@@ -102,10 +120,22 @@ export function warYearly(world: World): void {
     const aAlive = sideAlive(world, war.sideA);
     const bAlive = sideAlive(world, war.sideB);
     if (!aAlive || !bAlive) {
-      const victors = aAlive ? war.sideA : war.sideB;
-      const losers = aAlive ? war.sideB : war.sideA;
-      endWar(world, war, victors, losers);
+      // a chief belligerent has fallen — the standing side wins outright
+      endWar(world, war, aAlive ? war.sideA : war.sideB, aAlive ? war.sideB : war.sideA);
       continue;
+    }
+    // ATTRITION: a long, lopsided war ends when the far-more-bled side capitulates and sues
+    // for peace — no seat need fall for a war to be lost. Deterministic (a threshold on the
+    // recorded casualties), so it consumes no RNG.
+    if ((world.tick - war.startTick) / DAYS_PER_YEAR >= WAR_MIN_YEARS_FOR_TERMS) {
+      const aBled = war.exhaustionA >= war.exhaustionB;
+      const bledMore = aBled ? war.exhaustionA : war.exhaustionB;
+      const bledLess = aBled ? war.exhaustionB : war.exhaustionA;
+      if (bledMore >= CAPITULATE_LOSSES && bledMore >= bledLess * CAPITULATE_RATIO) {
+        // the exhausted side (aBled → side A) is the loser; the other wins
+        endWar(world, war, aBled ? war.sideB : war.sideA, aBled ? war.sideA : war.sideB);
+        continue;
+      }
     }
     if ((world.tick - war.lastClashTick) / DAYS_PER_YEAR >= WAR_QUIET_YEARS) {
       emit(world, 'war_ended', [], { outcome: 'stalemate', a: nameOf(world, war.sideA[0]), b: nameOf(world, war.sideB[0]) }, [], seatsOf(world, [war.sideA[0], war.sideB[0]]));
@@ -116,11 +146,13 @@ export function warYearly(world: World): void {
   world.wars = surviving;
 }
 
-/** Conclude a war with a victor: record it, and let the victor impose a peace on every loser
- *  still standing (a razed loser needs no terms — it is already gone). RNG-free. */
+/** Conclude a war with a victor: the victor imposes a non-aggression peace on every loser still
+ *  standing AND exacts one-time REPARATIONS (a real treasury transfer — economic terms, never a
+ *  seat: a town changing hands is geography, which stays with an explicit world action, design/16
+ *  principle 5). A razed loser needs no terms — it is already gone. RNG-free. */
 function endWar(world: World, war: War, victors: OrgId[], losers: OrgId[]): void {
   const victor = victors[0];
-  emit(world, 'war_ended', [], { outcome: 'victory', victor: nameOf(world, victor), loser: nameOf(world, war.sideA[0] === victor ? war.sideB[0] : war.sideA[0]) }, [], seatsOf(world, [victor]));
+  let tribute = 0;
   for (const loser of losers) {
     const lo = getOrganization(world, loser);
     if (!lo || lo.dissolvedYear !== undefined || lo.seatId === undefined) continue; // already fallen
@@ -128,5 +160,12 @@ function endWar(world: World, war: War, victors: OrgId[], losers: OrgId[]): void
     if (activeAgreement(world, 'non_aggression', victor, loser) === undefined) {
       sealAgreement(world, 'non_aggression', victor, loser, IMPOSED_PEACE_YEARS); // the defeated sue for peace
     }
+    const reparations = Math.min(REPARATIONS_CAP, Math.round(treasuryOf(world, loser) * REPARATIONS_FRACTION));
+    if (reparations > 0) {
+      adjustTreasury(world, loser, -reparations);
+      adjustTreasury(world, victor, reparations);
+      tribute += reparations;
+    }
   }
+  emit(world, 'war_ended', [], { outcome: 'victory', victor: nameOf(world, victor), loser: nameOf(world, war.sideA[0] === victor ? war.sideB[0] : war.sideA[0]), tribute }, [], seatsOf(world, [victor]));
 }

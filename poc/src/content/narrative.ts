@@ -141,7 +141,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   war_declared: (_n, d) => `War broke out between the ${d.aggressor} and the ${d.defender}.`,
   war_joined: (_n, d) => `The ${d.ally} entered the war at the side of the ${d.friend}.`,
   war_ended: (_n, d) => d.outcome === 'victory'
-    ? `The war ended in victory for the ${d.victor}; the ${d.loser} sued for peace.`
+    ? `The war ended in victory for the ${d.victor}; the ${d.loser} sued for peace${Number(d.tribute) > 0 ? ` and paid ${d.tribute} in reparations` : ''}.`
     : `The war between the ${d.a} and the ${d.b} guttered out in an uneasy peace.`,
 };
 

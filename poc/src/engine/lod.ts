@@ -44,7 +44,7 @@ import { registerLocation } from './location';
 import { ensureVenues } from './venues';
 import { foundPolity, noteOrgThought, orgOpinionOf, getOrganization } from './organization';
 import { activeAgreement } from './orgInteraction';
-import { declareOrContinueWar, warBetween, joinWar } from './war';
+import { declareOrContinueWar, warBetween, joinWar, addExhaustion } from './war';
 import { recordDeed } from './reputation';
 import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
 import {
@@ -830,7 +830,9 @@ export function geographyYearly(world: World): void {
         // an inconclusive BATTLE — open war. Declare (or continue) a formal war between the
         // two courts; allies drawn in below JOIN it as co-belligerents (2E). A conquest, by
         // contrast, is decisive and needs no standing war — the razing itself is the story.
-        if (strong.polityId !== undefined && weak.polityId !== undefined) declareOrContinueWar(world, strong.polityId, weak.polityId);
+        const war = strong.polityId !== undefined && weak.polityId !== undefined
+          ? declareOrContinueWar(world, strong.polityId, weak.polityId)
+          : undefined;
         // an inconclusive BATTLE — both sides bleed, named by their rulers
         const aToll = Math.round(rng.range(6, 20) * proximity);
         const bToll = Math.round(rng.range(6, 20) * proximity);
@@ -840,6 +842,12 @@ export function geographyYearly(world: World): void {
         B.macro.population = B.macro.children + B.macro.adults + B.macro.elders;
         A.macro.stability = clamp(A.macro.stability - rng.range(3, 8), -100, 100);
         B.macro.stability = clamp(B.macro.stability - rng.range(3, 8), -100, 100);
+        // the blood spilt is the war's weariness (2E richer resolution): a long, lopsided war
+        // ends when the far-more-bled side capitulates (warYearly), not only when a seat falls.
+        if (war) {
+          addExhaustion(world, war, strong.polityId!, strong === A ? aToll : bToll);
+          addExhaustion(world, war, weak.polityId!, weak === A ? aToll : bToll);
+        }
         const subjects = [A.currentRulerId, B.currentRulerId].filter((x): x is number => x !== undefined);
         const battleId = emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
         // both courts remember meeting in battle (2C: an org-scale thought on the pair).

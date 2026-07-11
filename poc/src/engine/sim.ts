@@ -1942,9 +1942,9 @@ export function canonicalize(world: World): string {
   for (const g of world.orgAgreements) {
     parts.push(`G${g.kind}:${g.a}-${g.b}.s${g.sinceTick}.e${g.expiresTick}`);
   }
-  // active formal wars (2E) — sides in join order, in declaration order
+  // active formal wars (2E) — sides in join order, in declaration order, with war-weariness
   for (const w of world.wars) {
-    parts.push(`W${w.id}:[${w.sideA.join(',')}]v[${w.sideB.join(',')}].s${w.startTick}.c${w.lastClashTick}`);
+    parts.push(`W${w.id}:[${w.sideA.join(',')}]v[${w.sideB.join(',')}].s${w.startTick}.c${w.lastClashTick}.x${w.exhaustionA}/${w.exhaustionB}`);
   }
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);

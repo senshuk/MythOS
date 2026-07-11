@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
 
-export const SAVE_VERSION = 24;
+export const SAVE_VERSION = 25;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -485,7 +485,8 @@ export function deserializeWorld(save: SaveFile): World {
     // v22 → v23 (envoy): a parked incoming proposal is player-only; absent in older saves.
     pendingEnvoy: s.pendingEnvoy,
     // v23 → v24 (war): formal wars; older saves simply have none in progress.
-    wars: s.wars ?? [],
+    // v24 → v25 (war attrition): default exhaustion for wars saved before it was tracked.
+    wars: (s.wars ?? []).map((w) => ({ ...w, exhaustionA: w.exhaustionA ?? 0, exhaustionB: w.exhaustionB ?? 0 })),
     chronicle: s.chronicle,
     annals: s.annals,
     chronicleCursor: s.chronicleCursor,

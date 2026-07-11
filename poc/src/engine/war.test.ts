@@ -8,8 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import { createWorld, runYears } from './sim';
 import { getOrganization } from './organization';
-import { declareOrContinueWar, warBetween, joinWar, warYearly, activeWarsOf } from './war';
+import { declareOrContinueWar, warBetween, joinWar, warYearly, activeWarsOf, addExhaustion } from './war';
 import { activeAgreement } from './orgInteraction';
+import { adjustTreasury, treasuryOf } from './organization';
 import { serializeWorld, deserializeWorld } from './persistence';
 
 /** A forged world plus two distinct living polities to fight, and a third to ally. */
@@ -68,6 +69,36 @@ describe('resolving a war', () => {
     expect(ended?.data.outcome).toBe('victory');
     // the victor (aggressor) forced the surviving loser (the ally) to a non-aggression peace
     expect(activeAgreement(w, 'non_aggression', agg, ally)).toBeDefined();
+  });
+
+  it('a long, lopsided war ends by CAPITULATION — no seat need fall — with imposed tribute', () => {
+    const { w, agg, def } = belligerents();
+    const war = declareOrContinueWar(w, agg, def)!;
+    adjustTreasury(w, def, 100); // the loser has a treasury to be mulcted
+    const victorBefore = treasuryOf(w, agg);
+    // the defender has bled far more, over a long war
+    addExhaustion(w, war, def, 80);
+    addExhaustion(w, war, agg, 10);
+    w.tick += 5 * 365; // past the minimum war duration for terms
+    const before = w.events.length;
+    warYearly(w);
+    expect(w.wars.length).toBe(0);
+    const ended = w.events.slice(before).find((e) => e.type === 'war_ended');
+    expect(ended?.data.outcome).toBe('victory');
+    expect(ended?.data.victor).toBe(getOrganization(w, agg)!.name);
+    expect(Number(ended?.data.tribute)).toBeGreaterThan(0); // reparations exacted
+    expect(activeAgreement(w, 'non_aggression', agg, def)).toBeDefined();
+    expect(treasuryOf(w, agg)).toBeGreaterThan(victorBefore); // the coin actually moved
+    expect(treasuryOf(w, def)).toBeLessThan(100);
+  });
+
+  it('does not force capitulation before the minimum war duration, however lopsided', () => {
+    const { w, agg, def } = belligerents();
+    const war = declareOrContinueWar(w, agg, def)!;
+    addExhaustion(w, war, def, 90);
+    addExhaustion(w, war, agg, 2);
+    warYearly(w); // the war is brand new — attrition has not yet had time to decide it
+    expect(w.wars.length).toBe(1);
   });
 
   it('a war gone long-quiet gutters out in a stalemate', () => {

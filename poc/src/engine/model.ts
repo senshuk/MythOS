@@ -500,6 +500,10 @@ export interface War {
   sideB: OrgId[];
   startTick: number;
   lastClashTick: number; // reset on every clash between belligerents; a long quiet ends the war
+  /** cumulative casualties each side has borne — the war-weariness that lets a long, lopsided
+   *  war end by CAPITULATION (the bled side sues for peace) rather than only by a seat falling. */
+  exhaustionA: number;
+  exhaustionB: number;
 }
 
 /**
