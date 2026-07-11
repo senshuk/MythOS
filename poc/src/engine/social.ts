@@ -10,6 +10,7 @@ import { type World, type EntityId, type RelEdge } from './model';
 import { computeOpinion } from './opinion';
 import { standingOf } from './reputation';
 import { isKin, canTakeSpouse, emit } from './world';
+import { pickVenue } from './venues';
 import { Rng, mixSeed } from './rng';
 import { maturityOf, unionViable, hasLeader, valueProfile, temperamentProfile, REPUTATION_EFFECTS, type Personality } from './pack';
 
@@ -124,7 +125,7 @@ export function escalateAnimosity(world: World, a: EntityId, b: EntityId, edge: 
     edge.flags.feud = true;
     edge.flags.rival = true;
     edge.flags.friend = false;
-    emit(world, 'feud', [a, b], {}, animosityCauses(edge));
+    emit(world, 'feud', [a, b], { ...pickVenue(world, 'feud', a, b) }, animosityCauses(edge));
   } else if (v <= RIVAL_AT && !edge.flags.rival) {
     edge.flags.rival = true;
     edge.flags.friend = false;

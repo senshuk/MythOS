@@ -35,6 +35,7 @@ import {
   type PeekCard,
   type HouseholdView,
   type HouseholdMember,
+  type VenueDetail,
   DAYS_PER_YEAR,
 } from './model';
 import { type Intent } from './intent';
@@ -53,6 +54,7 @@ import { figuresYearly, getFigure, houseById } from './figures';
 import { computeBelief, coronationSlot } from './belief';
 import { computeStatusBelief } from './statusBelief';
 import { focusSettlement } from './lod';
+import { getChildren } from './location';
 import { setStoryteller } from './director';
 import { renderEvent, renderEventParts } from './render';
 
@@ -79,6 +81,7 @@ import { factionYearly, factionOf, civilWarYearly, exileYearly } from './faction
 import { reactToBeliefs } from './reactions';
 
 export { focusSettlement } from './lod';
+export { ensureFocusedVenues } from './venues';
 export { possess, release, schedulePlayerIntent, inheritHeir } from './player';
 import { schedulePlayerIntent, heirOf } from './player';
 
@@ -499,6 +502,40 @@ export function inspectSettlement(world: World, id: SettlementId): SettlementDet
 }
 
 /**
+ * Inspect a VENUE (design/25) — a public Location made a first-class, traceable thing:
+ * what it is, and everything recorded to have happened there. Events are found by
+ * their `venueId` data over the recent window and the archive (venues are new enough
+ * that no reverse index is warranted yet; revisit if venue histories grow long).
+ */
+export function inspectVenue(world: World, id: number): VenueDetail | undefined {
+  const loc = world.locations.get(id);
+  if (!loc || loc.parentId === undefined) return undefined;
+  const s = world.settlements[loc.parentId];
+  if (!s) return undefined;
+  const here: WorldEvent[] = [];
+  for (const ev of world.events) if (ev.data.venueId === id) here.push(ev);
+  for (const ev of world.eventArchive.values()) if (ev.data.venueId === id) here.push(ev);
+  here.sort((a, b) => b.id - a.id); // newest first
+  return {
+    id,
+    name: loc.name,
+    meaning: loc.nameMeaning,
+    type: loc.locationType,
+    settlementId: s.id,
+    settlement: s.name,
+    foundedYear: loc.foundedYear ?? s.foundedYear,
+    events: here.slice(0, 40).map((ev) => eventView(world, ev)),
+  };
+}
+
+/** The settlement's public venues, for the close view (its buildings link to them). */
+export function localVenues(world: World, id: SettlementId): { id: number; name: string; meaning?: string; type: string }[] {
+  const s = world.settlements[id];
+  if (!s) return [];
+  return getChildren(world, id).map((l) => ({ id: l.id, name: l.name, meaning: l.nameMeaning, type: l.locationType }));
+}
+
+/**
  * The notable events of ONE settlement's recorded history, oldest first — the raw
  * material the close view's HISTORY MARKS are stamped from (design/24 §3.4: a burned
  * quarter for a raid, a stone for a famine, a monument for a wonder). Read-only, same
@@ -702,6 +739,19 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
         kind: 'feature',
         name: named.name,
         lines: [`a ${feature.kind === 'range' ? 'mountain range' : feature.kind}${named.meaning ? ` · “${named.meaning}”` : ''}`],
+      };
+    }
+    case 'venue': {
+      const loc = world.locations.get(ref.id);
+      if (!loc || loc.parentId === undefined) return undefined;
+      const s = world.settlements[loc.parentId];
+      return {
+        kind: 'venue',
+        name: loc.name,
+        lines: [
+          `${loc.nameMeaning ? `“${loc.nameMeaning}” · ` : ''}a ${loc.locationType} in ${s?.name ?? '?'}`,
+          `raised y${loc.foundedYear ?? '?'}`,
+        ],
       };
     }
   }

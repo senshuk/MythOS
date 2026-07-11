@@ -17,9 +17,12 @@ import {
   inspectCulture,
   inspectDeity,
   inspectFeature,
+  inspectVenue,
+  localVenues,
   buildPeek,
   buildLocalChronicle,
   buildHouseholds,
+  ensureFocusedVenues,
   focusSettlement,
   setStoryteller,
   possess,
@@ -141,6 +144,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       // ALWAYS answer — the UI sets busy=true on load and only a snapshot clears it.
       // A missing save leaves the current world in place (or a fresh one if none).
       if (!world) reset(0);
+      ensureFocusedVenues(world!); // pre-venue saves upgrade lazily (design/25 §3)
       ctx.postMessage({ kind: 'snapshot', snapshot: buildSnapshot(world!) });
       break;
     }
@@ -212,12 +216,20 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
       });
       break;
     }
+    case 'inspectVenue': {
+      ctx.postMessage({
+        kind: 'venueDetail',
+        detail: world ? inspectVenue(world, msg.id) ?? null : null,
+      });
+      break;
+    }
     case 'localFacts': {
       ctx.postMessage({
         kind: 'localFacts',
         token: msg.token,
         events: world ? buildLocalChronicle(world, msg.id) : [],
         households: world ? buildHouseholds(world, msg.id) : [],
+        venues: world ? localVenues(world, msg.id) : [],
       });
       break;
     }

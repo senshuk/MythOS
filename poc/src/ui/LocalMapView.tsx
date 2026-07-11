@@ -25,6 +25,7 @@ export function LocalMapView({
   currentYear,
   chronicle,
   households,
+  venues,
   onExit,
   onRef,
   onPickEvent,
@@ -37,6 +38,8 @@ export function LocalMapView({
   chronicle?: EventView[];
   /** who lives under which roof — present only for the lived-in-full settlement (L2). */
   households?: HouseholdView[];
+  /** the settlement's public venues (L4) — the drawn buildings link to them. */
+  venues?: { id: number; name: string; meaning?: string; type: string }[];
   onExit: () => void;
   onRef: (ref: EventRef) => void;
   /** a history mark traces the event it remembers (the burned quarter answers "why?"). */
@@ -99,9 +102,10 @@ export function LocalMapView({
       currentYear,
       chronicle,
       households,
+      venues,
     };
     return buildLocalPlan(facts);
-  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households]);
+  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households, venues]);
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -235,17 +239,18 @@ function PlanGlyph({
     return <circle className="plan-tree" cx={it.x} cy={it.y} r={it.r} />;
   }
   if (it.kind === 'field' || it.kind === 'rubble' || it.kind === 'square' || it.kind === 'scorch') {
-    const clickable = it.eventId !== undefined;
+    // a mark traces its event; the square inspects its venue (L4)
+    const act = it.eventId !== undefined ? () => onPickEvent(it.eventId!) : it.ref ? () => onRef(it.ref!) : undefined;
     return (
       <g
         transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
         onMouseEnter={it.label ? show(it.label) : undefined}
         onMouseLeave={it.label ? hide : undefined}
-        onClick={clickable ? () => onPickEvent(it.eventId!) : undefined}
-        role={clickable ? 'button' : undefined}
-        tabIndex={clickable ? 0 : undefined}
-        onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPickEvent(it.eventId!); } } : undefined}
-        className={clickable ? 'plan-mark' : undefined}
+        onClick={act}
+        role={act ? 'button' : undefined}
+        tabIndex={act ? 0 : undefined}
+        onKeyDown={act ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } } : undefined}
+        className={act ? 'plan-mark' : undefined}
       >
         {it.kind === 'scorch' ? (
           // a burn scar heals with the years — ellipse, not architecture

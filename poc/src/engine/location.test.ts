@@ -47,7 +47,9 @@ describe('Location: creation & registry', () => {
   it('allocates generic ids above the dense settlement range (no collision)', () => {
     const w = createWorld(1);
     const before = w.nextLocationId;
-    expect(before).toBe(w.settlements.length);
+    // the allocator sits past the dense settlement range — venues minted at promote
+    // (design/25) may already have advanced it beyond settlements.length
+    expect(before).toBeGreaterThanOrEqual(w.settlements.length);
     const id = createLocation(w, { name: 'Aurea', locationType: 'planet' });
     expect(id).toBe(before);
     expect(getLocation(w, id)?.name).toBe('Aurea');
@@ -188,10 +190,12 @@ describe('Location: persistence', () => {
     expect(loaded.locations.get(loaded.settlements[0].id)).toBe(loaded.settlements[0]);
   });
 
-  it('a default (flat) world reloads with every settlement a fixed root', () => {
+  it('a default world reloads with every settlement a fixed root (venues intact under it)', () => {
     const w = createWorld(31);
     const loaded = roundTrip(w);
-    expect(loaded.locations.size).toBe(loaded.settlements.length);
+    // the registry holds the settlements PLUS the focused town's venues (design/25)
+    expect(loaded.locations.size).toBe(w.locations.size);
+    expect(loaded.locations.size).toBeGreaterThanOrEqual(loaded.settlements.length);
     for (const s of loaded.settlements) {
       expect(s.locationType).toBe('settlement');
       expect(s.mobility).toBe('fixed');

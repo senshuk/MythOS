@@ -5,7 +5,15 @@
  * keeps the UI a pure function of state, and leaves the door open to replay and
  * (eventually) multiplayer.
  */
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
+
+/** A settlement's public venue, as the close view lists them (its buildings link here). */
+export interface LocalVenue {
+  id: number;
+  name: string;
+  meaning?: string;
+  type: string;
+}
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 
@@ -24,6 +32,7 @@ export type SimRequest =
   | { kind: 'inspectCulture'; id: string }
   | { kind: 'inspectDeity'; id: string }
   | { kind: 'inspectFeature'; id: number }
+  | { kind: 'inspectVenue'; id: number }
   // a hover peek — a tiny card, separate from the inspector so hovering never
   // disturbs what the player has open. `token` pairs the reply with its request.
   | { kind: 'peek'; ref: EventRef; token: number }
@@ -53,6 +62,7 @@ export type SimResponse =
   | { kind: 'cultureDetail'; detail: CultureDetail | null }
   | { kind: 'deityDetail'; detail: DeityDetail | null }
   | { kind: 'featureDetail'; detail: FeatureDetail | null }
+  | { kind: 'venueDetail'; detail: VenueDetail | null }
   | { kind: 'peek'; token: number; card: PeekCard | null }
-  | { kind: 'localFacts'; token: number; events: EventView[]; households: HouseholdView[] }
+  | { kind: 'localFacts'; token: number; events: EventView[]; households: HouseholdView[]; venues: LocalVenue[] }
   | { kind: 'saveList'; saves: SaveMeta[] };

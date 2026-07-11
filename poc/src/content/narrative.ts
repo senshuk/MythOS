@@ -72,14 +72,16 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   born: (n, _d, c) => (c >= 3 ? `${n(0)} was born to ${n(1)} and ${n(2)}.` : `${n(0)} was born to ${n(1)}.`),
   died: (n, d) => `${n(0)} passed away${d.age !== undefined ? `, aged ${d.age}` : ''}${d.settlement ? ` in ${d.settlement}` : ''}.`,
   died_brawl: (n) => `${n(0)} was killed by ${n(1)} in a brawl.`,
-  married: (n) => `${n(0)} and ${n(1)} were married.`,
+  // social outcomes carry WHERE they happened when the town has raised a venue
+  // for them (design/25) — "were married at the shrine of the Windwalker".
+  married: (n, d) => `${n(0)} and ${n(1)} were married${d.venue ? ` at ${d.venue}` : ''}.`,
   widowed: (n) => `${n(0)} was widowed.`,
-  friendship: (n) => `${n(0)} and ${n(1)} became close friends.`,
+  friendship: (n, d) => `${n(0)} and ${n(1)} became close friends${d.venue ? ` at ${d.venue}` : ''}.`,
   rivalry: (n) => `${n(0)} and ${n(1)} became rivals.`,
-  feud: (n) => `A bitter feud broke out between ${n(0)} and ${n(1)}.`,
+  feud: (n, d) => `A bitter feud broke out between ${n(0)} and ${n(1)}${d.venue ? ` at ${d.venue}` : ''}.`,
   dispute: (n) => `${n(0)} and ${n(1)} quarrelled.`,
   kindness: (n) => `${n(0)} did ${n(1)} a kindness.`,
-  brawl: (n) => `${n(0)} and ${n(1)} came to blows.`,
+  brawl: (n, d) => `${n(0)} and ${n(1)} came to blows${d.venue ? ` at ${d.venue}` : ''}.`,
   mental_break: (n, d, c) =>
     d.mode === 'lash_out' && c >= 2
       ? `${n(0)} broke under the weight of their sorrows and turned on ${n(1)}.`

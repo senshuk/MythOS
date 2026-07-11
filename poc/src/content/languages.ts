@@ -310,6 +310,26 @@ export function featureName(seed: number, feature: GeoFeature): { name: string; 
   return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }
 
+// ----------------------------------------------------------- public venues ----
+// A tavern is named in its OWN people's tongue ("Voskhara — 'the bright hearth'"),
+// like towns and features — deterministic per (world, salt), no world RNG.
+const VENUE_CONCEPTS: Concept[] = [
+  { id: 'hearth', gloss: 'hearth' },
+  { id: 'hall', gloss: 'hall' },
+  { id: 'rest', gloss: 'rest' },
+  { id: 'cup', gloss: 'cup' },
+];
+
+/** Name a public VENUE in its people's own tongue, with its meaning. Stable per
+ *  (world seed, salt) — the same tavern always answers to the same name. */
+export function venueName(cultureId: string, seed: number, salt: number): { name: string; meaning: string } {
+  const rng = new Rng(mixSeed(seed, 0x7a3e, salt));
+  const desc = rng.pick(DESCRIPTORS);
+  const kind = rng.pick(VENUE_CONCEPTS);
+  const name = compose(tongueFor(cultureId, seed), [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, kind.id)]);
+  return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
+}
+
 /** A curated sample of concepts for the Tongues panel — enough of a lexicon to LEARN a
  *  people's words and recognise them in town names, without dumping the whole table. */
 export const LEXICON_SAMPLE: { id: string; gloss: string }[] = [

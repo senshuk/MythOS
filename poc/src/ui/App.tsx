@@ -9,8 +9,8 @@
  * live in WorldPanel.tsx, Feed.tsx, MapView.tsx, Inspector.tsx, PlayerCockpit.tsx.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EventRef, EventView, HouseholdView } from '../engine/model';
-import { useSim } from './useSim';
+import type { EventRef } from '../engine/model';
+import { useSim, type LocalFacts } from './useSim';
 import { usePersistentState } from './common';
 import { RegionMap } from './MapView';
 import { LocalMapView } from './LocalMapView';
@@ -78,7 +78,7 @@ export default function App() {
   const [closeViewId, setCloseViewId] = useState<number | null>(null);
   // …and its facts, fetched out-of-band: notable history for the HISTORY MARKS (L3)
   // and households for WHO LIVES WHERE (L2 — focused settlement only)
-  const [closeFacts, setCloseFacts] = useState<{ id: number; events: EventView[]; households: HouseholdView[] } | null>(null);
+  const [closeFacts, setCloseFacts] = useState<({ id: number } & LocalFacts) | null>(null);
 
   const stat = sim.snapshot;
   // a reforged/reloaded world may not contain the settlement we were standing in
@@ -94,8 +94,8 @@ export default function App() {
       return;
     }
     let stale = false;
-    void sim.localFacts(closeViewId).then(({ events, households }) => {
-      if (!stale) setCloseFacts({ id: closeViewId, events, households });
+    void sim.localFacts(closeViewId).then((facts) => {
+      if (!stale) setCloseFacts({ id: closeViewId, ...facts });
     });
     return () => {
       stale = true;
@@ -158,7 +158,7 @@ export default function App() {
   };
   const inspectorOpen = !!(
     sim.actorDetail || sim.eventChain || sim.figureDetail || sim.settlementDetail ||
-    sim.houseDetail || sim.cultureDetail || sim.deityDetail || sim.featureDetail
+    sim.houseDetail || sim.cultureDetail || sim.deityDetail || sim.featureDetail || sim.venueDetail
   );
 
   // ------------------------------------------------ quick-find (Ctrl/⌘-K) --
@@ -292,6 +292,7 @@ export default function App() {
                     currentYear={stat.year}
                     chronicle={closeFacts?.id === closeSettlement.id ? closeFacts.events : undefined}
                     households={closeFacts?.id === closeSettlement.id ? closeFacts.households : undefined}
+                    venues={closeFacts?.id === closeSettlement.id ? closeFacts.venues : undefined}
                     onExit={() => setCloseViewId(null)}
                     onRef={inspectRef}
                     onPickEvent={inspectEvent}
@@ -397,6 +398,7 @@ export default function App() {
                 cultureDetail={sim.cultureDetail}
                 deityDetail={sim.deityDetail}
                 featureDetail={sim.featureDetail}
+                venueDetail={sim.venueDetail}
                 settlements={stat.settlements}
                 playerId={stat.player?.id}
                 nav={nav}

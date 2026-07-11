@@ -19,6 +19,7 @@ import { Rng } from '../engine/rng';
 import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '../engine/world';
 import { ageCompatible, escalateAnimosity } from '../engine/social';
 import { witnessDeed, perceiveEvent } from '../engine/perception';
+import { pickVenue } from '../engine/venues';
 import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
 import { addThought, computeOpinion, pruneThoughts, trustFromOpinion } from '../engine/opinion';
@@ -225,7 +226,7 @@ function promote(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng
     edge.flags.friend = true;
     edge.flags.rival = false;
     edge.flags.feud = false;
-    const fid = emit(world, 'friendship', [a, b], {}, thoughtCauses(edge, true));
+    const fid = emit(world, 'friendship', [a, b], { ...pickVenue(world, 'friendship', a, b) }, thoughtCauses(edge, true));
     if (wasFeud) {
       // peacemaking is a public good — both former enemies earn renown, and onlookers
       // think the better of them for laying the feud down.
@@ -261,13 +262,14 @@ function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
   edge.flags.feud = false;
   edge.flags.rival = false;
   addThought(edge, 'wed', world.tick); // permanent, strong positive
-  const wedId = emit(world, 'married', [a, b], {}, thoughtCauses(edge, true));
+  // where it happened — pure hash, never a stream draw (design/25 §2)
+  const wedId = emit(world, 'married', [a, b], { ...pickVenue(world, 'married', a, b) }, thoughtCauses(edge, true));
   addSelfThought(world, a, 'newly_wed', { cause: wedId });
   addSelfThought(world, b, 'newly_wed', { cause: wedId });
 }
 
 function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng): void {
-  const brawlId = emit(world, 'brawl', [a, b], {}, thoughtCauses(edge, false));
+  const brawlId = emit(world, 'brawl', [a, b], { ...pickVenue(world, 'brawl', a, b) }, thoughtCauses(edge, false));
 
   // violence shakes everyone it touches — survivor moods carry the mark (mood.ts)
   addSelfThought(world, a, 'brawl_shock', { cause: brawlId });

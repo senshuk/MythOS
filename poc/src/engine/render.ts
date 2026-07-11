@@ -41,6 +41,11 @@ export function renderEventParts(world: World, ev: WorldEvent): EventPart[] {
     }
   }
   for (const s of world.settlements) tokens.push({ name: s.name, ref: { kind: 'settlement', id: s.id } });
+  // a located event links its venue ("…at the shrine of the Windwalker" — design/25)
+  if (typeof ev.data.venueId === 'number') {
+    const vname = typeof ev.data.venue === 'string' ? ev.data.venue : world.locations.get(ev.data.venueId)?.name;
+    if (vname) tokens.push({ name: vname, ref: { kind: 'venue', id: ev.data.venueId } });
+  }
   // "House X" mentions link to the lineage — matched as "House {name}" so the whole phrase
   // becomes one clickable ref (longest-first below keeps it from being split by a settlement match).
   for (const h of world.houses) tokens.push({ name: `House ${h.name}`, ref: { kind: 'house', id: h.id } });

@@ -1128,12 +1128,27 @@ export type EventRef =
   | { kind: 'house'; id: HouseId }
   | { kind: 'culture'; id: string } // a creed/people (pack culture id)
   | { kind: 'deity'; id: string } // a god (pack deity id)
-  | { kind: 'feature'; id: number }; // a named geographic feature (per-world index)
+  | { kind: 'feature'; id: number } // a named geographic feature (per-world index)
+  | { kind: 'venue'; id: LocationId }; // a public venue (a Location — design/25)
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {
   text: string;
   ref?: EventRef;
+}
+
+/** Detail for a VENUE — a public Location made inspectable (design/25): what it is,
+ *  where it stands, and everything recorded to have HAPPENED there — every wedding
+ *  the shrine has seen, every brawl the tavern has hosted. */
+export interface VenueDetail {
+  id: LocationId;
+  name: string;
+  meaning?: string; // the name's sense, when coined in a living tongue
+  type: string; // the pack's venue kind ('tavern', 'shrine', …)
+  settlementId: SettlementId;
+  settlement: string;
+  foundedYear: number;
+  events: EventView[]; // what happened here, newest first
 }
 
 /** One member of a HOUSEHOLD, as the close view shows it — a name on a roof. */

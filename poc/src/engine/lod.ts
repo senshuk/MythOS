@@ -41,6 +41,7 @@ import {
 } from './world';
 import { addThought } from './opinion';
 import { registerLocation } from './location';
+import { ensureVenues } from './venues';
 import { foundPolity, noteOrgThought, orgOpinionOf } from './organization';
 import { activeAgreement } from './orgInteraction';
 import { recordDeed } from './reputation';
@@ -524,6 +525,11 @@ export function promote(world: World, s: Settlement): void {
 
   // 3) seed marriages among the unmarried adults
   seedMarriages(world, made, rng);
+
+  // 4) raise the town's PUBLIC VENUES (design/25) — idempotent, and deliberately
+  // AFTER the rng work above: minting is stream-free, so it must stay at the tail
+  // where it can never shift a draw.
+  ensureVenues(world, s);
 }
 
 function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {

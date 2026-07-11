@@ -4,7 +4,7 @@
  * feature, a settlement, or an event's causal ancestry.
  */
 import { Fragment } from 'react';
-import type { EventView, EventRef, SettlementView, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail } from '../engine/model';
+import type { EventView, EventRef, SettlementView, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail } from '../engine/model';
 import { layoutLineage, LINEAGE_METRICS } from './lineageLayout';
 import { onActivate, EventText } from './common';
 import { HouseShield } from './heraldry';
@@ -106,6 +106,7 @@ export function Inspector({
   cultureDetail,
   deityDetail,
   featureDetail,
+  venueDetail,
   settlements,
   playerId,
   nav,
@@ -125,6 +126,7 @@ export function Inspector({
   cultureDetail: CultureDetail | null;
   deityDetail: DeityDetail | null;
   featureDetail: FeatureDetail | null;
+  venueDetail: VenueDetail | null;
   settlements: SettlementView[];
   playerId?: number;
   nav?: InspectorNav;
@@ -137,7 +139,7 @@ export function Inspector({
   onWalk?: (id: number) => void;
   onClose: () => void;
 }) {
-  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail) {
+  if (!actorDetail && !eventChain && !figureDetail && !settlementDetail && !houseDetail && !cultureDetail && !deityDetail && !featureDetail && !venueDetail) {
     return (
       <section className="panel inspector empty">
         <h2>A closer look</h2>
@@ -342,6 +344,25 @@ export function Inspector({
                 ))}
               </ul>
             </>
+          )}
+        </div>
+      )}
+
+      {venueDetail && (
+        <div>
+          <h3>{venueDetail.name}{venueDetail.meaning ? <span className="house-gloss"> · “{venueDetail.meaning}”</span> : null}</h3>
+          <p className="muted">
+            a {venueDetail.type} in{' '}
+            <button className="link" onClick={() => onRef({ kind: 'settlement', id: venueDetail.settlementId })}>
+              {venueDetail.settlement}
+            </button>{' '}
+            · raised y{venueDetail.foundedYear}
+          </p>
+          <h4>What happened here</h4>
+          {venueDetail.events.length === 0 ? (
+            <p className="muted">Nothing of note yet — its stories are still to come.</p>
+          ) : (
+            <ul className="rels">{venueDetail.events.map(eventLine)}</ul>
           )}
         </div>
       )}

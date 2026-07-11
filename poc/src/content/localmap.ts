@@ -20,7 +20,7 @@ export interface PlanBuilding {
   x: number; y: number; // centre, world units
   w: number; h: number; // world units
   rot: number; // radians
-  role: 'house' | 'seat' | 'shrine' | 'workshop' | 'warehouse' | 'boathouse' | 'minehead' | 'mill' | 'monument' | 'stone' | 'tomb' | 'shell';
+  role: 'house' | 'seat' | 'shrine' | 'tavern' | 'workshop' | 'warehouse' | 'boathouse' | 'minehead' | 'mill' | 'monument' | 'stone' | 'tomb' | 'shell';
   label: string; // hover text, in the pack's voice
   tone: 'plain' | 'grand' | 'sacred' | 'ruin';
   ref?: EventRef; // the shrine inspects its deity, the seat its ruler, a home its head
@@ -39,6 +39,7 @@ export interface PlanPatch {
   x: number; y: number; w: number; h: number; rot: number;
   label?: string;
   eventId?: number; // a scorch remembers the raid that made it
+  ref?: EventRef; // the market square inspects its venue (L4)
   /** 0..1 — how far a scorch has healed (drives its fade) */
   age?: number;
 }
@@ -58,6 +59,9 @@ export interface LocalPlanFacts {
   /** who lives under which roof (L2) — present only for the lived-in-full settlement.
    *  The Houses step names its roofs from these, densest hearths nearest the square. */
   households?: HouseholdView[];
+  /** the settlement's PUBLIC VENUES (L4, design/25) — real Locations the sim's events
+   *  happen at. The drawn shrine/square/tavern link to them (click = its history). */
+  venues?: { id: number; name: string; meaning?: string; type: string }[];
 }
 
 export interface LocalPlan {
@@ -284,11 +288,13 @@ const MarketSquare: LocalGenStep = {
   run(facts, rng, plan) {
     if (facts.settlement.ruinedYear !== undefined) return;
     if (facts.settlement.population < 60) return; // a hamlet has no market
+    const venue = facts.venues?.find((v) => v.type === 'square');
     plan.items.push({
       kind: 'square',
       x: facts.pos.x, y: facts.pos.y,
       w: 0.5, h: 0.5, rot: rng.next() * 0.4,
-      label: 'the market square',
+      label: venue?.name ?? 'the market square',
+      ref: venue ? { kind: 'venue', id: venue.id } : undefined,
     });
   },
 };
@@ -313,17 +319,34 @@ const CivicBuildings: LocalGenStep = {
         ref: !ruined && s.rulerId !== undefined ? { kind: 'figure', id: s.rulerId } : undefined,
       });
     }
-    // the SHRINE — every people raises something to its patron
+    // the SHRINE — every people raises something to its patron. When the sim has
+    // raised it as a real VENUE (L4), the building inspects that venue — every
+    // wedding it has seen — rather than just the deity (one click deeper).
     if (s.patronDeity) {
       const a = rng.next() * Math.PI * 2;
+      const venue = facts.venues?.find((v) => v.type === 'shrine');
       plan.items.push({
         kind: 'building',
         x: facts.pos.x + Math.cos(a) * 0.6, y: facts.pos.y + Math.sin(a) * 0.6,
         w: 0.22, h: 0.22, rot: rng.next() * Math.PI,
         role: 'shrine',
-        label: `the shrine of ${s.patronDeity.name}`,
+        label: venue?.name ?? `the shrine of ${s.patronDeity.name}`,
         tone: ruined ? 'ruin' : 'sacred',
-        ref: { kind: 'deity', id: s.patronDeity.id },
+        ref: venue ? { kind: 'venue', id: venue.id } : { kind: 'deity', id: s.patronDeity.id },
+      });
+    }
+    // the TAVERN — the town's hearth, when the sim has raised one (L4)
+    const tavern = facts.venues?.find((v) => v.type === 'tavern');
+    if (tavern && !ruined) {
+      const a = rng.next() * Math.PI * 2;
+      plan.items.push({
+        kind: 'building',
+        x: facts.pos.x + Math.cos(a) * 0.52, y: facts.pos.y + Math.sin(a) * 0.52,
+        w: 0.26, h: 0.18, rot: a + Math.PI / 2,
+        role: 'tavern',
+        label: `${tavern.name}${tavern.meaning ? ` — “${tavern.meaning}”` : ''} · the tavern`,
+        tone: 'plain',
+        ref: { kind: 'venue', id: tavern.id },
       });
     }
   },

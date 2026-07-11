@@ -982,6 +982,10 @@ button { font-family: inherit; }
 .plan-building.role-tomb rect { fill: #8a8578; stroke: none; }
 .plan-building.role-shell rect { fill: rgba(30, 24, 18, 0.8); stroke: rgba(80, 58, 40, 0.9); stroke-width: 0.012; stroke-dasharray: 0.04 0.03; }
 .plan-building.role-shell .plan-ridge { display: none; }
+/* the tavern — the town's public hearth (a VENUE, L4): warm-lit and amber-edged */
+.plan-building.role-tavern rect { fill: #5e4b30; stroke: var(--amber); stroke-width: 0.018; }
+.plan-mark[role="button"], .plan-square[role="button"] { cursor: pointer; }
+.plan-mark:hover .plan-square { stroke: var(--cyan); }
 .tip-hint { font-size: 10.5px; color: var(--cyan); margin-top: 2px; }
 .walk-btn { display: inline-block; margin-bottom: var(--space-2); }
 

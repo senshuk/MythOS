@@ -24,6 +24,7 @@ import * as actions from '../content/actions';
 import * as ambitions from '../content/ambitions';
 import * as aspirations from '../content/aspirations';
 import * as decisions from '../content/decisions';
+import * as venues from '../content/venues';
 
 // type re-exports (compile-time only; a pack supplies matching shapes)
 export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec } from '../content/fixture';
@@ -34,10 +35,10 @@ export type { ActionResolver } from '../content/actions';
 
 /** The COMPLETE surface a universe pack must supply — every function, table and constant
  * the engine consumes. Derived from the fantasy pack, its reference implementation. */
-export type UniversePack = typeof fixture & typeof languages & typeof biomes & typeof narrative & typeof actions & typeof ambitions & typeof aspirations & typeof decisions;
+export type UniversePack = typeof fixture & typeof languages & typeof biomes & typeof narrative & typeof actions & typeof ambitions & typeof aspirations & typeof decisions & typeof venues;
 
 /** The built-in fantasy universe — the default pack and the reference for the shape. */
-export const FANTASY_PACK: UniversePack = { ...fixture, ...languages, ...biomes, ...narrative, ...actions, ...ambitions, ...aspirations, ...decisions };
+export const FANTASY_PACK: UniversePack = { ...fixture, ...languages, ...biomes, ...narrative, ...actions, ...ambitions, ...aspirations, ...decisions, ...venues };
 
 // ---- live bindings: the ACTIVE pack, one export per member -----------------
 // ES module exports are LIVE — setPack reassigns these and every engine importer
@@ -184,6 +185,9 @@ export let AMBITIONS = FANTASY_PACK.AMBITIONS;
 export let ASPIRATIONS = FANTASY_PACK.ASPIRATIONS;
 export let DEFAULT_ASPIRATION = FANTASY_PACK.DEFAULT_ASPIRATION;
 export let DECISIONS = FANTASY_PACK.DECISIONS;
+export let VENUES = FANTASY_PACK.VENUES;
+export let VENUE_HOSTS = FANTASY_PACK.VENUE_HOSTS;
+export let venueName = FANTASY_PACK.venueName;
 
 /** Bind a universe: every engine import re-resolves to this pack from now on.
  * Called at world creation; the default (no call) is the fantasy pack. */
@@ -330,4 +334,7 @@ export function setPack(p: UniversePack): void {
   ASPIRATIONS = p.ASPIRATIONS;
   DEFAULT_ASPIRATION = p.DEFAULT_ASPIRATION;
   DECISIONS = p.DECISIONS;
+  VENUES = p.VENUES;
+  VENUE_HOSTS = p.VENUE_HOSTS;
+  venueName = p.venueName;
 }

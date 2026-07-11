@@ -3,10 +3,17 @@
  * back as snapshots. React renders snapshots — it never reaches into sim state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
+import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
-import type { SimRequest, SimResponse } from '../worker/protocol';
+import type { SimRequest, SimResponse, LocalVenue } from '../worker/protocol';
+
+/** Everything the close view asks about one settlement, in one round trip. */
+export interface LocalFacts {
+  events: EventView[];
+  households: HouseholdView[];
+  venues: LocalVenue[];
+}
 
 export function useSim(initialSeed: number) {
   const workerRef = useRef<Worker | null>(null);
@@ -19,14 +26,15 @@ export function useSim(initialSeed: number) {
   const [cultureDetail, setCultureDetail] = useState<CultureDetail | null>(null);
   const [deityDetail, setDeityDetail] = useState<DeityDetail | null>(null);
   const [featureDetail, setFeatureDetail] = useState<FeatureDetail | null>(null);
+  const [venueDetail, setVenueDetail] = useState<VenueDetail | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [busy, setBusy] = useState(false);
   // hover peeks resolve out-of-band: each request carries a token; the matching
   // reply settles its promise. Hovering never disturbs the open inspection.
   const peekSeq = useRef(0);
   const peekPending = useRef(new Map<number, (card: PeekCard | null) => void>());
-  // the close view's facts fetch (history marks + households) rides the same pattern
-  const factsPending = useRef(new Map<number, (facts: { events: EventView[]; households: HouseholdView[] }) => void>());
+  // the close view's facts fetch (history marks + households + venues) rides the same pattern
+  const factsPending = useRef(new Map<number, (facts: LocalFacts) => void>());
 
   // clear every open inspection (used on navigation that invalidates them)
   const clearInspect = useCallback(() => {
@@ -38,6 +46,7 @@ export function useSim(initialSeed: number) {
     setCultureDetail(null);
     setDeityDetail(null);
     setFeatureDetail(null);
+    setVenueDetail(null);
   }, []);
 
   useEffect(() => {
@@ -66,11 +75,13 @@ export function useSim(initialSeed: number) {
         setDeityDetail(msg.detail);
       } else if (msg.kind === 'featureDetail') {
         setFeatureDetail(msg.detail);
+      } else if (msg.kind === 'venueDetail') {
+        setVenueDetail(msg.detail);
       } else if (msg.kind === 'peek') {
         peekPending.current.get(msg.token)?.(msg.card);
         peekPending.current.delete(msg.token);
       } else if (msg.kind === 'localFacts') {
-        factsPending.current.get(msg.token)?.({ events: msg.events, households: msg.households });
+        factsPending.current.get(msg.token)?.({ events: msg.events, households: msg.households, venues: msg.venues });
         factsPending.current.delete(msg.token);
       } else if (msg.kind === 'saveList') {
         setSaves(msg.saves);
@@ -122,6 +133,7 @@ export function useSim(initialSeed: number) {
   const inspectCulture = useCallback((id: string) => { clearInspect(); send({ kind: 'inspectCulture', id }); }, [send, clearInspect]);
   const inspectDeity = useCallback((id: string) => { clearInspect(); send({ kind: 'inspectDeity', id }); }, [send, clearInspect]);
   const inspectFeature = useCallback((id: number) => { clearInspect(); send({ kind: 'inspectFeature', id }); }, [send, clearInspect]);
+  const inspectVenue = useCallback((id: number) => { clearInspect(); send({ kind: 'inspectVenue', id }); }, [send, clearInspect]);
 
   /** Dispatch a clicked entity reference to the right inspector. */
   const inspectRef = useCallback((ref: EventRef) => {
@@ -131,8 +143,9 @@ export function useSim(initialSeed: number) {
     else if (ref.kind === 'culture') inspectCulture(ref.id);
     else if (ref.kind === 'deity') inspectDeity(ref.id);
     else if (ref.kind === 'feature') inspectFeature(ref.id);
+    else if (ref.kind === 'venue') inspectVenue(ref.id);
     else inspectSettlement(ref.id);
-  }, [inspectActor, inspectFigure, inspectSettlement, inspectHouse, inspectCulture, inspectDeity, inspectFeature]);
+  }, [inspectActor, inspectFigure, inspectSettlement, inspectHouse, inspectCulture, inspectDeity, inspectFeature, inspectVenue]);
 
   /** Ask the worker for a hover card. Resolves null for anything unknown. */
   const peek = useCallback((ref: EventRef) => {
@@ -143,9 +156,9 @@ export function useSim(initialSeed: number) {
     });
   }, []);
 
-  /** One settlement's close-view facts — history marks + households (focused only). */
+  /** One settlement's close-view facts — history marks + households (focused only) + venues. */
   const localFacts = useCallback((id: number) => {
-    return new Promise<{ events: EventView[]; households: HouseholdView[] }>((resolve) => {
+    return new Promise<LocalFacts>((resolve) => {
       const token = ++peekSeq.current; // shared counter; the maps are separate
       factsPending.current.set(token, resolve);
       workerRef.current?.postMessage({ kind: 'localFacts', id, token } satisfies SimRequest);
@@ -203,6 +216,7 @@ export function useSim(initialSeed: number) {
     cultureDetail,
     deityDetail,
     featureDetail,
+    venueDetail,
     saves,
     busy,
     reset,
@@ -218,6 +232,7 @@ export function useSim(initialSeed: number) {
     inspectCulture,
     inspectDeity,
     inspectFeature,
+    inspectVenue,
     inspectRef,
     clearInspect,
     peek,
