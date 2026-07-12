@@ -14,7 +14,7 @@ import type { World } from './model';
 let w: World;
 let evs: ReturnType<typeof allEvents>;
 beforeAll(() => {
-  w = createWorld(42, true);
+  w = createWorld(1, true);
   runYears(w, 28);
   evs = allEvents(w);
 });

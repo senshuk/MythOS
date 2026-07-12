@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree } from './localmap';
+import { archStyleFor } from './architecture';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
 import { GEO_MIN, GEO_SPAN, type Geography } from '../engine/geography';
@@ -149,6 +150,31 @@ describe('fortunes on the map (design/28)', () => {
     const plan = buildLocalPlan(worldFacts({ population: 300, wealth: 150, stability: 5, subsistenceSecurity: 1.1 }));
     expect(plan.items.some((i) => i.kind === 'building' && (i as PlanBuilding).derelict)).toBe(false);
     expect(plan.items.some((i) => i.kind === 'building' && i.role === 'scaffold')).toBe(false);
+  });
+});
+
+describe('architecture by culture (design/28 #2)', () => {
+  it('a culture builds in one deterministic style; peoples do not all share a silhouette', () => {
+    expect(archStyleFor('free')).toBe(archStyleFor('free')); // stable per culture
+    const ids = new Set(['free', 'old', 'iron', 'maker', 'green', 'vale', 'duns', 'oront'].map((c) => archStyleFor(c).id));
+    expect(ids.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("every dwelling wears its culture's style, and a town is consistent", () => {
+    const plan = buildLocalPlan(worldFacts({ cultureId: 'free' }));
+    const houses = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house' && !i.derelict);
+    expect(houses.length).toBeGreaterThan(5);
+    const want = archStyleFor('free').id;
+    expect(houses.every((h) => h.arch === want)).toBe(true);
+  });
+
+  it('two peoples raise differently-styled towns', () => {
+    const a = 'free';
+    const b = ['old', 'iron', 'maker', 'green', 'vale', 'duns'].find((c) => archStyleFor(c).id !== archStyleFor(a).id)!;
+    const houseArch = (cid: string) =>
+      buildLocalPlan(worldFacts({ cultureId: cid })).items.find((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house' && !!i.arch)?.arch;
+    expect(houseArch(a)).toBeDefined();
+    expect(houseArch(a)).not.toBe(houseArch(b));
   });
 });
 

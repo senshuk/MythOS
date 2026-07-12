@@ -41,7 +41,7 @@ function siege(w: ReturnType<typeof createWorld>, expansionist: boolean) {
 
 describe('an expansionist victor annexes', () => {
   it('the town survives as a province of the victor, its old dynasty deposed', () => {
-    const w = createWorld(123456);
+    const w = createWorld(1);
     runYears(w, 6);
     w.orgAgreements = [];
     const { strongId, weakId, strongPolity, weakName, drive } = siege(w, true);
@@ -71,7 +71,7 @@ describe('an expansionist victor annexes', () => {
 
 describe('a valuable city is taken even by a victor with no expansionist aim', () => {
   it('a substantial town is annexed, not razed — a prize worth ruling', () => {
-    const w = createWorld(123456);
+    const w = createWorld(1);
     runYears(w, 6);
     w.orgAgreements = [];
     w.currentIntent.clear(); // no 'expand' intent anywhere — value alone drives this
@@ -93,7 +93,7 @@ describe('a valuable city is taken even by a victor with no expansionist aim', (
 
 describe('a poor village with no will to expand is still razed', () => {
   it('the same overwhelming victory empties the small town', () => {
-    const w = createWorld(123456);
+    const w = createWorld(1);
     runYears(w, 6);
     w.orgAgreements = [];
     w.currentIntent.clear(); // no expansionist aim anywhere

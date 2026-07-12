@@ -9,6 +9,7 @@
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_RIVER, REF_N, GREAT_RIVER_FLUX, temperatureAt, moistureAt, hillinessAt } from '../engine/geography';
 import { biomeOf } from '../content/biomes';
 import type { LocalPlan } from '../content/localmap';
+import { ARCH_BY_ID, type ArchStyle } from '../content/architecture';
 
 export const RES = 200; // terrain vertices per side
 export const VSCALE = 26; // vertical exaggeration (real relief is subtle over a few km)
@@ -241,6 +242,38 @@ function pushRoof(A: Accum, x: number, by: number, z: number, w: number, d: numb
     quad(A, A0, R0, R1, D0, r, g, b); quad(A, B0, C0, R1, R0, r, g, b); tri(A, A0, B0, R0, r, g, b); tri(A, D0, R1, C0, r, g, b);
   }
 }
+/** a 4-sided pyramid roof (apex over the centre) — a conical people's silhouette on a square base. */
+function pushPyramid(A: Accum, x: number, by: number, z: number, w: number, d: number, ht: number, rot: number, r: number, g: number, b: number) {
+  const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
+  const tr = (lx: number, lz: number, ly: number): number[] => [x + lx * c - lz * s, by + ly, z + lx * s + lz * c];
+  const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), AP = tr(0, 0, ht);
+  tri(A, A0, B0, AP, r, g, b); tri(A, B0, C0, AP, r, g, b); tri(A, C0, D0, AP, r, g, b); tri(A, D0, A0, AP, r, g, b);
+}
+/** a small rect on a box's FRONT (+z local) face, sat just proud of the wall — a door or window. */
+function pushFront(A: Accum, cx: number, by: number, cz: number, d: number, rot: number, lx0: number, lx1: number, y0: number, y1: number, r: number, g: number, b: number) {
+  const c = Math.cos(rot), s = Math.sin(rot), hd = d / 2 + 0.006;
+  const tr = (lx: number, ly: number): number[] => [cx + lx * c - hd * s, by + ly, cz + lx * s + hd * c];
+  quad(A, tr(lx0, y0), tr(lx1, y0), tr(lx1, y1), tr(lx0, y1), r, g, b);
+}
+/** a DWELLING in its culture's style (design/28 §3): coloured walls + roof, a gable/flat/conical
+ *  roofline, an optional chimney, and a door + windows so it reads as a home (warm-lit if lived in).
+ *  Wealth (`grand`) raises a taller, richer roof. */
+function pushHouse(A: Accum, lx: number, by: number, lz: number, w: number, d: number, rot: number, style: ArchStyle, grand: boolean, inhabited: boolean) {
+  const wallH = 0.16 * (grand ? 1.15 : 1);
+  pushBox(A, lx, by, lz, w, wallH, d, rot, style.wall[0], style.wall[1], style.wall[2]);
+  const k = grand ? 0.9 : 1, rr = style.roof[0] * k, rg = style.roof[1] * k, rb = style.roof[2] * k, top = by + wallH;
+  if (style.roofShape === 'flat') pushBox(A, lx, top, lz, w * 1.03, 0.03, d * 1.03, rot, rr, rg, rb); // a thin clay slab, slight eave
+  else if (style.roofShape === 'conical') pushPyramid(A, lx, top, lz, w * 1.05, d * 1.05, 0.2 * (grand ? 1.2 : 1), rot, rr, rg, rb);
+  else pushRoof(A, lx, top, lz, w, d, 0.13 * (grand ? 1.2 : 1), rot, rr, rg, rb);
+  if (style.chimney) {
+    const c = Math.cos(rot), s = Math.sin(rot), ox = w * 0.3, oz = d * 0.12;
+    pushBox(A, lx + ox * c - oz * s, top, lz + ox * s + oz * c, 0.024, 0.16, 0.024, rot, 0.3, 0.27, 0.24);
+  }
+  const win: [number, number, number] = inhabited ? [0.95, 0.78, 0.42] : [0.2, 0.22, 0.26]; // lit if a known family lives here
+  pushFront(A, lx, by, lz, d, rot, -w * 0.09, w * 0.09, 0, wallH * 0.6, 0.14, 0.11, 0.09); // door
+  pushFront(A, lx, by, lz, d, rot, -w * 0.4, -w * 0.22, wallH * 0.4, wallH * 0.78, win[0], win[1], win[2]); // window L
+  pushFront(A, lx, by, lz, d, rot, w * 0.22, w * 0.4, wallH * 0.4, wallH * 0.78, win[0], win[1], win[2]); // window R
+}
 type RoofSpec = { wallH: number; roofH: number; wall: [number, number, number]; roof: [number, number, number] };
 type BoxSpec = { h: number; col: [number, number, number] };
 const ROOFED: Record<string, RoofSpec> = {
@@ -284,6 +317,9 @@ export function buildStructures(plan: LocalPlan, geo: Geography, cx: number, cy:
       if (it.derelict) {
         // a DERELICT house (design/28): roofless, weathered walls — a hollow shell, no roof
         pushBox(A, lx, by, lz, w, (rf?.wallH ?? 0.14) * 0.75, d, it.rot, 0.34, 0.33, 0.27);
+      } else if (it.role === 'house' && it.arch && ARCH_BY_ID[it.arch]) {
+        // a DWELLING in its culture's architecture (design/28 §3)
+        pushHouse(A, lx, by, lz, w, d, it.rot, ARCH_BY_ID[it.arch], it.shape === 'compound' || it.tone === 'grand', !!it.inhabited);
       } else if (rf) {
         pushBox(A, lx, by, lz, w, rf.wallH, d, it.rot, rf.wall[0], rf.wall[1], rf.wall[2]);
         pushRoof(A, lx, by + rf.wallH, lz, w, d, rf.roofH, it.rot, rf.roof[0], rf.roof[1], rf.roof[2]);

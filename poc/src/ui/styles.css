@@ -1048,6 +1048,11 @@ button { font-family: inherit; }
 .plan-building rect { fill: #4a4038; stroke: #241f1a; stroke-width: 0.016; }
 .plan-building .plan-ridge { stroke: rgba(20, 16, 12, 0.55); stroke-width: 0.012; }
 .plan-building .plan-yard { fill: none; stroke: rgba(60, 52, 44, 0.85); stroke-width: 0.014; }
+/* ARCHITECTURE by culture (design/28 §3) — roof silhouette cues + hearth chimney */
+.plan-building .plan-hip { stroke: rgba(20, 16, 12, 0.5); stroke-width: 0.009; }
+.plan-building .plan-parapet { stroke: rgba(30, 24, 18, 0.6); stroke-width: 0.012; }
+.plan-building .plan-chimney { fill: rgba(54, 48, 42, 0.9); stroke: rgba(24, 20, 16, 0.6); stroke-width: 0.005; }
+.plan-building.inhabited .plan-hip { stroke: rgba(233, 196, 106, 0.3); }
 /* AGE GRADIENT (design/24 §8.3) — weathered pale stone in the old core, fresh warm timber
    at the growing edge, so the town's growth reads at a glance */
 .plan-building.era-old rect { fill: #514a44; stroke: #2a2622; }

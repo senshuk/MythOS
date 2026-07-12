@@ -10,6 +10,7 @@
  * with domes and landing pads; the UI only renders PlanItems.
  */
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_SEA, WATER_LAKE, WATER_RIVER, hillinessAt, wetnessAt, flowSpeedAt, temperatureAt, fertilityAt, HILL_HILLS, HILL_MOUNTAIN } from '../engine/geography';
+import { archStyleFor } from './architecture';
 import { biomeOf } from './biomes';
 import { type SettlementView, type EventRef, type EventView, type HouseholdView } from '../engine/model';
 import { Rng, mixSeed } from '../engine/rng';
@@ -37,6 +38,9 @@ export interface PlanBuilding {
   /** footprint shape (design/24 §8.4): a wealthy compound rings a yard; a row-house in
    *  the dense core is a plain block; the default is a ridged cot. */
   shape?: 'cot' | 'row' | 'compound';
+  /** the culture's ARCHITECTURAL style id (design/28 §3) — drives wall/roof colour, roof
+   *  silhouette and chimney in both renderers, so a people's dwellings read as their own. */
+  arch?: string;
 }
 export interface PlanPath {
   kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed' | 'bridge';
@@ -695,6 +699,9 @@ const Houses: LocalGenStep = {
     // lots); a thriving one raises fresh timber. Known households (the living) keep their roofs.
     const fort = ruined ? { fortune: 0, declining: false, prospering: false, atWar: false, deaths: 0 } : settlementFortunes(facts);
     const decay = fort.declining ? Math.min(0.5, 0.18 - fort.fortune * 0.32) : 0; // 0 … ~0.5 at the edge
+    // ARCHITECTURE (design/28 §3): this people's building style — every dwelling wears it, so
+    // the town reads as theirs and a foreign people's town reads apart.
+    const archId = archStyleFor(settlement.cultureId).id;
     let budget = ctx.houses;
     const form = ctx.form;
     const spacing = 0.24 / form.packing; // dispersed folk spread out; a walled grid packs tight
@@ -773,6 +780,7 @@ const Houses: LocalGenStep = {
               : 'a household',
         tone: ruined || derelict ? 'ruin' : 'plain',
         era, shape,
+        arch: ruined || derelict ? undefined : archId,
         derelict: derelict || undefined,
         ref: hh ? { kind: 'actor', id: hh.members[0].id } : undefined,
         inhabited: !!hh,

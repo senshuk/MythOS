@@ -13,6 +13,7 @@ import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { buildLocalPlan, type LocalPlanFacts, type PlanItem } from '../content/localmap';
+import { ARCH_BY_ID } from '../content/architecture';
 import { paintTerrain, paintTerrainOverlay, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields } from './terrain';
 import type { TerrainPaintResponse } from './terrainWorker';
 // lazy — three.js (~300 KB gzip) loads only when the 3D view is opened, off the initial bundle
@@ -585,6 +586,10 @@ function PlanGlyph({
   }
   if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
   const cls = `plan-building tone-${it.tone} role-${it.role}${it.inhabited ? ' inhabited' : ''}${it.era ? ` era-${it.era}` : ''}${it.shape ? ` shape-${it.shape}` : ''}${it.derelict ? ' derelict' : ''}`;
+  // ARCHITECTURE (design/28 §3): the culture's style tints the roof and shapes its silhouette
+  const st = it.arch ? ARCH_BY_ID[it.arch] : undefined;
+  const roofFill = st ? `rgb(${Math.round(st.roof[0] * 255)}, ${Math.round(st.roof[1] * 255)}, ${Math.round(st.roof[2] * 255)})` : undefined;
+  const hw = it.w / 2, hh = it.h / 2;
   // a history mark traces its event; a civic building inspects its subject
   const act = it.eventId !== undefined ? () => onPickEvent(it.eventId!) : it.ref ? () => onRef(it.ref!) : undefined;
   return (
@@ -645,15 +650,35 @@ function PlanGlyph({
         // a walled COMPOUND: a hall set inside its own yard wall (the wealthy of the core)
         <>
           <rect className="plan-yard" x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={0.02} fill="none" />
-          <rect x={-it.w / 2 + 0.03} y={-it.h / 2 + 0.03} width={it.w * 0.52} height={it.h - 0.06} rx={0.012} />
+          <rect x={-it.w / 2 + 0.03} y={-it.h / 2 + 0.03} width={it.w * 0.52} height={it.h - 0.06} rx={0.012} style={roofFill ? { fill: roofFill } : undefined} />
           <line x1={-it.w / 2 + 0.045} y1={0} x2={-it.w / 2 + 0.03 + it.w * 0.52 - 0.015} y2={0} className="plan-ridge" />
         </>
       ) : (
         <>
-          {/* a ROW house in the dense core has square corners (attached); a cot is softer */}
-          <rect x={-it.w / 2} y={-it.h / 2} width={it.w} height={it.h} rx={it.shape === 'row' ? 0 : 0.012} />
-          {/* the roof ridge — one line makes a rectangle read as a building */}
-          <line x1={-it.w / 2 + 0.015} y1={0} x2={it.w / 2 - 0.015} y2={0} className="plan-ridge" />
+          {/* a ROW house in the dense core has square corners (attached); a cot is softer.
+              The fill is the culture's ROOF colour; the roofline cue is its silhouette. */}
+          <rect x={-hw} y={-hh} width={it.w} height={it.h} rx={it.shape === 'row' ? 0 : 0.012} style={roofFill ? { fill: roofFill } : undefined} />
+          {(!st || st.roofShape === 'gable') && (
+            // a pitched gable — the ridge that makes a rectangle read as a building
+            <line x1={-hw + 0.015} y1={0} x2={hw - 0.015} y2={0} className="plan-ridge" />
+          )}
+          {st?.roofShape === 'flat' && (
+            // a flat clay roof — a parapet outline, no ridge
+            <rect className="plan-parapet" x={-hw + 0.02} y={-hh + 0.02} width={it.w - 0.04} height={it.h - 0.04} fill="none" />
+          )}
+          {st?.roofShape === 'conical' && (
+            // a conical/hipped roof — hips run from the corners to a central apex
+            <>
+              <line className="plan-hip" x1={0} y1={0} x2={-hw} y2={-hh} />
+              <line className="plan-hip" x1={0} y1={0} x2={hw} y2={-hh} />
+              <line className="plan-hip" x1={0} y1={0} x2={hw} y2={hh} />
+              <line className="plan-hip" x1={0} y1={0} x2={-hw} y2={hh} />
+            </>
+          )}
+          {st?.chimney && (
+            // a hearth's chimney — a small stack near the eave
+            <rect className="plan-chimney" x={hw * 0.35} y={-hh * 0.7} width={Math.max(0.012, it.w * 0.14)} height={Math.max(0.012, it.w * 0.14)} />
+          )}
         </>
       )}
     </g>

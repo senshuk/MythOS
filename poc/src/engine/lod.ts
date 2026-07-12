@@ -75,7 +75,7 @@ import {
   SETTLEMENT_LOCATION_TYPE,
 } from './pack';
 import { biomeOf } from './pack';
-import { placeName, featureName, givenName, houseName } from './pack';
+import { placeName, featureName, givenName, houseName, patronDeityOf } from './pack';
 import { SurfaceSubstrate } from './substrate';
 import { nearestFeatureAt, type GeoFeature } from './geography';
 import { deathProbability } from '../systems/lifecycle';
@@ -181,10 +181,15 @@ export function createSettlements(world: World): void {
     cultureId: string,
     site: Site,
     parent?: { name: string; pos: { x: number; y: number } },
+    isOrigin?: boolean,
   ): { name: string; meaning: string } => {
     const ctx = {
       landmark: lmFor(site.pos),
       parent: parent ? { name: parent.name, dx: site.pos.x - parent.pos.x, dy: site.pos.y - parent.pos.y } : undefined,
+      // a founding people may dedicate their FIRST city to the patron deity they carried
+      // with them — daughters and infill towns are secular, so a world gets a handful of
+      // holy capitals rather than every hamlet nodding to the same god.
+      deity: isOrigin ? patronDeityOf(cultureId) : undefined,
     };
     let nm = placeName(cultureId, world.seed, site.attributes, gen, ctx);
     for (let guard = 0; usedNames.has(nm.name) && guard < 24; guard++) nm = placeName(cultureId, world.seed, site.attributes, gen, ctx);
@@ -200,7 +205,7 @@ export function createSettlements(world: World): void {
     const site = cands.find((c) => !occupied(c.pos, 55) && viable(c)); // origins: viable, far apart
     if (!site) break;
     const culture = cultureBag.length ? cultureBag.splice(gen.int(cultureBag.length), 1)[0] : CULTURES[gen.int(CULTURES.length)].id;
-    const nm = mkName(culture, site);
+    const nm = mkName(culture, site, undefined, true);
     protos.push({
       name: nm.name,
       nameMeaning: nm.meaning,

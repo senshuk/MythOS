@@ -9,6 +9,7 @@ import { type PhonologyKit, type Language, type SoundShift, languageFor, coinWor
 import { type GeoFeature } from '../engine/geography';
 import { Rng, mixSeed } from '../engine/rng';
 import { biomeOf } from './biomes';
+import { type Deity } from './fixture';
 
 // GUTTURAL — hard stops, heavy codas, few vowels: a creed that sounds like iron.
 const GUTTURAL: PhonologyKit = {
@@ -254,6 +255,13 @@ const FEAT_RELATION: Record<GeoFeature['kind'], Concept[]> = {
     { id: 'pass', gloss: 'pass of the' }, { id: 'shade', gloss: 'shade of the' },
   ],
 };
+// a founding people may dedicate their first city to their patron deity — the settlement's
+// own tongue coins a root for the deity (like any other lexeme, so a kin culture sharing the
+// same god would still say it in ITS own cognate word) and wraps it in a devotional relation.
+const SACRED_RELATION: Concept[] = [
+  { id: 'temple', gloss: 'temple of' }, { id: 'shrine', gloss: 'shrine of' },
+  { id: 'seat', gloss: 'seat of' }, { id: 'hearth', gloss: 'hearth of' },
+];
 const NEW: Concept = { id: 'new', gloss: 'new' };
 const DIRS: Record<string, Concept> = {
   north: { id: 'north', gloss: 'north' }, south: { id: 'south', gloss: 'south' },
@@ -383,6 +391,8 @@ export interface PlaceContext {
   landmark?: { name: string; kind: GeoFeature['kind'] };
   /** for a daughter colony: the mother settlement and the new site's offset from it. */
   parent?: { name: string; dx: number; dy: number };
+  /** the founding people's patron deity, if this site may become a holy city (origins only). */
+  deity?: Deity;
 }
 
 /** Coin a settlement's name AND its meaning in the founding people's tongue, the way real
@@ -407,6 +417,7 @@ export function placeName(
   const templates: [string, number][] = [];
   if (ctx?.landmark) templates.push(['feature', 26]);
   if (ctx?.parent) templates.push(['colonial', 16]);
+  if (ctx?.deity) templates.push(['sacred', 20]);
   templates.push(['compound', 22], ['locative', 12], ['possessive', 12], ['founderkin', 12]);
   let total = 0;
   for (const [, w] of templates) total += w;
@@ -424,6 +435,14 @@ export function placeName(
       const f = ctx!.landmark!;
       const rel = rng.pick(FEAT_RELATION[f.kind]);
       return { name: compose(lang, [f.name.toLowerCase(), lex(rel.id)]), meaning: `the ${rel.gloss} ${f.name}` };
+    }
+    case 'sacred': {
+      // DEVOTIONAL — the founders name their new home for the god they carried with them
+      // ("Skarat — the temple of the Iron Father"); the deity's own root is a lexeme like
+      // any other, so a kin culture sharing this god would still say it in ITS own cognate.
+      const deity = ctx!.deity!;
+      const rel = rng.pick(SACRED_RELATION);
+      return { name: compose(lang, [lex(`deity:${deity.id}`), lex(rel.id)]), meaning: `${rel.gloss} ${deity.name}` };
     }
     case 'colonial': {
       // TRANSFER — a colony commemorates its mother city ("new Kordul") or orients by her

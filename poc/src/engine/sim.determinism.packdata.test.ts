@@ -592,6 +592,21 @@ describe('procedural philology (each culture names the world in its own tongue)'
     }
     expect(colonial).toBeDefined();
     expect(colonial!.meaning).toMatch(/^(new|north|south|east|west) Kordul$/);
+    // sacred founding: a people may dedicate its first city to its patron deity
+    let sacred: { name: string; meaning: string } | undefined;
+    for (let s = 0; s < 60 && !sacred; s++) {
+      const nm = placeName('martial', 1, inland, new Rng(s), { deity: { id: 'iron_father', name: 'the Iron Father' } });
+      if (nm.meaning.includes('Iron Father')) sacred = nm;
+    }
+    expect(sacred).toBeDefined();
+    expect(sacred!.meaning).toMatch(/^(temple|shrine|seat|hearth) of the Iron Father$/);
+    expect(sacred!.name).toMatch(/^[A-Z][a-z]+$/);
+    // a kin culture sharing the same god still says it in its OWN cognate word, not identically
+    const devoutSacred = placeName('devout', 1, inland, new Rng(2), { deity: { id: 'iron_father', name: 'the Iron Father' } });
+    if (devoutSacred.meaning.includes('Iron Father')) {
+      const martialSacred = placeName('martial', 1, inland, new Rng(2), { deity: { id: 'iron_father', name: 'the Iron Father' } });
+      if (martialSacred.meaning.includes('Iron Father')) expect(devoutSacred.name).not.toBe(martialSacred.name);
+    }
   });
 
   it('a people has a self-name (demonym) in its own tongue, stable per world', () => {
