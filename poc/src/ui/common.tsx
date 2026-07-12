@@ -5,7 +5,6 @@
  */
 import { useRef, useState } from 'react';
 import type { EventPart, EventRef } from '../engine/model';
-import { CULTURES } from '../engine/pack';
 import { usePeek } from './peek';
 
 export const TYPE_TONE: Record<string, string> = {
@@ -89,10 +88,17 @@ export function usePersistentState<T>(key: string, initial: T): [T, (v: T | ((p:
   return [val, set];
 }
 
-// culture names & colours come from the PACK (a universe knows its factions' banners) —
-// read through the engine's pack boundary, so a different universe recolours the map for free.
-export const cultureColor = (id: string) => CULTURES.find((c) => c.id === id)?.color ?? '#8a8f9e';
-export const cultureName = (id: string) => CULTURES.find((c) => c.id === id)?.name ?? id;
+// culture names & colours come from the PACK (a universe knows its factions' banners) — but
+// the roster is GENERATED per world-seed and the sim runs in a Web Worker, a separate realm
+// from this UI thread, so we cannot just import CULTURES from engine/pack (that binding lives
+// worker-side; this thread's copy never sees setCulturesForSeed's updates). ui/useSim.ts calls
+// setCultureLegend from every snapshot the worker sends, keeping this in sync instead.
+let cultureLegend: { id: string; name: string; color: string }[] = [];
+export function setCultureLegend(legend: { id: string; name: string; color: string }[]): void {
+  cultureLegend = legend;
+}
+export const cultureColor = (id: string) => cultureLegend.find((c) => c.id === id)?.color ?? '#8a8f9e';
+export const cultureName = (id: string) => cultureLegend.find((c) => c.id === id)?.name ?? id;
 
 /** Keep a list VISUALLY STILL across re-ranks: items keep the relative order they first
  *  appeared in for as long as they survive; newcomers append at the tail. While time

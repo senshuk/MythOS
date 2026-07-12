@@ -199,7 +199,7 @@ export function createSettlements(world: World): void {
 
   // 1) ORIGINS — a few founding peoples on the best, widely-spaced sites (so territories
   //    are distinct), each a different culture (the people the colonists will carry).
-  const peoplesCount = Math.max(2, Math.min(5, 2 + Math.floor(target / 5)));
+  const peoplesCount = Math.max(2, Math.min(CULTURES.length, 2 + Math.floor(target / 5)));
   const cultureBag = CULTURES.map((c) => c.id);
   for (let p = 0; p < peoplesCount; p++) {
     const site = cands.find((c) => !occupied(c.pos, 55) && viable(c)); // origins: viable, far apart

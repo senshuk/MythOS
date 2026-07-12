@@ -1752,6 +1752,9 @@ export interface Snapshot {
   historicalFigures: FigureView[]; // renowned people of history (founders, rulers)
   houses: HouseView[]; // the great Houses, ranked by prestige — dynasties as family sagas
   tongues: TongueView[]; // the living cultures' languages, explorable (sound, kin, lexicon)
+  // the culture roster's id→name/color mapping — GENERATED per world-seed (content/cultureGen.ts),
+  // so the UI (a separate realm from the worker-run simulation) can't just import CULTURES.
+  cultureLegend: { id: string; name: string; color: string }[];
   player?: PlayerView; // the controlled actor's actionable state, if any
 }
 

@@ -25,6 +25,7 @@ import * as ambitions from '../content/ambitions';
 import * as aspirations from '../content/aspirations';
 import * as decisions from '../content/decisions';
 import * as venues from '../content/venues';
+import { generateCultures } from '../content/cultureGen';
 
 // type re-exports (compile-time only; a pack supplies matching shapes)
 export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec } from '../content/fixture';
@@ -72,6 +73,7 @@ export let deityById = FANTASY_PACK.deityById;
 export let CULTURES = FANTASY_PACK.CULTURES;
 export let cultureById = FANTASY_PACK.cultureById;
 export let patronDeityOf = FANTASY_PACK.patronDeityOf;
+export let setCultures = FANTASY_PACK.setCultures;
 export let faithProbability = FANTASY_PACK.faithProbability;
 export let preceptFor = FANTASY_PACK.preceptFor;
 export let ethicsWeightFor = FANTASY_PACK.ethicsWeightFor;
@@ -318,6 +320,7 @@ export function setPack(p: UniversePack): void {
   BIOMES = p.BIOMES;
   biomeOf = p.biomeOf;
   EVENT_RENDER = p.EVENT_RENDER;
+  setCultures = p.setCultures;
   eventInterest = p.eventInterest;
   renderBackstory = p.renderBackstory;
   PLAYER_VOICE = p.PLAYER_VOICE;
@@ -339,4 +342,17 @@ export function setPack(p: UniversePack): void {
   VENUES = p.VENUES;
   VENUE_HOSTS = p.VENUE_HOSTS;
   venueName = p.venueName;
+}
+
+/** Generate this world-seed's founding creeds and bind them as the active roster — FANTASY
+ *  ONLY (a pack opts into procedural cultures by using content/cultureGen.ts; aeon.ts keeps
+ *  its own deliberately-static 2-culture roster, so this is never called for it). Must run
+ *  before any worldgen reads CULTURES/DEITIES: engine/sim.ts's createWorld calls this right
+ *  after binding the pack, and engine/persistence.ts's deserializeWorld calls it with the
+ *  save's own seed so a reloaded world regenerates the identical roster it was created with. */
+export function setCulturesForSeed(seed: number): void {
+  const { cultures, deities } = generateCultures(seed);
+  setCultures(cultures, deities); // updates fixture.ts's own bindings (cultureById, patronDeityOf, ...)
+  CULTURES = cultures;
+  DEITIES = deities;
 }

@@ -7,6 +7,7 @@ import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail,
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 import type { SimRequest, SimResponse, LocalVenue } from '../worker/protocol';
+import { setCultureLegend } from './common';
 
 /** Everything the close view asks about one settlement, in one round trip. */
 export interface LocalFacts {
@@ -66,11 +67,13 @@ export function useSim(initialSeed: number) {
       const msg = e.data;
       if (msg.kind === 'snapshot') {
         setSnapshot(msg.snapshot);
+        setCultureLegend(msg.snapshot.cultureLegend);
         setBusy(false);
         setAdvanceProgress(null); // any ordinary action clears a lingering hold-notice
       } else if (msg.kind === 'advance') {
         // a streaming advance tick: the date moves NOW, not when the batch ends
         setSnapshot(msg.snapshot);
+        setCultureLegend(msg.snapshot.cultureLegend);
         if (msg.done) {
           setBusy(false);
           // keep the notice visible when time was held; clear silently otherwise

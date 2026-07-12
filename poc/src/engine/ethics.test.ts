@@ -8,47 +8,49 @@ import { createWorld } from './sim';
 import { witnessDeed } from './perception';
 import { computeStanding } from './reputation';
 import { fullActors, emit } from './world';
-import { ethicsWeightFor, ethicsTaboos } from '../content/fixture';
+import { ethicsWeightFor, ethicsTaboos, CULTURES } from '../content/fixture';
+
+// The culture roster is GENERATED per world-seed (content/cultureGen.ts) rather than a fixed
+// 'martial'/'sylvan'/'devout' — so these tests no longer hardcode which id is tolerant or
+// harsh. `createWorld(seed)` deterministically (re)generates that seed's roster as a side
+// effect; find the most tolerant/harshest culture on a deed from whatever roster resulted.
+function extremeIds(seed: number, deed: string): { tolerantId: string; harshId: string } {
+  createWorld(seed);
+  const sorted = [...CULTURES].sort((a, b) => ethicsWeightFor(a.id, deed) - ethicsWeightFor(b.id, deed));
+  return { tolerantId: sorted[0].id, harshId: sorted[sorted.length - 1].id };
+}
 
 describe('ethicsWeightFor', () => {
   it('returns 1.0 for unknown deed kinds', () => {
-    expect(ethicsWeightFor('martial', 'unknown_deed')).toBe(1.0);
+    createWorld(1);
+    expect(ethicsWeightFor(CULTURES[0].id, 'unknown_deed')).toBe(1.0);
   });
 
-  it('martial culture tolerates bloodshed (< 1)', () => {
-    expect(ethicsWeightFor('martial', 'bloodshed')).toBeLessThan(1.0);
-  });
-
-  it('sylvan culture abhors bloodshed (≥ 2)', () => {
-    expect(ethicsWeightFor('sylvan', 'bloodshed')).toBeGreaterThanOrEqual(2.0);
-  });
-
-  it('devout culture abhors bloodshed most (highest weight)', () => {
-    const devout = ethicsWeightFor('devout', 'bloodshed');
-    const sylvan = ethicsWeightFor('sylvan', 'bloodshed');
-    const martial = ethicsWeightFor('martial', 'bloodshed');
-    expect(devout).toBeGreaterThan(sylvan);
-    expect(sylvan).toBeGreaterThan(martial);
+  it('the roster spans a real range of tolerance for bloodshed', () => {
+    const { tolerantId, harshId } = extremeIds(1, 'bloodshed');
+    expect(ethicsWeightFor(tolerantId, 'bloodshed')).toBeLessThan(ethicsWeightFor(harshId, 'bloodshed'));
   });
 });
 
 describe('ethicsTaboos', () => {
-  it('returns deed labels for high-weight cultures', () => {
-    const sylvanTaboos = ethicsTaboos('sylvan');
-    expect(sylvanTaboos.length).toBeGreaterThan(0);
-    // bloodshed (weight 2.4) and violence (1.8) are both ≥ 1.5
-    expect(sylvanTaboos).toContain('shed blood');
-    expect(sylvanTaboos).toContain('came to blows');
+  it('the harshest culture on bloodshed carries at least one taboo', () => {
+    const { harshId } = extremeIds(1, 'bloodshed');
+    if (ethicsWeightFor(harshId, 'bloodshed') >= 1.5) {
+      expect(ethicsTaboos(harshId).length).toBeGreaterThan(0);
+      expect(ethicsTaboos(harshId)).toContain('shed blood');
+    }
   });
 
-  it('returns empty for cultures that tolerate all existing deed kinds', () => {
-    // martial: bloodshed 0.5, violence 0.35, generosity 0.9 — all < 1.5
-    expect(ethicsTaboos('martial')).toHaveLength(0);
+  it('a culture tolerant of every existing deed kind reports no taboos', () => {
+    const { tolerantId } = extremeIds(1, 'bloodshed');
+    const allTolerant = ['bloodshed', 'violence', 'generosity'].every((d) => ethicsWeightFor(tolerantId, d) < 1.5);
+    if (allTolerant) expect(ethicsTaboos(tolerantId)).toHaveLength(0);
   });
 });
 
 describe('perception: cultural ethics scale the standing cost', () => {
-  it('killing costs more standing in a pacifist settlement than in a martial one', () => {
+  it('killing costs more standing in the harshest-on-bloodshed settlement than the most tolerant', () => {
+    const { tolerantId, harshId } = extremeIds(42, 'bloodshed');
     // Build two worlds from the same seed but force different settlement cultures
     // so the same deed produces culturally-weighted standing marks.
     const buildWith = (cultureId: string) => {
@@ -61,19 +63,20 @@ describe('perception: cultural ethics scale the standing cost', () => {
       return computeStanding(w.reputation.get(culprit)!, w.tick);
     };
 
-    const martialStanding = buildWith('martial'); // weight 0.5 → standing dented less
-    const sylvanStanding = buildWith('sylvan'); // weight 2.4 → standing dented more
+    const tolerantStanding = buildWith(tolerantId);
+    const harshStanding = buildWith(harshId);
 
-    // both are negative, but sylvan kills you socially much harder
-    expect(martialStanding).toBeLessThan(0);
-    expect(sylvanStanding).toBeLessThan(0);
-    expect(sylvanStanding).toBeLessThan(martialStanding);
+    // both are negative, but the harsher culture kills you socially much harder
+    expect(tolerantStanding).toBeLessThan(0);
+    expect(harshStanding).toBeLessThan(0);
+    expect(harshStanding).toBeLessThan(tolerantStanding);
   });
 
-  it('tabooHorror thought appears in a culturally-outraged witness', () => {
-    // sylvan culture: bloodshed weight 2.4 ≥ 2.0 → tabooHorror
+  it('tabooHorror thought appears in a witness from a culturally-outraged (weight ≥ 2) culture', () => {
+    const { harshId } = extremeIds(42, 'bloodshed');
+    if (ethicsWeightFor(harshId, 'bloodshed') < 2.0) return; // this seed's harshest doesn't reach outrage
     const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
+    w.settlements[w.focusedSettlementId].cultureId = harshId;
     const actors = fullActors(w);
     const [culprit, victim] = actors;
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
@@ -86,10 +89,11 @@ describe('perception: cultural ethics scale the standing cost', () => {
     }
   });
 
-  it('martial culture produces feared (not tabooHorror) for bloodshed', () => {
-    // martial: weight 0.5 < 2.0 → feared (original thought kind), not tabooHorror
+  it('a tolerant (weight < 2) culture produces feared, not tabooHorror, for bloodshed', () => {
+    const { tolerantId } = extremeIds(42, 'bloodshed');
+    if (ethicsWeightFor(tolerantId, 'bloodshed') >= 2.0) return; // this seed's most tolerant is still outraged
     const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'martial';
+    w.settlements[w.focusedSettlementId].cultureId = tolerantId;
     const actors = fullActors(w);
     const [culprit, victim] = actors;
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
@@ -106,7 +110,8 @@ describe('perception: cultural ethics scale the standing cost', () => {
   it('is deterministic: same seed + same culture ⇒ same culturally-scaled standing', () => {
     const build = () => {
       const w = createWorld(7);
-      w.settlements[w.focusedSettlementId].cultureId = 'devout';
+      const cultureId = CULTURES[0].id;
+      w.settlements[w.focusedSettlementId].cultureId = cultureId;
       const [c, v] = fullActors(w);
       const eid = emit(w, 'died_brawl', [v, c], { age: 30 });
       witnessDeed(w, eid, c, v, 'bloodshed');

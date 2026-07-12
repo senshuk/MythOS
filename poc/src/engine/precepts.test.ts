@@ -14,7 +14,26 @@ import { statePreceptsYearly } from './religion';
 import { standingOf } from './reputation';
 import { fullActors, emit } from './world';
 import { computeMood } from './mood';
-import { ethicsWeightFor, ethicsTaboos, patronDeityOf, giveInclination, creedOf, CULTURES, SELF_THOUGHT_SPECS } from '../content/fixture';
+import { ethicsWeightFor, ethicsTaboos, patronDeityOf, giveInclination, creedOf, CULTURES, SELF_THOUGHT_SPECS, type ValueAxis } from '../content/fixture';
+
+// The roster is GENERATED per world-seed (content/cultureGen.ts) — a war-dominant creed is
+// no longer always 'martial'. Seed 7 happens to generate all 6 possible dominant axes (see
+// content/cultureGen.ts's AXIS_PRECEPTS/AXIS_STATE_PRECEPTS, one archetype per axis), so every
+// test below resolves the culture it needs by AXIS instead of a hardcoded id.
+const SEED = 7;
+function cultureByAxis(axis: ValueAxis): string {
+  createWorld(SEED); // (re)generates SEED's roster as a side effect — deterministic, idempotent
+  const c = CULTURES.find((c) => c.dominantAxis === axis);
+  if (!c) throw new Error(`seed ${SEED}'s roster has no ${axis}-dominant culture — pick a different seed`);
+  return c.id;
+}
+// each generated culture's precept WEIGHTS are the axis archetype's base value scaled by a
+// ±15% jitter (content/cultureGen.ts's scalePrecepts) — assert the base is in range, not
+// an exact number, since the exact jittered value differs per seed's per-culture draw.
+function expectNear(actual: number, base: number) {
+  expect(actual).toBeGreaterThanOrEqual(Math.max(0.2, base * 0.85) - 1e-9);
+  expect(actual).toBeLessThanOrEqual(Math.min(3, base * 1.15) + 1e-9);
+}
 
 /** Stage a public deed of `kind` (doer=actor[0], other=actor[1]) in a settlement of the
  *  given culture; optionally set the whole town's faith. Returns the cast. */
@@ -36,20 +55,21 @@ function stageKilling(seed: number, cultureId: string, townFaith?: string) {
 const has = (arr: { kind: string }[] | undefined, kind: string) => !!arr?.some((t) => t.kind === kind);
 
 describe('precepts — the creed as data (subsumes ethics)', () => {
-  it('weights derive from precepts, unchanged from the old ethics map', () => {
-    expect(ethicsWeightFor('martial', 'bloodshed')).toBe(0.5);
-    expect(ethicsWeightFor('sylvan', 'bloodshed')).toBe(2.4);
-    expect(ethicsWeightFor('devout', 'bloodshed')).toBe(2.8);
-    expect(ethicsWeightFor('artisan', 'violence')).toBe(1.3);
-    expect(ethicsWeightFor('martial', 'unknown_deed')).toBe(1.0);
+  it('weights derive from precepts, matching each axis archetype within its jitter range', () => {
+    expectNear(ethicsWeightFor(cultureByAxis('war'), 'bloodshed'), 0.5);
+    expectNear(ethicsWeightFor(cultureByAxis('nature'), 'bloodshed'), 2.4);
+    expectNear(ethicsWeightFor(cultureByAxis('tradition'), 'bloodshed'), 2.8);
+    expectNear(ethicsWeightFor(cultureByAxis('craft'), 'violence'), 1.3);
+    expect(ethicsWeightFor(cultureByAxis('war'), 'unknown_deed')).toBe(1.0);
   });
 
-  it('taboo labels are unchanged (order + membership)', () => {
-    expect(ethicsTaboos('martial')).toHaveLength(0); // all weights < 1.5
-    expect(ethicsTaboos('sylvan')).toEqual(['shed blood', 'came to blows']); // 2.4, 1.8 ≥ 1.5; generosity 1.2 excluded
+  it('taboo labels are stable (the jitter never crosses the 1.5 threshold)', () => {
+    expect(ethicsTaboos(cultureByAxis('war'))).toHaveLength(0); // all weights < 1.5 even at +15%
+    expect(ethicsTaboos(cultureByAxis('nature'))).toEqual(['shed blood', 'came to blows']); // ~2.4, ~1.8 ≥ 1.5; generosity ~1.2 excluded
   });
 
   it('every precept names a real self-thought kind (contract)', () => {
+    createWorld(SEED);
     for (const c of CULTURES)
       for (const p of c.precepts ?? []) {
         if (p.witnessSelf) expect(SELF_THOUGHT_SPECS[p.witnessSelf]).toBeDefined();
@@ -60,40 +80,46 @@ describe('precepts — the creed as data (subsumes ethics)', () => {
 
 describe('precepts — the conscience', () => {
   it('a killing lays GUILT on a doer who holds the creed, sourced to the deed', () => {
-    const patron = patronDeityOf('sylvan').id;
-    const { w, culprit, eid } = stageKilling(42, 'sylvan', patron);
+    const natureCulture = cultureByAxis('nature');
+    const patron = patronDeityOf(natureCulture).id;
+    const { w, culprit, eid } = stageKilling(SEED, natureCulture, patron);
     const guilt = (w.selfThoughts.get(culprit) ?? []).find((t) => t.kind === 'guilt');
     expect(guilt).toBeDefined();
     expect(guilt!.cause).toBe(eid);
   });
 
   it('the same killing lays MORAL OUTRAGE on every faithful witness', () => {
-    const { w, witnesses } = stageKilling(42, 'sylvan', patronDeityOf('sylvan').id);
+    const natureCulture = cultureByAxis('nature');
+    const { w, witnesses } = stageKilling(SEED, natureCulture, patronDeityOf(natureCulture).id);
     expect(witnesses.length).toBeGreaterThan(0);
     for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'moral_outrage')).toBe(true);
   });
 
-  it('a martial creed SHRUGS at bloodshed — no guilt, no outrage', () => {
-    const { w, culprit, witnesses } = stageKilling(42, 'martial', patronDeityOf('martial').id);
+  it('a war-dominant creed SHRUGS at bloodshed — no guilt, no outrage', () => {
+    const warCulture = cultureByAxis('war');
+    const { w, culprit, witnesses } = stageKilling(SEED, warCulture, patronDeityOf(warCulture).id);
     expect(has(w.selfThoughts.get(culprit), 'guilt')).toBe(false);
     for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'moral_outrage')).toBe(false);
   });
 
   it('a SACRED precept is felt only by the faithful; a CIVIC one by all', () => {
-    // sylvan bloodshed is SACRED → a faithless town feels no divine outrage
-    const sacred = stageKilling(42, 'sylvan', ''); // whole town faithless
+    // nature-led bloodshed is SACRED → a faithless town feels no divine outrage
+    const natureCulture = cultureByAxis('nature');
+    const sacred = stageKilling(SEED, natureCulture, ''); // whole town faithless
     expect(sacred.witnesses.length).toBeGreaterThan(0);
     expect(sacred.witnesses.every((x) => !has(sacred.w.selfThoughts.get(x), 'moral_outrage'))).toBe(true);
 
-    // artisan bloodshed is CIVIC (order, not divinity) → even the faithless feel it
-    const civic = stageKilling(42, 'artisan', '');
+    // craft-led bloodshed is CIVIC (order, not divinity) → even the faithless feel it
+    const craftCulture = cultureByAxis('craft');
+    const civic = stageKilling(SEED, craftCulture, '');
     expect(civic.witnesses.some((x) => has(civic.w.selfThoughts.get(x), 'moral_outrage'))).toBe(true);
   });
 
   it('belief → feeling: a killing darkens every faithful witness’s mood', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
-    for (const id of fullActors(w)) w.faith.set(id, patronDeityOf('sylvan').id);
+    const natureCulture = cultureByAxis('nature');
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = natureCulture;
+    for (const id of fullActors(w)) w.faith.set(id, patronDeityOf(natureCulture).id);
     const [culprit, victim] = fullActors(w);
     const before = new Map(fullActors(w).map((id) => [id, computeMood(w, id)]));
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
@@ -114,29 +140,33 @@ describe('precepts — the conscience', () => {
 });
 
 describe('precepts — virtues (belief produces PRIDE, each creed distinct)', () => {
-  it('the Iron Creed REVERES valour — the hero feels righteous, the town edified', () => {
-    const { w, culprit, witnesses } = stageDeed(42, 'martial', 'valor', patronDeityOf('martial').id);
+  it('a war-dominant creed REVERES valour — the hero feels righteous, the town edified', () => {
+    const warCulture = cultureByAxis('war');
+    const { w, culprit, witnesses } = stageDeed(SEED, warCulture, 'valor', patronDeityOf(warCulture).id);
     expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(true);
     expect(witnesses.length).toBeGreaterThan(0);
     for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(true);
   });
 
-  it('…but the Iron Creed is UNMOVED by peacemaking (no reconciliation precept)', () => {
-    const { w, culprit, witnesses } = stageDeed(42, 'martial', 'reconciliation', patronDeityOf('martial').id);
+  it('…but a war-dominant creed is UNMOVED by peacemaking (no reconciliation precept)', () => {
+    const warCulture = cultureByAxis('war');
+    const { w, culprit, witnesses } = stageDeed(SEED, warCulture, 'reconciliation', patronDeityOf(warCulture).id);
     expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(false);
     for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(false);
   });
 
-  it('the Green Way REVERES peacemaking — a healed feud edifies the faithful', () => {
-    const { w, culprit, witnesses } = stageDeed(42, 'sylvan', 'reconciliation', patronDeityOf('sylvan').id);
+  it('a nature-dominant creed REVERES peacemaking — a healed feud edifies the faithful', () => {
+    const natureCulture = cultureByAxis('nature');
+    const { w, culprit, witnesses } = stageDeed(SEED, natureCulture, 'reconciliation', patronDeityOf(natureCulture).id);
     expect(has(w.selfThoughts.get(culprit), 'righteous')).toBe(true);
     for (const x of witnesses) expect(has(w.selfThoughts.get(x), 'edified')).toBe(true);
   });
 
   it('a virtue lifts a witness’s mood (the positive twin of moral outrage)', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
-    for (const id of fullActors(w)) w.faith.set(id, patronDeityOf('sylvan').id);
+    const natureCulture = cultureByAxis('nature');
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = natureCulture;
+    for (const id of fullActors(w)) w.faith.set(id, patronDeityOf(natureCulture).id);
     const [a, b] = fullActors(w);
     const before = new Map(fullActors(w).map((id) => [id, computeMood(w, id)]));
     const witnesses = witnessDeed(w, emit(w, 'deed', [a, b], {}), a, b, 'reconciliation');
@@ -163,7 +193,7 @@ describe('precepts — virtues (belief produces PRIDE, each creed distinct)', ()
 describe('precepts — state precepts (the creed judges how you LIVE)', () => {
   /** Put actor[0] into a life-state (mutate), run the yearly scan, return their self-thoughts. */
   function stageLife(cultureId: string, faithful: boolean, mutate: (w: ReturnType<typeof createWorld>, id: number) => void) {
-    const w = createWorld(42);
+    const w = createWorld(SEED);
     w.settlements[w.focusedSettlementId].cultureId = cultureId;
     const id = fullActors(w)[0];
     w.faith.set(id, faithful ? patronDeityOf(cultureId).id : '');
@@ -172,35 +202,36 @@ describe('precepts — state precepts (the creed judges how you LIVE)', () => {
     return { w, id, thoughts: w.selfThoughts.get(id) ?? [] };
   }
 
-  it('the Iron Creed blesses RENOWN — a renowned warrior lives at peace', () => {
-    const { w, id, thoughts } = stageLife('martial', true, (w, id) => {
+  it('a war-dominant creed blesses RENOWN — a renowned warrior lives at peace', () => {
+    const { w, id, thoughts } = stageLife(cultureByAxis('war'), true, (w, id) => {
       for (let i = 0; i < 4; i++) w.reputation.get(id)!.marks.push({ kind: 'valor', value: 200, sinceTick: w.tick, witnesses: 8 });
     });
     expect(standingOf(w, id)).toBeGreaterThanOrEqual(220); // setup sanity
     expect(has(thoughts, 'at_peace')).toBe(true);
   });
 
-  it('the Green Way frets at HOARDING (sacred) — only the faithful feel it', () => {
+  it('a nature-dominant creed frets at HOARDING (sacred) — only the faithful feel it', () => {
+    const natureCulture = cultureByAxis('nature');
     const rich = (w: ReturnType<typeof createWorld>, id: number) => (w.needs.get(id)!.wealth = 950);
-    expect(has(stageLife('sylvan', true, rich).thoughts, 'disquiet')).toBe(true);
-    expect(has(stageLife('sylvan', false, rich).thoughts, 'disquiet')).toBe(false); // sacred → skips the faithless
+    expect(has(stageLife(natureCulture, true, rich).thoughts, 'disquiet')).toBe(true);
+    expect(has(stageLife(natureCulture, false, rich).thoughts, 'disquiet')).toBe(false); // sacred → skips the faithless
   });
 
-  it('the Maker Folk are at peace when PROSPEROUS (civic — felt even by the faithless)', () => {
+  it('a craft-dominant creed is at peace when PROSPEROUS (civic — felt even by the faithless)', () => {
     const prosperous = (w: ReturnType<typeof createWorld>, id: number) => (w.needs.get(id)!.wealth = 850);
-    expect(has(stageLife('artisan', false, prosperous).thoughts, 'at_peace')).toBe(true);
+    expect(has(stageLife(cultureByAxis('craft'), false, prosperous).thoughts, 'at_peace')).toBe(true);
   });
 
-  it('the Old Faith grieves a CHILDLESS elder (sacred)', () => {
+  it('a tradition-dominant creed grieves a CHILDLESS elder (sacred)', () => {
     const childlessElder = (w: ReturnType<typeof createWorld>, id: number) => {
       w.lifecycle.get(id)!.ageYears = 200;
       w.ties.get(id)!.children = [];
     };
-    expect(has(stageLife('devout', true, childlessElder).thoughts, 'disquiet')).toBe(true);
+    expect(has(stageLife(cultureByAxis('tradition'), true, childlessElder).thoughts, 'disquiet')).toBe(true);
   });
 
   it('a state precept FADES once the life-state passes', () => {
-    const { w, id } = stageLife('artisan', false, (w, id) => (w.needs.get(id)!.wealth = 850));
+    const { w, id } = stageLife(cultureByAxis('craft'), false, (w, id) => (w.needs.get(id)!.wealth = 850));
     expect(has(w.selfThoughts.get(id), 'at_peace')).toBe(true);
     // leave the state and let the ongoing mood lapse (at_peace lasts 2 years)
     w.needs.get(id)!.wealth = 400;
@@ -213,15 +244,15 @@ describe('precepts — state precepts (the creed judges how you LIVE)', () => {
 
 describe('precepts — creedOf (moral character made legible)', () => {
   it('each creed reads as a distinct outlook of what it reveres and abhors', () => {
-    const iron = creedOf('martial');
-    expect(iron.reveres).toContain('renown');
-    expect(iron.reveres).toContain('stood against the beast');
-    expect(iron.abhors).toContain('obscurity');
-    expect(iron.abhors).not.toContain('shed blood'); // the Iron Creed does not condemn killing
+    const warCreed = creedOf(cultureByAxis('war'));
+    expect(warCreed.reveres).toContain('renown');
+    expect(warCreed.reveres).toContain('stood against the beast');
+    expect(warCreed.abhors).toContain('obscurity');
+    expect(warCreed.abhors).not.toContain('shed blood'); // a war-dominant creed does not condemn killing
 
-    const green = creedOf('sylvan');
-    expect(green.abhors).toContain('shed blood');
-    expect(green.abhors).toContain('hoarding');
-    expect(green.reveres).toContain('made peace');
+    const natureCreed = creedOf(cultureByAxis('nature'));
+    expect(natureCreed.abhors).toContain('shed blood');
+    expect(natureCreed.abhors).toContain('hoarding');
+    expect(natureCreed.reveres).toContain('made peace');
   });
 });

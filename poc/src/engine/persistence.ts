@@ -18,7 +18,7 @@ import { type World, type Identity, type Lifecycle, type Needs, type Thought, ty
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION } from './pack';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, setCulturesForSeed } from './pack';
 
 export const SAVE_VERSION = 25;
 
@@ -251,6 +251,11 @@ export function deserializeWorld(save: SaveFile): World {
   if (savedPack !== PACK_ID) {
     throw new Error(`this save belongs to the '${savedPack}' universe (the '${PACK_ID}' pack is bound) — load it under its own pack`);
   }
+  // the fantasy pack's creeds are GENERATED per seed (see engine/sim.ts's createWorld) — a
+  // reload must regenerate the SAME roster before anything below resolves a culture/deity id,
+  // otherwise every precept/religion/house lookup would silently miss (generateCultures is a
+  // pure function of seed alone, so this reproduces the original roster byte-for-byte).
+  if (PACK_ID === 'fantasy') setCulturesForSeed(s.seed);
 
   // v5 → v6: dead actors were stored in entities; split them out by alive status.
   let entities = s.entities;

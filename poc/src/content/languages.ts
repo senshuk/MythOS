@@ -9,7 +9,7 @@ import { type PhonologyKit, type Language, type SoundShift, languageFor, coinWor
 import { type GeoFeature } from '../engine/geography';
 import { Rng, mixSeed } from '../engine/rng';
 import { biomeOf } from './biomes';
-import { type Deity } from './fixture';
+import { CULTURES, type Deity, type ValueAxis } from './fixture';
 
 // GUTTURAL — hard stops, heavy codas, few vowels: a creed that sounds like iron.
 const GUTTURAL: PhonologyKit = {
@@ -65,33 +65,37 @@ const TEMPERATE: PhonologyKit = {
   person: [2, 2],
 };
 
-// Which voice each culture speaks. Harsh creeds are guttural, wild/free folk flowing, makers
-// temperate.
-const CULTURE_VOICE: Record<string, PhonologyKit> = {
-  martial: GUTTURAL,
-  devout: GUTTURAL,
-  sylvan: FLOWING,
-  free: FLOWING,
-  artisan: TEMPERATE,
+// Which voice a GENERATED culture speaks — derived from its dominant value axis (the roster
+// itself is generated per world-seed; see content/cultureGen.ts) rather than a fixed per-id
+// table. War/tradition-led peoples sound guttural, nature/freedom-led flowing, craft/honor-led
+// temperate — and two cultures sharing a group descend from the SAME proto-tongue (below), so
+// a generated world still produces audible kin, exactly as the original 5 hand-authored ones did.
+type VoiceGroup = 'guttural' | 'flowing' | 'temperate';
+const AXIS_KIT_GROUP: Record<ValueAxis, VoiceGroup> = {
+  war: 'guttural', tradition: 'guttural',
+  nature: 'flowing', freedom: 'flowing',
+  craft: 'temperate', honor: 'temperate',
 };
+const KIT_BY_GROUP: Record<VoiceGroup, PhonologyKit> = { guttural: GUTTURAL, flowing: FLOWING, temperate: TEMPERATE };
+const PROTO_ID_BY_GROUP: Record<VoiceGroup, string> = {
+  guttural: '@proto-guttural', flowing: '@proto-flowing', temperate: '@proto-temperate',
+};
+function groupOf(cultureId: string): VoiceGroup | undefined {
+  const axis = CULTURES.find((c) => c.id === cultureId)?.dominantAxis;
+  return axis ? AXIS_KIT_GROUP[axis] : undefined;
+}
 
 // ---------------------------------------------------- language families ------
-// Cultures DESCEND from proto-tongues: the martial and devout creeds both speak daughters of
-// a proto-guttural; the sylvan and free folk of a proto-flowing; the artisan tongue is an
-// isolate. A daughter does not coin its lexicon fresh — it INHERITS the proto's roots through
-// its own small set of regular sound-changes (below), so two kin cultures' words for "iron"
-// are audible COGNATES: colonization history you can hear. (The engine applies shifts;
-// this file — the pack — owns the family tree and which sounds may shift.)
-const FAMILY: Record<string, string> = {
-  martial: '@proto-guttural',
-  devout: '@proto-guttural',
-  sylvan: '@proto-flowing',
-  free: '@proto-flowing',
-};
-const PROTO_KIT: Record<string, PhonologyKit> = {
-  '@proto-guttural': GUTTURAL,
-  '@proto-flowing': FLOWING,
-};
+// Cultures DESCEND from proto-tongues: any two generated cultures whose dominant axis shares
+// a voice GROUP (above) are daughters of that group's proto-tongue. A daughter does not coin
+// its lexicon fresh — it INHERITS the proto's roots through its own small set of regular
+// sound-changes (below), so kin cultures' words for "iron" are audible COGNATES: colonization
+// history you can hear. A culture alone in its group is, in effect, an isolate — `kinOf`
+// returns none for it, even though it still passes through one proto layer internally.
+function protoOf(cultureId: string): string | undefined {
+  const g = groupOf(cultureId);
+  return g ? PROTO_ID_BY_GROUP[g] : undefined;
+}
 // the regular changes a daughter tongue may undergo (lenition, fortition, vowel shifts) —
 // each culture draws 2–3, applied to EVERY inherited root, so the drift is systematic.
 const SOUND_SHIFTS: SoundShift[] = [
@@ -115,7 +119,12 @@ function shiftsFor(cultureId: string, seed: number): SoundShift[] {
 }
 
 export function kitFor(cultureId: string): PhonologyKit {
-  return PROTO_KIT[cultureId] ?? CULTURE_VOICE[cultureId] ?? TEMPERATE;
+  if (cultureId === PROTO_ID_BY_GROUP.guttural) return GUTTURAL;
+  if (cultureId === PROTO_ID_BY_GROUP.flowing) return FLOWING;
+  if (cultureId === PROTO_ID_BY_GROUP.temperate) return TEMPERATE;
+  if (cultureId === DIVINE_TONGUE) return GUTTURAL; // the gods speak in a deep, resonant register
+  const g = groupOf(cultureId);
+  return g ? KIT_BY_GROUP[g] : TEMPERATE; // OLD_TONGUE and any other sentinel default here
 }
 
 /** The character of a culture's sound, as a word for the Tongues panel. */
@@ -126,9 +135,9 @@ export function voiceOf(cultureId: string): string {
 
 /** The culture ids that share this culture's mother tongue (empty = an isolate). */
 export function kinOf(cultureId: string): string[] {
-  const proto = FAMILY[cultureId];
-  if (!proto) return [];
-  return Object.keys(FAMILY).filter((c) => c !== cultureId && FAMILY[c] === proto);
+  const g = groupOf(cultureId);
+  if (!g) return [];
+  return CULTURES.filter((c) => c.id !== cultureId && groupOf(c.id) === g).map((c) => c.id);
 }
 
 /** The tongue a culture speaks in this world — its kit, sampled into a distinct language
@@ -156,18 +165,28 @@ const DESCRIPTORS: Concept[] = [
   { id: 'white', gloss: 'white' }, { id: 'black', gloss: 'black' }, { id: 'lost', gloss: 'lost' },
   { id: 'holy', gloss: 'hallowed' }, { id: 'stone', gloss: 'stone' }, { id: 'green', gloss: 'green' },
 ];
-// A culture's descriptors lean toward its CHARACTER, so its towns' meanings sound like its
-// people — a martial creed's iron and blood, a sylvan folk's green and fair. (Falls back to the
-// neutral pool for any culture without a leaning.) Pack data; a sci-fi pack would swap them.
-const DESC_CULTURE: Record<string, Concept[]> = {
-  martial: [{ id: 'iron', gloss: 'iron' }, { id: 'grim', gloss: 'grim' }, { id: 'red', gloss: 'red' }, { id: 'war', gloss: 'war' }, { id: 'black', gloss: 'black' }, { id: 'high', gloss: 'high' }, { id: 'blood', gloss: 'blood' }],
-  devout: [{ id: 'holy', gloss: 'hallowed' }, { id: 'grey', gloss: 'grey' }, { id: 'high', gloss: 'high' }, { id: 'old', gloss: 'elder' }, { id: 'white', gloss: 'white' }, { id: 'bright', gloss: 'bright' }, { id: 'still', gloss: 'still' }],
-  sylvan: [{ id: 'green', gloss: 'green' }, { id: 'fair', gloss: 'fair' }, { id: 'wild', gloss: 'wild' }, { id: 'deep', gloss: 'deep' }, { id: 'bright', gloss: 'bright' }, { id: 'dawn', gloss: 'dawn' }, { id: 'silver', gloss: 'silver' }],
-  free: [{ id: 'far', gloss: 'far' }, { id: 'swift', gloss: 'swift' }, { id: 'lost', gloss: 'lost' }, { id: 'wind', gloss: 'wind' }, { id: 'gold', gloss: 'golden' }, { id: 'free', gloss: 'free' }, { id: 'wide', gloss: 'wide' }],
-  artisan: [{ id: 'gold', gloss: 'golden' }, { id: 'stone', gloss: 'stone' }, { id: 'bright', gloss: 'bright' }, { id: 'high', gloss: 'high' }, { id: 'deep', gloss: 'deep' }, { id: 'iron', gloss: 'iron' }, { id: 'fair', gloss: 'fair' }],
+// A culture's descriptors lean toward its dominant AXIS, so its towns' meanings sound like
+// its people — a war-led creed's iron and blood, a nature-led folk's green and fair. (Falls
+// back to the neutral pool for any id that isn't a generated culture.) Pack data; a sci-fi
+// pack would swap them. Also supplies the culture's own display-name descriptor
+// (content/cultureGen.ts's "the {descriptor} {noun}", e.g. "the Iron Creed").
+const DESC_AXIS: Record<ValueAxis, Concept[]> = {
+  war: [{ id: 'iron', gloss: 'iron' }, { id: 'grim', gloss: 'grim' }, { id: 'red', gloss: 'red' }, { id: 'war', gloss: 'war' }, { id: 'black', gloss: 'black' }, { id: 'high', gloss: 'high' }, { id: 'blood', gloss: 'blood' }],
+  tradition: [{ id: 'holy', gloss: 'hallowed' }, { id: 'grey', gloss: 'grey' }, { id: 'high', gloss: 'high' }, { id: 'old', gloss: 'elder' }, { id: 'white', gloss: 'white' }, { id: 'bright', gloss: 'bright' }, { id: 'still', gloss: 'still' }],
+  nature: [{ id: 'green', gloss: 'green' }, { id: 'fair', gloss: 'fair' }, { id: 'wild', gloss: 'wild' }, { id: 'deep', gloss: 'deep' }, { id: 'bright', gloss: 'bright' }, { id: 'dawn', gloss: 'dawn' }, { id: 'silver', gloss: 'silver' }],
+  freedom: [{ id: 'far', gloss: 'far' }, { id: 'swift', gloss: 'swift' }, { id: 'lost', gloss: 'lost' }, { id: 'wind', gloss: 'wind' }, { id: 'gold', gloss: 'golden' }, { id: 'free', gloss: 'free' }, { id: 'wide', gloss: 'wide' }],
+  craft: [{ id: 'gold', gloss: 'golden' }, { id: 'stone', gloss: 'stone' }, { id: 'bright', gloss: 'bright' }, { id: 'high', gloss: 'high' }, { id: 'deep', gloss: 'deep' }, { id: 'iron', gloss: 'iron' }, { id: 'fair', gloss: 'fair' }],
+  honor: [{ id: 'true', gloss: 'true' }, { id: 'noble', gloss: 'noble' }, { id: 'sworn', gloss: 'sworn' }, { id: 'proud', gloss: 'proud' }, { id: 'bright', gloss: 'bright' }, { id: 'high', gloss: 'high' }],
 };
 function descriptorsFor(cultureId: string): Concept[] {
-  return DESC_CULTURE[cultureId] ?? DESCRIPTORS;
+  const axis = CULTURES.find((c) => c.id === cultureId)?.dominantAxis;
+  return (axis && DESC_AXIS[axis]) || DESCRIPTORS;
+}
+
+/** Pick a descriptor for a dominant axis (content/cultureGen.ts uses this to build the
+ *  culture's own display name, "the {gloss} {noun}", from the same pool its towns draw on). */
+export function pickAxisDescriptor(axis: ValueAxis, rng: Rng): Concept {
+  return rng.pick(DESC_AXIS[axis] ?? DESCRIPTORS);
 }
 // grammatical morphemes — coined as stable roots like any other, so a tongue's locative
 // ("-place-of") and its people-suffix recur across its names as a learnable, audible signature.
@@ -270,15 +289,15 @@ const DIRS: Record<string, Concept> = {
 
 // a root WORD for a concept in a culture's tongue — STABLE per (culture, concept, world), so
 // the same meaning always sounds the same within a people. Memoised; lowercased for compounding.
-// A culture with an ANCESTOR (see FAMILY) does not coin the root fresh: it INHERITS the
-// proto-tongue's root through its own regular sound-changes — so kin cultures hold COGNATES
-// ("korth" / "khorth" for iron), while an isolate coins its own.
+// A culture with an ANCESTOR (see protoOf, above) does not coin the root fresh: it INHERITS
+// the proto-tongue's root through its own regular sound-changes — so kin cultures hold
+// COGNATES ("korth" / "khorth" for iron), while an isolate coins its own.
 const lexCache = new Map<string, string>();
 export function lexeme(cultureId: string, seed: number, conceptId: string): string {
   const ck = `${seed}:${cultureId}:${conceptId}`;
   let root = lexCache.get(ck);
   if (root === undefined) {
-    const proto = FAMILY[cultureId];
+    const proto = protoOf(cultureId);
     root = proto
       ? applyShifts(lexeme(proto, seed, conceptId), shiftsFor(cultureId, seed))
       : coinWord(tongueFor(cultureId, seed), new Rng(mixSeed(seed, hashConcept(ck))), 'root').toLowerCase();
@@ -316,6 +335,23 @@ export function featureName(seed: number, feature: GeoFeature): { name: string; 
   const kind = rng.pick(FEATURE_KINDS[feature.kind]);
   const name = compose(tongueFor(OLD_TONGUE, seed), [lexeme(OLD_TONGUE, seed, desc.id), lexeme(OLD_TONGUE, seed, kind.id)]);
   return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
+}
+
+// ------------------------------------------------------------ divine tongue ---
+// The gods speak a tongue of their own — one dead voice shared by every patron across the
+// world, parallel to how geography carries the OLD TONGUE. Deterministic per (seed, deityId)
+// alone via hashConcept/mixSeed — no RNG stream consumed — so it may be coined at any point
+// in worldgen (content/cultureGen.ts calls this before settlements are ever founded).
+const DIVINE_TONGUE = '@divine-tongue';
+const DIVINE: Concept = { id: '@divine', gloss: 'divine' }; // a stable "-of-the-divine" suffix
+
+/** Coin a deity's TRUE NAME in the divine tongue ("Skarhala"), keeping the domain gloss
+ *  in English for legibility ("war and honour") — the same pairing every other coined
+ *  name in this file uses (a native word + a plain-language meaning). */
+export function deityName(seed: number, deityId: string, domain: string): { name: string; meaning: string } {
+  const lang = tongueFor(DIVINE_TONGUE, seed);
+  const name = compose(lang, [lexeme(DIVINE_TONGUE, seed, `deity:${deityId}`), lexeme(DIVINE_TONGUE, seed, DIVINE.id)]);
+  return { name, meaning: domain };
 }
 
 // ----------------------------------------------------------- public venues ----

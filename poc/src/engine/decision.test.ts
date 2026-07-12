@@ -56,7 +56,11 @@ describe('decisions', () => {
 
   it('a standing feud surfaces on its own', () => {
     const { w, player, other } = seeded(4);
+    // strongestFeud picks the WORST of the player's feud-flagged edges — make `other` the
+    // player's ONLY one, so a pre-existing feud elsewhere in this world can't win instead.
+    for (const [, edge] of w.rels.get(player) ?? []) edge.flags.feud = false;
     const edge = getRel(w, player, other);
+    edge.thoughts = []; // clear any warm prior history (e.g. a spouse/kin bond) worldgen gave them
     for (let i = 0; i < 4; i++) addThought(edge, 'slighted', w.tick); // sour it well below zero
     edge.flags.feud = true;
 

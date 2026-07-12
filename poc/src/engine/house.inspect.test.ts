@@ -132,23 +132,35 @@ describe('inspectHouse — the dynasty made inspectable', () => {
 });
 
 describe('inspectCulture / inspectDeity — creeds and gods made inspectable', () => {
+  // the roster is GENERATED per world-seed (content/cultureGen.ts) rather than a fixed
+  // 'martial' — use whichever culture actually founded a settlement in this seed's world.
+  // The active roster is a single global bound to whichever seed most recently called
+  // createWorld (an earlier test in this file builds a SEPARATE world at seed 11) — re-run
+  // seed 7 (deterministic, idempotent) right before reading it so it matches `w` again.
+  const cultureIdOf = () => {
+    createWorld(7, true);
+    return w.settlements[0].cultureId;
+  };
+
   it('a culture reports its towns, creed, and patron god', () => {
-    const d = inspectCulture(w, 'martial')!;
+    const cultureId = cultureIdOf();
+    const d = inspectCulture(w, cultureId)!;
     expect(d).toBeDefined();
-    expect(d.name).toContain('Iron'); // the Iron Creed
+    expect(d.name).toMatch(/^the .+/); // "the {Descriptor} {Noun}"
     expect(d.patronDeity?.id).toBeTruthy();
     // every town it lists actually holds this creed
-    for (const t of d.settlements) expect(w.settlements[t.id]?.cultureId).toBe('martial');
-    expect(inspectCulture(w, 'martial')).toEqual(d); // deterministic
+    for (const t of d.settlements) expect(w.settlements[t.id]?.cultureId).toBe(cultureId);
+    expect(inspectCulture(w, cultureId)).toEqual(d); // deterministic
     expect(inspectCulture(w, 'no-such-culture')).toBeUndefined();
   });
 
   it('a deity reports its domain and the creeds that venerate it', () => {
-    const culture = inspectCulture(w, 'martial')!;
+    const cultureId = cultureIdOf();
+    const culture = inspectCulture(w, cultureId)!;
     const deityId = culture.patronDeity!.id;
     const d = inspectDeity(w, deityId)!;
     expect(d.domain.length).toBeGreaterThan(0);
-    expect(d.cultures.some((c) => c.id === 'martial')).toBe(true); // martial venerates it
+    expect(d.cultures.some((c) => c.id === cultureId)).toBe(true); // this culture venerates it
     expect(inspectDeity(w, deityId)).toEqual(d); // deterministic
     expect(inspectDeity(w, 'no-such-god')).toBeUndefined();
   });

@@ -148,7 +148,11 @@ describe('post-condemnation apostasy', () => {
     let sawApostasy = false;
     for (let seed = 1; seed <= 60 && !sawApostasy; seed++) {
       const w = createWorld(seed);
-      w.settlements[w.focusedSettlementId].cultureId = 'sylvan'; // bloodshed 2.4 ≥ 2.0
+      // the roster is GENERATED per seed — use whichever culture is nature-dominant this
+      // seed (bloodshed weight ~2.4 ≥ 2.0), skipping seeds whose roster lacks one.
+      const natureCulture = CULTURES.find((c) => c.dominantAxis === 'nature');
+      if (!natureCulture) continue;
+      w.settlements[w.focusedSettlementId].cultureId = natureCulture.id;
       const actors = fullActors(w);
       const culprit = actors.find((a) => !!w.faith.get(a));
       if (!culprit) continue;
@@ -165,7 +169,9 @@ describe('post-condemnation apostasy', () => {
   it('apostasy after condemnation traces causally back to the deed', () => {
     for (let seed = 1; seed <= 60; seed++) {
       const w = createWorld(seed);
-      w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
+      const natureCulture = CULTURES.find((c) => c.dominantAxis === 'nature');
+      if (!natureCulture) continue;
+      w.settlements[w.focusedSettlementId].cultureId = natureCulture.id;
       const actors = fullActors(w);
       const culprit = actors.find((a) => !!w.faith.get(a));
       if (!culprit) continue;
@@ -185,8 +191,8 @@ describe('post-condemnation apostasy', () => {
   });
 
   it('faithless actors cannot apostatize when condemned', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
+    const w = createWorld(7); // seed 7's roster includes every axis, incl. nature
+    w.settlements[w.focusedSettlementId].cultureId = CULTURES.find((c) => c.dominantAxis === 'nature')!.id;
     const actors = fullActors(w);
     const culprit = actors[0];
     w.faith.set(culprit, ''); // force faithless
@@ -197,9 +203,9 @@ describe('post-condemnation apostasy', () => {
     expect(w.events.some((e) => e.type === 'apostasy' && e.subjects[0] === culprit)).toBe(false);
   });
 
-  it('non-taboo cultures (martial) produce no condemned and no apostasy', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'martial'; // bloodshed 0.5 < 2.0
+  it('a non-taboo (war-dominant) culture produces no condemned and no apostasy', () => {
+    const w = createWorld(7); // seed 7's roster includes every axis, incl. war (bloodshed weight ~0.5 < 2.0)
+    w.settlements[w.focusedSettlementId].cultureId = CULTURES.find((c) => c.dominantAxis === 'war')!.id;
     const [culprit, victim] = fullActors(w);
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
     witnessDeed(w, eid, culprit, victim, 'bloodshed');

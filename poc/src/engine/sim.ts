@@ -60,7 +60,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, ambitionOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, featureName, setPack, type UniversePack } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, featureName, setPack, setCulturesForSeed, PACK_ID, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest, renderBackstory, PLAYER_VOICE } from './pack';
 import { backstoryFacts } from './backstory';
@@ -97,6 +97,11 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
   // bind the universe FIRST — every pack member the worldgen touches (species, cultures,
   // tongues, biomes…) must already speak this universe. Omitted = the built-in fantasy pack.
   if (pack) setPack(pack);
+  // the fantasy pack's creeds are GENERATED per seed (content/cultureGen.ts) rather than the
+  // same fixed 5 every time — aeon (and any other pack) keeps whatever static roster it
+  // supplied above, since it never opted into this. Must run before any settlement/actor is
+  // created, since founding, precepts, religion and toponymy all read CULTURES/DEITIES.
+  if (PACK_ID === 'fantasy') setCulturesForSeed(seed);
   const world: World = {
     seed,
     substrate: createSubstrate(seed),
@@ -1608,6 +1613,13 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       .slice(0, 4)
       .map((s) => ({ name: s.name, meaning: s.nameMeaning })),
   }));
+  // the culture roster's id→name/color mapping — the UI runs in a SEPARATE realm (a Web
+  // Worker) from the simulation, so it cannot import CULTURES from engine/pack directly (that
+  // binding lives worker-side, and stays the pack's static fallback on the main thread since
+  // setCulturesForSeed never runs there). Carried in the snapshot so ui/common.tsx's
+  // cultureName/cultureColor can resolve this world's GENERATED roster instead of showing
+  // raw ids or the wrong palette.
+  const cultureLegend = CULTURES.map((c) => ({ id: c.id, name: c.name, color: c.color }));
 
   return {
     seed: world.seed,
@@ -1661,6 +1673,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     historicalFigures,
     houses,
     tongues,
+    cultureLegend,
     player: buildPlayerView(world, full),
   };
 }

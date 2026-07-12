@@ -9,7 +9,18 @@ import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
 import { witnessDeed } from './perception';
 import { fullActors, emit } from './world';
-import { deityById, patronDeityOf, faithProbability, DEITIES, CULTURES } from '../content/fixture';
+import { deityById, patronDeityOf, faithProbability, DEITIES, CULTURES, type ValueAxis } from '../content/fixture';
+
+// The roster is GENERATED per world-seed (content/cultureGen.ts) — a culture with a given
+// dominant axis is no longer always the same literal id. Seed 7 generates all 6 possible
+// dominant axes (see precepts.test.ts), so tests below resolve the culture they need by AXIS.
+const SEED = 7;
+function cultureByAxis(axis: ValueAxis): string {
+  createWorld(SEED);
+  const c = CULTURES.find((c) => c.dominantAxis === axis);
+  if (!c) throw new Error(`seed ${SEED}'s roster has no ${axis}-dominant culture — pick a different seed`);
+  return c.id;
+}
 
 describe('pantheon data', () => {
   it('every culture has a patron deity', () => {
@@ -21,15 +32,14 @@ describe('pantheon data', () => {
     }
   });
 
-  it('patronDeityOf returns the correct deity for each culture', () => {
-    expect(patronDeityOf('sylvan').id).toBe('rootmother');
-    expect(patronDeityOf('martial').id).toBe('iron_father');
-    expect(patronDeityOf('devout').id).toBe('ancestors');
-    expect(patronDeityOf('artisan').id).toBe('forge_spirit');
-    expect(patronDeityOf('free').id).toBe('windwalker');
+  it('patronDeityOf resolves each culture to its OWN distinct deity', () => {
+    createWorld(SEED);
+    const ids = CULTURES.map((c) => patronDeityOf(c.id).id);
+    expect(new Set(ids).size).toBe(CULTURES.length);
   });
 
-  it('all five deities are defined with unique ids', () => {
+  it('every deity in the roster is defined with a unique id', () => {
+    createWorld(SEED);
     const ids = DEITIES.map((d) => d.id);
     expect(new Set(ids).size).toBe(DEITIES.length);
   });
@@ -107,33 +117,36 @@ describe('actorView exposes faith', () => {
 });
 
 describe('religious condemnation', () => {
-  it('taboo deed in sylvan settlement emits a condemned event naming the Rootmother', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan'; // weight 2.4 ≥ 2.0
+  it('taboo deed in a nature-dominant settlement emits a condemned event naming its patron', () => {
+    const natureCulture = cultureByAxis('nature'); // bloodshed weight ~2.4 ≥ 2.0
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = natureCulture;
     const [culprit, victim] = fullActors(w);
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
     witnessDeed(w, eid, culprit, victim, 'bloodshed');
 
     const condemnation = w.events.find((e) => e.type === 'condemned' && e.subjects[0] === culprit);
     expect(condemnation).toBeDefined();
-    expect(condemnation!.data.deity).toBe('the Rootmother');
+    expect(condemnation!.data.deity).toBe(patronDeityOf(natureCulture).name);
   });
 
-  it('taboo deed in devout settlement names the Ancestors', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'devout'; // weight 2.8 ≥ 2.0
+  it('taboo deed in a tradition-dominant settlement names its patron', () => {
+    const traditionCulture = cultureByAxis('tradition'); // bloodshed weight ~2.8 ≥ 2.0
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = traditionCulture;
     const [culprit, victim] = fullActors(w);
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
     witnessDeed(w, eid, culprit, victim, 'bloodshed');
 
     const condemnation = w.events.find((e) => e.type === 'condemned');
     expect(condemnation).toBeDefined();
-    expect(condemnation!.data.deity).toBe('the Ancestors');
+    expect(condemnation!.data.deity).toBe(patronDeityOf(traditionCulture).name);
   });
 
-  it('non-taboo deed (martial culture, weight < 2.0) does NOT produce condemned event', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'martial'; // bloodshed weight 0.5
+  it('non-taboo deed (war-dominant culture, weight < 2.0) does NOT produce condemned event', () => {
+    const warCulture = cultureByAxis('war'); // bloodshed weight ~0.5
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = warCulture;
     const [culprit, victim] = fullActors(w);
     const eid = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
     witnessDeed(w, eid, culprit, victim, 'bloodshed');
@@ -142,8 +155,9 @@ describe('religious condemnation', () => {
   });
 
   it('condemned event traces back to the deed that caused it', () => {
-    const w = createWorld(42);
-    w.settlements[w.focusedSettlementId].cultureId = 'sylvan';
+    const natureCulture = cultureByAxis('nature');
+    const w = createWorld(SEED);
+    w.settlements[w.focusedSettlementId].cultureId = natureCulture;
     const [culprit, victim] = fullActors(w);
     const deedId = emit(w, 'died_brawl', [victim, culprit], { age: 25 });
     witnessDeed(w, deedId, culprit, victim, 'bloodshed');

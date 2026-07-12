@@ -371,7 +371,7 @@ export interface Deity {
   domain: string; // what they govern: 'growth and the living world' …
 }
 
-export const DEITIES: Deity[] = [
+export let DEITIES: Deity[] = [
   { id: 'iron_father', name: 'the Iron Father', domain: 'war and honour' },
   { id: 'rootmother', name: 'the Rootmother', domain: 'growth and the living world' },
   { id: 'forge_spirit', name: 'the Forge Spirit', domain: 'craft and making' },
@@ -451,9 +451,19 @@ export interface Culture {
   precepts?: Precept[];
   /** the creed's judgement on ways of LIVING (design/23 Stage 3) — evaluated yearly. */
   statePrecepts?: StatePrecept[];
+  /** the value axis this culture is BUILT around (content/cultureGen.ts stamps this on every
+   *  generated culture); content/languages.ts derives a culture's voice, kinship and toponym
+   *  descriptors from it instead of switching on a fixed id. Absent on the static fallback
+   *  roster below (it's never actually used once a world generates its own). */
+  dominantAxis?: ValueAxis;
 }
 
-export const CULTURES: Culture[] = [
+// The static roster below is the pack's COLD-START DEFAULT — the value `CULTURES`/`DEITIES`
+// hold before any world exists. Every real `createWorld` call (engine/sim.ts) overwrites both
+// via `setCultures` with a roster generated fresh per seed (content/cultureGen.ts) — a world's
+// creeds are no longer always these same 5. Kept as a fallback so the pack has SOMETHING
+// coherent bound at module load (tests that import fixture.ts directly, tooling, etc).
+export let CULTURES: Culture[] = [
   {
     id: 'martial', name: 'the Iron Creed', color: '#e0685f',
     patronDeityId: 'iron_father',
@@ -551,6 +561,14 @@ export const CULTURES: Culture[] = [
 
 export function cultureById(id: string): Culture {
   return CULTURES.find((c) => c.id === id) ?? CULTURES[0];
+}
+
+/** Replace the active culture/deity roster — called once per world-seed by the engine's pack
+ *  layer (engine/pack.ts's setCulturesForSeed) so every helper in this file (cultureById,
+ *  patronDeityOf, culturalDistance, ...) resolves against the world's OWN generated creeds. */
+export function setCultures(cultures: Culture[], deities: Deity[]): void {
+  CULTURES = cultures;
+  DEITIES = deities;
 }
 
 /** The patron deity of a culture — the divine source whose domain mirrors the
