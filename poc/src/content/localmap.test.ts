@@ -4,10 +4,19 @@
  * shape the town; its chronicle leaves clickable marks.
  */
 import { describe, it, expect } from 'vitest';
-import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch } from './localmap';
+import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree } from './localmap';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
+import { GEO_MIN, GEO_SPAN, type Geography } from '../engine/geography';
 import type { EventView, HouseholdView, SettlementView } from '../engine/model';
+
+/** is this world point over open water? (nearest-cell, mirrors localmap's `waterAt`) */
+function onWater(geo: Geography, x: number, y: number): boolean {
+  const N = geo.size;
+  const gx = Math.max(0, Math.min(N - 1, ((x - GEO_MIN) / GEO_SPAN) * (N - 1)));
+  const gy = Math.max(0, Math.min(N - 1, ((y - GEO_MIN) / GEO_SPAN) * (N - 1)));
+  return geo.water[Math.round(gy) * N + Math.round(gx)] !== 0;
+}
 
 // ONE shared world fixture (test-suite convention) — we only need real geography + a site
 const FIXTURE = createWorld(123456, false);
@@ -70,6 +79,122 @@ describe('the town plan (L1)', () => {
     expect(roles).toContain('shrine');
     expect(roles.filter((r) => r === 'house').length).toBeGreaterThan(10);
     expect(plan.items.some((i) => i.kind === 'street')).toBe(true);
+  });
+
+  it('no building stands in the water — every structure sits on dry ground (piers excepted)', () => {
+    // this coastal site grows piers (see the fishing-town test), so the water gate is exercised.
+    const geo = (FIXTURE.substrate as SurfaceSubstrate).geography;
+    const facts = worldFacts(
+      { specialization: 'fishing & trade', wealth: 220, population: 420 },
+      [ev(910, 'raid', 176), ev(911, 'wonder', 120), ev(912, 'famine', 130), ev(913, 'settlement_founded', 0)],
+    );
+    const plan = buildLocalPlan(facts);
+    const wet = plan.items.filter((i): i is PlanItem & { x: number; y: number } => (i.kind === 'building' || i.kind === 'person') && onWater(geo, (i as PlanBuilding).x, (i as PlanBuilding).y));
+    expect(wet.map((w) => (w as PlanBuilding).role ?? w.kind)).toEqual([]); // nothing floats on the sea
+  });
+
+  it('claimed buildings never overlap — the civic core and homes each hold their own lot', () => {
+    // approximate claim radius by role (mirrors the reservations in localmap.ts). History
+    // marks (monument/tomb/stone/shell) and market fixtures inside the plaza are exempt.
+    const R: Record<string, number> = { seat: 0.24, shrine: 0.18, tavern: 0.16, workshop: 0.13, warehouse: 0.13, mill: 0.13, boathouse: 0.1, granary: 0.15 };
+    const plan = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', wealth: 260, population: 420 }));
+    const claimed = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role in R);
+    for (let a = 0; a < claimed.length; a++) {
+      for (let b = a + 1; b < claimed.length; b++) {
+        const A = claimed[a], B = claimed[b];
+        const d = Math.hypot(A.x - B.x, A.y - B.y);
+        const need = R[A.role] + R[B.role] - 0.02; // small epsilon for float slack
+        expect(d).toBeGreaterThanOrEqual(need); // no two claimed footprints intersect
+      }
+    }
+  });
+
+  it('no tree grows up through a roof — the countryside stops at the town wall', () => {
+    const plan = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', wealth: 260, population: 420 }));
+    const buildings = plan.items.filter((i): i is PlanBuilding => i.kind === 'building');
+    const trees = plan.items.filter((i): i is PlanItem & { x: number; y: number; r: number } => i.kind === 'tree');
+    for (const t of trees) {
+      for (const b of buildings) {
+        // a building's footprint half-span (its larger dimension) — a tree may not sit inside it
+        const foot = Math.max(b.w, b.h) * 0.5;
+        expect(Math.hypot(t.x - b.x, t.y - b.y)).toBeGreaterThan(foot);
+      }
+    }
+  });
+});
+
+describe('fortunes on the map (design/28)', () => {
+  it('a DECLINING town rots at its edge — derelict roofs appear', () => {
+    const plan = buildLocalPlan(worldFacts({ population: 320, wealth: 55, stability: -60, subsistenceSecurity: 0.6 }));
+    const houses = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    expect(houses.some((h) => h.derelict)).toBe(true);
+  });
+
+  it('a THRIVING town raises fresh scaffolding', () => {
+    const plan = buildLocalPlan(worldFacts({ population: 300, wealth: 320, stability: 85, subsistenceSecurity: 1.8 }));
+    expect(plan.items.some((i) => i.kind === 'building' && i.role === 'scaffold')).toBe(true);
+  });
+
+  it('a town AT WAR raises watchtowers', () => {
+    const plan = buildLocalPlan(worldFacts({ population: 320, leaderTitle: 'Lord', civilWarYear: 176 }));
+    expect(plan.items.some((i) => i.kind === 'building' && i.role === 'watchtower')).toBe(true);
+  });
+
+  it('a town with a patron deity keeps a graveyard by its shrine', () => {
+    const graves = buildLocalPlan(worldFacts()).items.filter((i) => i.kind === 'building' && i.role === 'grave');
+    expect(graves.length).toBeGreaterThan(3);
+  });
+
+  it('a stable town shows neither decay nor scaffolding (no false signals)', () => {
+    const plan = buildLocalPlan(worldFacts({ population: 300, wealth: 150, stability: 5, subsistenceSecurity: 1.1 }));
+    expect(plan.items.some((i) => i.kind === 'building' && (i as PlanBuilding).derelict)).toBe(false);
+    expect(plan.items.some((i) => i.kind === 'building' && i.role === 'scaffold')).toBe(false);
+  });
+});
+
+describe('environment fidelity (design/28 #4)', () => {
+  it('every wild tree takes a biome silhouette (not all cones)', () => {
+    const trees = buildLocalPlan(worldFacts()).items.filter((i): i is PlanTree => i.kind === 'tree');
+    expect(trees.length).toBeGreaterThan(0);
+    expect(trees.every((t) => t.form !== undefined)).toBe(true);
+  });
+
+  it('a vineyard town grows vine-cropped fields', () => {
+    const fields = buildLocalPlan(worldFacts({ specialization: 'vineyards & wine', population: 300 })).items.filter((i): i is PlanPatch => i.kind === 'field');
+    expect(fields.some((f) => f.crop === 'vine')).toBe(true);
+  });
+
+  it('an orchard town plants fruit trees in rows', () => {
+    const trees = buildLocalPlan(worldFacts({ specialization: 'orchards & fruit', population: 300 })).items.filter((i): i is PlanTree => i.kind === 'tree');
+    expect(trees.some((t) => t.form === 'orchard')).toBe(true);
+  });
+
+  it('a farming town names what its fields grow', () => {
+    const fields = buildLocalPlan(worldFacts({ specialization: 'grain farming', population: 300 })).items.filter((i): i is PlanPatch => i.kind === 'field');
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((f) => f.crop !== undefined)).toBe(true);
+  });
+
+  it('a paddy never stands on barren or dry ground — only wet, low, fertile soil', () => {
+    // a paddy is a flooded rice field: it must read as fertile+wet+low, never on dry rock.
+    const geo = (FIXTURE.substrate as SurfaceSubstrate).geography;
+    const N = geo.size;
+    const cell = (x: number, y: number) => {
+      const gx = Math.round(Math.max(0, Math.min(N - 1, ((x - GEO_MIN) / GEO_SPAN) * (N - 1))));
+      const gy = Math.round(Math.max(0, Math.min(N - 1, ((y - GEO_MIN) / GEO_SPAN) * (N - 1))));
+      return gy * N + gx;
+    };
+    for (const spec of ['rice farming', 'grain farming', 'plantation & trade']) {
+      const paddies = buildLocalPlan(worldFacts({ specialization: spec, population: 340 })).items.filter(
+        (i): i is PlanPatch => i.kind === 'field' && i.crop === 'paddy',
+      );
+      for (const p of paddies) {
+        const c = cell(p.x, p.y);
+        expect(geo.fertility[c]).toBeGreaterThan(0.4); // fertile
+        expect(geo.moisture[c]).toBeGreaterThan(0.55); // wet
+        expect(geo.elevation[c]).toBeLessThan(geo.seaLevel + 0.15); // low
+      }
+    }
   });
 });
 

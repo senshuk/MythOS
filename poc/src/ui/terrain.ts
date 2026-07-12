@@ -411,11 +411,15 @@ export interface TerrainLabel {
 /** Paint the engine's geography, coloured by the pack theme. `vb` matches the overlay
  *  SVG viewBox so settlements land exactly on the terrain that bred them. `labels`
  *  (optional) letters the named features — seas, ranges, great rivers — onto the map. */
-export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[]): void {
-  const W = canvas.width;
-  const H = canvas.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+/** The subset of `Geography` the terrain pixel loop reads — a plain bag of typed arrays, so it
+ *  can be structured-cloned to a Web Worker (a class instance / methods would not survive). */
+export type GeoFields = Pick<Geography, 'size' | 'elevation' | 'moisture' | 'temperature' | 'fertility' | 'water' | 'hilliness' | 'seaLevel'>;
+
+/** The heavy per-pixel terrain computation — canvas-free, so it can run OFF the main thread in a
+ *  Web Worker (see terrainWorker.ts). At the close view it evaluates dozens of noise octaves per
+ *  pixel over millions of pixels (~2s), which would freeze the UI if run inline. Returns a W*H*4
+ *  RGBA buffer; the caller does the cheap putImageData + vignette + labels via `paintTerrainOverlay`. */
+export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceTheme, W: number, H: number): Uint8ClampedArray {
   const N = geo.size;
   const E = geo.elevation;
   const M = geo.moisture;
@@ -440,8 +444,18 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
   // resolves into ground texture — deterministic, so the same hill always looks the same.
   // The world map (vb.w ≈ 190, max zoom ≈ 32) is left untouched by the ≤30 gate.
   const zoomK = Math.max(1, Math.min(3, 30 / vb.w));
-  const detailOctaves = zoomK > 2 ? 6 : 4;
   const shadeDelta = 0.8 / zoomK;
+  // the COARSE hillshade/AO (from the smooth interpolated elevation grid) reads as real
+  // relief at world scale, but as meaningless soft blobs once you zoom past the grid's
+  // resolution — so fade it out as the frame tightens, leaving clean ground under the crisp
+  // texture (design/24 §8). And SCREEN-ANCHOR that texture's base frequency so its grain stays
+  // a fixed ~20px on screen at every zoom (world-anchored phase, so it doesn't swim on a pan).
+  const reliefFade = Math.min(1, vb.w / 16);
+  const texBase = Math.min(40, Math.max(3, 34 / vb.w));
+  // the per-CELL river tint reads as a fine thread on the world map, but as ugly blocky
+  // squares once zoomed past the grid (each river cell spans many pixels). So fade it out for
+  // the close view — there the crisp SVG river RIBBON (LocalMapView) carries the water instead.
+  const riverTintK = Math.max(0, Math.min(1, (vb.w - 18) / 30)); // 0 at close view, 1 on the world map
 
   // 1) LAND COLOUR per cell — the biome tint (+ snow) for EVERY cell, even submerged ones.
   //    Water is NOT baked in here: it is decided per-pixel in the loop (see below) so the
@@ -467,12 +481,32 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
     landB[ci] = c[2];
   }
 
+  // 1b) CHANNEL DEPTH per cell — a shallow valley stamped around every river cell, so the
+  //     close-view relief carries the watercourse as a carved trench (design/24 §8). Sparse
+  //     (only river cells stamp), then bilinear-sampled per pixel like elevation. Faded with
+  //     the same zoom gate as the river tint so it never disturbs the world map.
+  const chan = new Float32Array(NN);
+  const CHANNEL_DEPTH = 0.02 * Math.max(0, Math.min(1, 1 - (vb.w - 6) / 18)); // strongest zoomed-in, gone by world scale
+  if (CHANNEL_DEPTH > 0) {
+    for (let ci = 0; ci < NN; ci++) {
+      if (WTR[ci] !== WATER_RIVER) continue;
+      const cx0 = ci % N, cy0 = (ci / N) | 0;
+      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+        const x = cx0 + di, y = cy0 + dj;
+        if (x < 0 || y < 0 || x >= N || y >= N) continue;
+        const f = Math.max(0, 1 - Math.hypot(di, dj) / 2.0);
+        const k = y * N + x;
+        if (f > chan[k]) chan[k] = f;
+      }
+    }
+  }
+  const chanDepth = (gx: number, gy: number) => bilinear(chan, N, gx, gy) * CHANNEL_DEPTH;
+
   // 2) pixel loop. The land/water boundary is resolved PER PIXEL from the (bilinearly
   //    interpolated) elevation field, perturbed by sub-cell fractal noise near the waterline —
   //    so the coastline is a crisp, fractally-detailed line at every zoom instead of a soft
   //    ramp over a blocky one-cell step. Land interiors still bilinear-blend for smoothness.
-  const img = ctx.createImageData(W, H);
-  const data = img.data;
+  const data = new Uint8ClampedArray(W * H * 4);
   for (let py = 0; py < H; py++) {
     const gy = gOf(vb.y + (py / H) * vb.h);
     const y0 = Math.floor(gy);
@@ -542,11 +576,13 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         g = c[1];
         b = c[2];
       } else {
-        // LAND — bilinear blend of land colours (no water contamination), then a waterline
-        // beach, relief hillshade, ambient occlusion and fractal micro-detail.
-        r = landR[i00] * w00 + landR[i10] * w10 + landR[i01] * w01 + landR[i11] * w11;
-        g = landG[i00] * w00 + landG[i10] * w10 + landG[i01] * w01 + landG[i11] * w11;
-        b = landB[i00] * w00 + landB[i10] * w10 + landB[i01] * w01 + landB[i11] * w11;
+        // LAND — a CLEAN bilinear blend of the biome colours (no domain warp: warping a few
+        // cells just swirled them into clouds). The terrain's RICHNESS at close zoom comes from
+        // SYNTHESISED relief + hillshade (below), not from mottling the colour, so flat farmland
+        // stays a clean field and hill country gains real shaded relief.
+        r = bilinear(landR, N, gx, gy);
+        g = bilinear(landG, N, gx, gy);
+        b = bilinear(landB, N, gx, gy);
         // a sandy BEACH on warm low land right at the waterline (crisp, per-pixel).
         const temp = T[nci];
         if (eP < sea + 0.018 && temp > 0.34) {
@@ -560,53 +596,93 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
         const gyp = Math.min(N - 1, gy + shadeDelta);
         const gxm = Math.max(0, gx - shadeDelta);
         const gym = Math.max(0, gy - shadeDelta);
-        const ex = bilinear(E, N, gxp, gy) - e;
-        const ey = bilinear(E, N, gx, gyp) - e;
-        let s = 1 + (-ex - ey) * theme.hillshade * (8 + HILL[nci] * 4);
-        s = s < 0.6 ? 0.6 : s > 1.38 ? 1.38 : s;
-        // AMBIENT OCCLUSION — a cell sunk below its surroundings (a valley/gorge) sits in
-        // shadow; a convex ridge catches a touch more light. Reads the terrain's concavity.
-        const concavity = (bilinear(E, N, gxp, gy) + bilinear(E, N, gxm, gy) + bilinear(E, N, gx, gyp) + bilinear(E, N, gx, gym)) / 4 - e;
-        s *= 1 - Math.max(-0.12, Math.min(0.16, concavity * 6));
-        // FRACTAL MICRO-DETAIL — multi-octave noise at frequencies FINER than a grid cell,
-        // sampled in grid space. At low zoom it averages out; zoomed in it resolves into
-        // terrain texture (roughness, mottling) so the map reads as detail, not smooth blobs.
-        let d = 0;
-        let amp = 0.5;
-        let f = 0.9;
-        for (let o = 0; o < detailOctaves; o++) {
-          d += amp * (vnoise(gx * f + o * 17.3, gy * f + o * 9.1, 5150) - 0.5);
-          amp *= 0.5;
-          f *= 2.3;
-        }
-        const rough = (0.11 + HILL[nci] * 0.05) * (0.55 + zoomK * 0.45); // rougher up close
-        s *= 1 + d * rough * 2;
+        // AMPLIFIED RELIEF (design/24 §3.2): the real elevation grid is smooth over the few
+        // cells this frame spans, so at close zoom we SYNTHESISE sub-grid relief — coherent
+        // fbm modulated by the local hilliness (crags in the mountains, gentle swells in
+        // farmland) — and hillshade THAT, so the close view reads as a real 3-D landscape (the
+        // world map's quality, generated below the grid). Faded in by zoom; the coarse relief
+        // fades out (it's blobby up close). The synth height drives SHADING/ROCK/SNOW only —
+        // never the water line, which stays the real coastline, so no phantom lakes appear.
+        const hillN = HILL[nci];
+        const grain = Math.max(0, Math.min(1, (zoomK - 1) / 1.7));
+        const synthAmp = (0.010 + hillN * 0.012) * grain; // world-height of the synth relief
+        const synth = (ux: number, uy: number) => {
+          let v = 0;
+          let a = 0.5;
+          let fr = 1.15;
+          let nrm = 0;
+          for (let o = 0; o < 5; o++) {
+            v += a * (vnoise(ux * fr + o * 13.1, uy * fr + o * 7.7, 3110) - 0.5);
+            nrm += a;
+            a *= 0.5;
+            fr *= 2.15;
+          }
+          return (v / nrm) * synthAmp;
+        };
+        const sh0 = synth(gx, gy);
+        // gradient of (coarse·fade + synth): the coarse term is the hill the town sits on, the
+        // synth term the crisp micro-relief that appears as you zoom in.
+        // the coarse hill, the synth micro-relief, AND the carved river channel all shade here
+        const chG = chanDepth(gx, gy);
+        const ex = (bilinear(E, N, gxp, gy) - e) * reliefFade + (synth(gxp, gy) - sh0) - (chanDepth(gxp, gy) - chG);
+        const ey = (bilinear(E, N, gx, gyp) - e) * reliefFade + (synth(gx, gyp) - sh0) - (chanDepth(gx, gyp) - chG);
+        let s = 1 + (-ex - ey) * theme.hillshade * (8 + hillN * 4);
+        s = s < 0.5 ? 0.5 : s > 1.5 ? 1.5 : s;
+        // ambient occlusion on the SAME amplified surface — hollows shadow, ridges catch light
+        const eC = e + sh0;
+        const concavity = ((bilinear(E, N, gxp, gy) + synth(gxp, gy)) + (bilinear(E, N, gxm, gy) + synth(gxm, gy)) + (bilinear(E, N, gx, gyp) + synth(gx, gyp)) + (bilinear(E, N, gx, gym) + synth(gx, gym))) / 4 - eC;
+        s *= 1 - Math.max(-0.14, Math.min(0.18, concavity * 6));
         r *= s;
         g *= s;
         b *= s;
-        // CLOSE-VIEW GROUND GRAIN (design/24 §7) — a fine CHROMATIC speckle keyed to
-        // fertility & moisture, finer than the brightness detail above: fertile, well-
-        // watered ground clumps into darker green vegetation, dry barren ground scatters
-        // into paler warm grit. Gives the close view a tiled-terrain read with no art;
-        // gated by zoom (and biome-relative, so a desert never grows green).
-        if (zoomK > 1.4) {
-          const grain = Math.min(1, (zoomK - 1.4) / 1.6);
-          let gd = 0;
-          let ga = 0.5;
-          let gf = 3.3;
-          for (let o = 0; o < 3; o++) {
-            gd += ga * (vnoise(gx * gf + o * 5.9, gy * gf + o * 12.1, 2718) - 0.5);
-            ga *= 0.5;
-            gf *= 2.55;
+        // the channel floor sits in cool, damp shadow — so the trench reads even where its
+        // banks are gentle (the crisp SVG river ribbon rides the centre on top of this).
+        if (CHANNEL_DEPTH > 0) {
+          const chRaw = bilinear(chan, N, gx, gy);
+          if (chRaw > 0) { r *= 1 - chRaw * 0.30; g *= 1 - chRaw * 0.22; b *= 1 - chRaw * 0.10; }
+        }
+        // ROCK & SNOW on the synth CRESTS (close zoom) — high steep ground bares stone, and
+        // cold high ground catches snow, exactly as the world map paints its real peaks.
+        if (hillN >= 2 && synthAmp > 0) {
+          const crest = Math.max(0, sh0 / synthAmp); // 0 in the hollows … ~0.5 on the high side
+          const bare = crest * grain * (hillN >= 3 ? 1 : 0.55);
+          if (bare > 0) {
+            r = lerp(r, 150, bare * 0.5);
+            g = lerp(g, 150, bare * 0.5);
+            b = lerp(b, 152, bare * 0.5);
+            const temp = T[nci];
+            if (temp < 0.42) {
+              const snow = bare * Math.min(1, (0.42 - temp) / 0.3);
+              r = lerp(r, 236, snow * 0.7);
+              g = lerp(g, 240, snow * 0.7);
+              b = lerp(b, 245, snow * 0.7);
+            }
           }
-          const lush = M[nci] * 0.5 + F[nci] * 0.5; // 0 barren-dry … 1 lush-wet
-          const amt = gd * grain * (0.12 + lush * 0.1);
-          const lum = 1 - amt * (0.7 + lush * 0.8); // wet ground mottles darker
-          r *= lum;
-          g *= lum;
-          b *= lum;
-          g += amt * lush * 34; // a green cast where fertile clumps thicken
-          b -= amt * (1 - lush) * 10; // a warm/sandy cast on barren grit
+        }
+        // FINE GROUND GRAIN (screen-anchored, texBase ∝ 1/vb.w so it stays ~20px on screen at
+        // every zoom) — a subtle surface texture so even level ground isn't a dead wash. Gentle
+        // now that the synth relief carries the real detail.
+        if (grain > 0) {
+          let d = 0;
+          let amp = 0.5;
+          let fr = texBase;
+          let norm = 0;
+          for (let o = 0; o < 4; o++) {
+            d += amp * (vnoise(gx * fr + o * 17.3, gy * fr + o * 9.1, 5150) - 0.5);
+            norm += amp;
+            amp *= 0.5;
+            fr *= 2.0;
+          }
+          d /= norm;
+          const tex = 1 + d * (0.16 + hillN * 0.08) * grain;
+          r *= tex;
+          g *= tex;
+          b *= tex;
+          const cm = (vnoise(gx * texBase * 1.7 + 7.7, gy * texBase * 1.7 + 2.3, 2718) - 0.5) * grain * 0.4;
+          const lush = M[nci] * 0.5 + F[nci] * 0.5;
+          g += cm * (7 + lush * 12);
+          r += cm * 3;
+          b -= cm * 3;
         }
         // RIVERS run over land — keep them crisp AND a touch wider. Where the nearest OR an
         // adjacent cell is a river, pull toward the river colour (bilinear would wash a
@@ -616,10 +692,11 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
           : WTR[i00] === WATER_RIVER || WTR[i10] === WATER_RIVER || WTR[i01] === WATER_RIVER || WTR[i11] === WATER_RIVER
             ? 0.34
             : 0;
-        if (nearRiver > 0) {
-          r = lerp(r, river[0], nearRiver);
-          g = lerp(g, river[1], nearRiver);
-          b = lerp(b, river[2], nearRiver);
+        if (nearRiver > 0 && riverTintK > 0) {
+          const t = nearRiver * riverTintK; // faded out in the close view (the SVG ribbon takes over)
+          r = lerp(r, river[0], t);
+          g = lerp(g, river[1], t);
+          b = lerp(b, river[2], t);
         }
       }
       const i = (py * W + px) * 4;
@@ -629,6 +706,14 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       data[i + 3] = 255;
     }
   }
+  return data;
+}
+
+/** Cheap main-thread finish: blit the computed RGBA buffer, then draw the vignette and the
+ *  named-feature labels (text needs a real 2D context, so it stays on the main thread). */
+export function paintTerrainOverlay(ctx: CanvasRenderingContext2D, buf: Uint8ClampedArray, vb: ViewBox, theme: SurfaceTheme, W: number, H: number, labels?: TerrainLabel[]): void {
+  const img = ctx.createImageData(W, H);
+  img.data.set(buf);
   ctx.putImageData(img, 0, 0);
 
   const v = theme.vignette;
@@ -657,6 +742,18 @@ export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: View
       ctx.fillText(l.text, px, py);
     }
   }
+}
+
+/** Synchronous terrain paint — computes the pixels inline then finishes. Used by the world map
+ *  (cheap at world zoom, where the per-pixel synth relief is disabled) and as a worker fallback.
+ *  The CLOSE view offloads `computeTerrainImage` to a Web Worker instead (see LocalMapView). */
+export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[]): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const W = canvas.width;
+  const H = canvas.height;
+  const buf = computeTerrainImage(geo, vb, theme, W, H);
+  paintTerrainOverlay(ctx, buf, vb, theme, W, H, labels);
 }
 
 // --- starfield (space setting) — its own noise for nebulae + stars ----------

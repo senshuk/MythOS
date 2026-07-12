@@ -1436,6 +1436,10 @@ export const SELF_THOUGHT_SPECS: Record<string, ThoughtSpec> = {
   heartened: { base: 30, durationTicks: 90, stackLimit: 5, mult: 0.75, label: 'a kindness received' },
   newly_wed: { base: 120, durationTicks: DAYS_PER_YEAR, stackLimit: 1, mult: 1, label: 'newly wed' },
   child_born: { base: 80, durationTicks: DAYS_PER_YEAR, stackLimit: 3, mult: 0.8, label: 'a child born' },
+  // communal gatherings (design/27 §4). `mourned` is a small POSITIVE — the comfort of
+  // shared grief and closure at a funeral; the bereavement itself is grief_kin/grief_spouse.
+  mourned: { base: 40, durationTicks: Math.round(0.75 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.8, label: 'mourned at a funeral' },
+  feasted: { base: 60, durationTicks: Math.round(0.6 * DAYS_PER_YEAR), stackLimit: 3, mult: 0.8, label: 'shared in a celebration' },
   brawl_shock: { base: -60, durationTicks: 150, stackLimit: 3, mult: 0.75, label: 'shaken by a brawl' },
   fearful_times: { base: -70, durationTicks: DAYS_PER_YEAR, stackLimit: 2, mult: 0.7, label: 'living through fearful times' },
   good_times: { base: 55, durationTicks: DAYS_PER_YEAR, stackLimit: 2, mult: 0.7, label: 'living through good times' },

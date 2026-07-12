@@ -20,6 +20,7 @@ import { getRel, emit, isAlive, isKin, clamp, killActor, canTakeSpouse } from '.
 import { ageCompatible, escalateAnimosity } from '../engine/social';
 import { witnessDeed, perceiveEvent } from '../engine/perception';
 import { pickVenue } from '../engine/venues';
+import { holdGathering, communityAround } from '../engine/gathering';
 import { applyConscience } from '../engine/conscience';
 import { shareBelief } from '../engine/belief';
 import { standingOf } from '../engine/reputation';
@@ -270,6 +271,8 @@ function marry(world: World, a: EntityId, b: EntityId, edge: RelEdge): void {
   const wedId = emit(world, 'married', [a, b], { ...pickVenue(world, 'married', a, b) }, thoughtCauses(edge, true));
   addSelfThought(world, a, 'newly_wed', { cause: wedId });
   addSelfThought(world, b, 'newly_wed', { cause: wedId });
+  // the village comes: the couple's kin and friends gather to see them wed and feast (design/27 §4)
+  holdGathering(world, 'wedding', [a, b], communityAround(world, [a, b]), wedId);
 }
 
 function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng): void {
@@ -289,10 +292,13 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   }
   const victim = rng.chance(0.5) ? a : b;
   const killer = victim === a ? b : a;
+  // gather the mourners BEFORE the death prunes the victim's ties (design/27 §4)
+  const mourners = communityAround(world, [victim]);
   // killActor returns the death event ID; that's what witnesses remember.
   const deathId = killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
   witnessDeed(world, deathId, killer, victim, 'bloodshed');
   if (deathId >= 0) perceiveEvent(world, deathId); // witnesses come to know the death, not just fear the killer
+  if (deathId >= 0) holdGathering(world, 'funeral', [victim], mourners, deathId); // the town gathers to mourn
 }
 
 /**

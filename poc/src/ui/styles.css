@@ -973,6 +973,14 @@ button { font-family: inherit; }
 @keyframes close-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .local-wrap { cursor: default; }
+
+/* the 3D terrain PROTOTYPE (design/24 §8) — a WebGL heightmap over the map area */
+.local-3d { position: absolute; inset: 0; z-index: 20; background: #0a1017; }
+.local-3d-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.local-3d-canvas:active { cursor: grabbing; }
+.local-3d-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); font-size: 12px; background: rgba(10, 14, 20, 0.6); padding: 4px 10px; border-radius: 20px; pointer-events: none; }
+.local-3d-back { position: absolute; top: 12px; left: 12px; z-index: 21; }
+.map-ctl .ctl-3d { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
 .local-head {
   position: absolute; top: 8px; left: 8px; z-index: 6;
   display: flex; align-items: center; gap: 10px;
@@ -1006,12 +1014,47 @@ button { font-family: inherit; }
 .plan-square { fill: rgba(180, 166, 130, 0.4); stroke: #b4a682; stroke-width: 0.015; }
 .plan-field { fill: rgba(196, 178, 105, 0.32); stroke: rgba(150, 135, 80, 0.75); stroke-width: 0.014; }
 .plan-furrow { stroke: rgba(150, 135, 80, 0.5); stroke-width: 0.012; }
+/* CROPS (design/28 §5) — a field reads what it grows: golden grain, green vine rows, a paddy's sheen */
+.plan-field.crop-vine { fill: rgba(120, 150, 88, 0.34); stroke: rgba(88, 118, 66, 0.8); }
+.plan-vinerow { stroke: rgba(70, 100, 54, 0.72); stroke-width: 0.01; }
+.plan-field.crop-paddy { fill: rgba(120, 150, 120, 0.3); stroke: rgba(88, 128, 110, 0.8); }
+.plan-paddy-water { fill: rgba(120, 168, 172, 0.28); stroke: none; }
+.plan-bund { stroke: rgba(92, 120, 96, 0.7); stroke-width: 0.012; }
+/* TERRACE (design/24 §8.3) — fields banked into a slope: greener, with contour steps */
+.plan-terrace { fill: rgba(150, 170, 96, 0.34); stroke: rgba(110, 130, 70, 0.8); stroke-width: 0.012; }
+.plan-terrace-bank { stroke: rgba(96, 116, 62, 0.7); stroke-width: 0.014; }
 .plan-rubble { fill: rgba(120, 118, 112, 0.5); stroke: rgba(90, 88, 84, 0.8); stroke-width: 0.012; }
-.plan-tree { fill: rgba(58, 84, 50, 0.85); stroke: rgba(30, 44, 26, 0.6); stroke-width: 0.008; }
+/* BRIDGE (design/24 §8.3) — a timber crossing where a street fords the river */
+.plan-bridge { stroke: #7a6444; opacity: 0.95; stroke-linecap: butt; }
+.plan-tree { fill: rgba(58, 84, 50, 0.85); stroke: rgba(30, 44, 26, 0.55); stroke-width: 0.006; }
+/* TREE FORMS (design/28 §5) — biome silhouettes: fronded palm, waterside reeds */
+.plan-tree-palm path { stroke: rgba(58, 84, 50, 0.85); stroke-width: 0.012; stroke-linecap: round; fill: none; }
+.plan-tree-palm circle { fill: rgba(58, 84, 50, 0.85); }
+.plan-reed { stroke: rgba(96, 116, 66, 0.85); stroke-width: 0.01; stroke-linecap: round; fill: none; }
+/* INHABITANTS (design/27 §3) — tiny figures so the town reads as peopled, not empty */
+.plan-person { filter: drop-shadow(0.008px 0.012px 0.008px rgba(0, 0, 0, 0.5)); }
+.plan-person-body { fill: #6a5a48; stroke: #2a2018; stroke-width: 0.004; }
+.plan-person-head { fill: #b99a78; stroke: #2a2018; stroke-width: 0.004; }
+.plan-person.tone-child .plan-person-body { fill: #7c6a54; }
+.plan-person.tone-notable .plan-person-body { fill: #8a6f3e; stroke: var(--gold-dim); }
+.plan-person.tone-notable .plan-person-head { fill: #d6b483; }
+.plan-person.tone-mourner .plan-person-body { fill: #3a3540; }
+.plan-person.tone-reveller .plan-person-body { fill: #7d5a34; }
+.plan-person[role="button"] { cursor: pointer; }
+.plan-person[role="button"]:hover .plan-person-head { fill: var(--gold); }
+.plan-person[role="button"]:hover .plan-person-body { stroke: var(--gold); }
+/* buildings cast a soft shadow so the flat plan reads as built VOLUME (design/24 §8.4) */
+.plan-building { filter: drop-shadow(0.012px 0.02px 0.012px rgba(0, 0, 0, 0.45)); }
 .plan-building rect { fill: #4a4038; stroke: #241f1a; stroke-width: 0.016; }
 .plan-building .plan-ridge { stroke: rgba(20, 16, 12, 0.55); stroke-width: 0.012; }
+.plan-building .plan-yard { fill: none; stroke: rgba(60, 52, 44, 0.85); stroke-width: 0.014; }
+/* AGE GRADIENT (design/24 §8.3) — weathered pale stone in the old core, fresh warm timber
+   at the growing edge, so the town's growth reads at a glance */
+.plan-building.era-old rect { fill: #514a44; stroke: #2a2622; }
+.plan-building.era-new rect { fill: #574636; stroke: #2c2118; }
 .plan-building.tone-grand rect { fill: #5c4e3a; stroke: var(--gold-dim); stroke-width: 0.022; }
 .plan-building.tone-sacred rect { fill: #4e4456; stroke: var(--violet); stroke-width: 0.02; }
+.plan-building.tone-ruin { filter: none; }
 .plan-building.tone-ruin rect { fill: none; stroke: rgba(140, 130, 120, 0.7); stroke-width: 0.014; stroke-dasharray: 0.05 0.035; }
 .plan-building.tone-ruin .plan-ridge { display: none; }
 .plan-building[role="button"] { cursor: pointer; }
@@ -1032,16 +1075,18 @@ button { font-family: inherit; }
 /* WATER FLOW (design/24 §7) — a ripple riding the painted river, drifting downstream. The
    dash pattern is the ripple; per-river animation-duration (set inline from flux) makes a
    torrent hurry and a brook barely move. Honours reduced-motion by holding still. */
-.local-river {
-  fill: none;
-  stroke: #cfe8f2;
-  opacity: 0.5;
-  stroke-linecap: round;
-  stroke-dasharray: 0.13 0.28;
+/* the close-view river as a layered ribbon (design/24 §8) — a wet bank, a water body, and a
+   flowing sheen — so a watercourse reads as water, not a string of pale dashes. */
+.lr-bank, .lr-body, .lr-sheen { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.lr-bank { stroke: #223f47; opacity: 0.42; }                 /* the damp, shadowed bank */
+.lr-body { stroke: #3f7488; opacity: 0.95; }                 /* the river's own blue water */
+.lr-sheen {
+  stroke: #d2ebf5; opacity: 0.5;
+  stroke-dasharray: 0.09 0.2;                                 /* ripples riding the current */
   animation: river-flow linear infinite;
 }
-@keyframes river-flow { to { stroke-dashoffset: -0.82; } }
-@media (prefers-reduced-motion: reduce) { .local-river { animation: none; opacity: 0.34; } }
+@keyframes river-flow { to { stroke-dashoffset: -0.58; } }
+@media (prefers-reduced-motion: reduce) { .lr-sheen { animation: none; opacity: 0.3; } }
 .plan-building.role-monument rect { fill: #7a705c; stroke: var(--gold-dim); stroke-width: 0.014; }
 .plan-building.role-stone rect { fill: #6b6a66; stroke: #4a4946; stroke-width: 0.012; }
 .plan-building.role-tomb circle { stroke: #8a8578; stroke-width: 0.016; }
@@ -1050,6 +1095,20 @@ button { font-family: inherit; }
 .plan-building.role-shell .plan-ridge { display: none; }
 /* the tavern — the town's public hearth (a VENUE, L4): warm-lit and amber-edged */
 .plan-building.role-tavern rect { fill: #5e4b30; stroke: var(--amber); stroke-width: 0.018; }
+/* functional civic fixtures (design/27) — the well, market stalls, the granary */
+.plan-building.role-well circle { fill: none; stroke: #6f6a5c; stroke-width: 0.014; }
+.plan-building.role-well .plan-well-mouth { fill: #23303a; stroke: none; }
+.plan-building.role-stall rect { fill: #6a5638; stroke: #33281a; stroke-width: 0.01; }
+.plan-building.role-stall .plan-awning { stroke: #a5623a; stroke-width: 0.02; }
+.plan-building.role-granary rect { fill: #6b5a3c; stroke: #342a1a; stroke-width: 0.014; }
+/* fortunes cues (design/28) — graves, watchtowers, scaffolding, and derelict roofs */
+.plan-building.role-grave rect { fill: #7c7a72; stroke: #46443e; stroke-width: 0.006; }
+.plan-building.role-grave.tone-sacred rect { fill: #8a8578; stroke: var(--violet); stroke-width: 0.01; }
+.plan-building.role-watchtower rect { fill: #4a463f; stroke: #211e18; stroke-width: 0.018; }
+.plan-building.role-watchtower .plan-crenel { stroke: #6a655a; stroke-width: 0.02; stroke-dasharray: 0.02 0.018; }
+.plan-building.role-scaffold .plan-frame { stroke: #9a7a4a; stroke-width: 0.01; fill: none; stroke-dasharray: 0.02 0.014; }
+.plan-building.derelict rect { fill: none; stroke: rgba(120, 122, 96, 0.7); stroke-width: 0.012; stroke-dasharray: 0.045 0.03; }
+.plan-building.derelict .plan-ridge { display: none; }
 .plan-mark[role="button"], .plan-square[role="button"] { cursor: pointer; }
 .plan-mark:hover .plan-square { stroke: var(--cyan); }
 .tip-hint { font-size: 10.5px; color: var(--cyan); margin-top: 2px; }

@@ -67,7 +67,7 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   blight: (_n, d) => `A hard season struck ${d.name} — ${d.toll} lost.`,
   plague: (_n, d) => `Plague swept ${d.name} — ${d.toll} perished.`,
   ruined: (n, d, c) => (c ? `${d.name} fell to ruin under ${n(0)}, its last ruler.` : `${d.name} was abandoned, falling to ruin.`),
-  battle: (_n, d) => `${d.a} and ${d.b} clashed in battle${overReason(d)} (${d.aToll} and ${d.bToll} fell).`,
+  battle: (_n, d) => `${d.a} and ${d.b} clashed in battle${overReason(d)}${d.heldByGround ? ', the ground turning back the greater host,' : ''} (${d.aToll} and ${d.bToll} fell).`,
   conquest: (n, d, c) =>
     c ? `${n(0)} of ${d.victor} conquered ${d.fallen}${overReason(d)}, razing it.` : `${d.victor} conquered ${d.fallen}${overReason(d)}, razing it.`,
   wonder: (_n, d) => `${d.wonder} was raised in ${d.name}.`,
@@ -86,6 +86,11 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   // for them (design/25) — "were married at the shrine of the Windwalker".
   married: (n, d) => `${n(0)} and ${n(1)} were married${d.venue ? ` at ${d.venue}` : ''}.`,
   widowed: (n) => `${n(0)} was widowed.`,
+  // communal gatherings (design/27 §4) — a named crowd assembles at a venue.
+  wedding: (n, d) => `The folk of ${d.settlement ?? 'the town'} gathered${d.venue ? ` at ${d.venue}` : ''} to see ${n(0)} and ${n(1)} wed.`,
+  funeral: (n, d) => `${d.settlement ?? 'The town'} gathered to mourn ${n(0)}${d.venue ? ` at ${d.venue}` : ''}.`,
+  feast: (_n, d) => `The folk of ${d.settlement ?? 'the town'} feasted${d.venue ? ` at ${d.venue}` : ''}.`,
+  rite: (_n, d) => `The faithful of ${d.settlement ?? 'the town'} kept the rite${d.venue ? ` at ${d.venue}` : ''}.`,
   friendship: (n, d) => `${n(0)} and ${n(1)} became close friends${d.venue ? ` at ${d.venue}` : ''}.`,
   rivalry: (n) => `${n(0)} and ${n(1)} became rivals.`,
   feud: (n, d) => `A bitter feud broke out between ${n(0)} and ${n(1)}${d.venue ? ` at ${d.venue}` : ''}.`,
@@ -221,6 +226,15 @@ export function eventInterest(type: string, data: Record<string, number | string
       return age >= 80 ? 26 : age >= 60 ? 16 : 6; // a long life is remembered
     case 'married':
       return 16;
+    // communal gatherings (design/27 §4) — a funeral's weight scales with how many came to
+    // mourn (a beloved figure fills the square); a wedding/feast is warm local texture.
+    case 'funeral':
+      return 14 + Math.min(20, (typeof data.count === 'number' ? data.count : 0) * 2);
+    case 'wedding':
+      return 10;
+    case 'feast':
+    case 'rite':
+      return 8;
     case 'prosperity':
       return 12;
     case 'rivalry':

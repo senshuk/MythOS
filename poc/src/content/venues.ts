@@ -51,6 +51,12 @@ export const VENUE_HOSTS: Record<string, string[]> = {
   brawl: ['tavern', 'square'],
   died_brawl: ['tavern', 'square'],
   feud: ['square', 'tavern'],
+  // communal gatherings (design/27 §4): a wedding wants the shrine, a funeral the shrine
+  // or the square, a feast the square/tavern, a holy-day rite its shrine.
+  wedding: ['shrine', 'square', 'tavern'],
+  funeral: ['shrine', 'square'],
+  feast: ['square', 'tavern'],
+  rite: ['shrine', 'square'],
   // audiences (design/26 P2): court is held in the hall; an endowment at the shrine
   judgment: ['hall', 'square'],
   shrine_funding: ['shrine'],

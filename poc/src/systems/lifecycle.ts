@@ -10,6 +10,7 @@ import { createActor, emit, primarySpouse } from '../engine/world';
 import { killActor } from '../engine/world';
 import { perceiveEvent } from '../engine/perception';
 import { addSelfThought } from '../engine/mood';
+import { holdGathering, communityAround } from '../engine/gathering';
 import {
   speciesById,
   pickSex,
@@ -40,8 +41,10 @@ export function lifecycleYearly(world: World, actors: EntityId[]): void {
     lc.ageYears += 1;
     const sp = speciesById(world.identity.get(id)!.speciesId);
     if (rng.chance(deathProbability(lc.ageYears, sp.lifespan))) {
+      const mourners = communityAround(world, [id]); // capture ties before killActor prunes them
       const deathId = killActor(world, id, world.tick, 'died', [], []);
       if (deathId >= 0) perceiveEvent(world, deathId); // co-residents come to know the death
+      if (deathId >= 0) holdGathering(world, 'funeral', [id], mourners, deathId); // the village gathers to mourn (design/27 §4)
     }
   }
 

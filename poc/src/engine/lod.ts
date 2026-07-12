@@ -811,7 +811,16 @@ export function geographyYearly(world: World): void {
       // world is byte-identical: support is 0 and the condition is exactly as it was.
       const allies = alliesOf(world, weak.polityId, strong.polityId);
       const support = allies.reduce((sum, a) => sum + allyPop(world, a), 0) * ALLY_FORCE_FRACTION;
-      if (strong.macro.population > (weak.macro.population + support) * 1.28 && rng.chance(0.82)) {
+      // TERRAIN SHAPES THE OUTCOME (design/24 §7.3): the defender's ground multiplies its
+      // effective weight (a hill fort, a marsh-girdled town) and a punishing march divides
+      // the aggressor's — so rough, high country turns back numbers that would sweep a plain.
+      // Read through the Substrate, so the engine never knows what the terrain IS (universe-
+      // neutral); RNG-FREE, so it shifts the OUTCOME, not the stream.
+      const hold = world.substrate.defensibility(weak.pos);
+      const march = world.substrate.marchImpedance(strong.pos, weak.pos);
+      const effStrong = strong.macro.population / march;
+      const effWeak = weak.macro.population * hold + support;
+      if (effStrong > effWeak * 1.28 && rng.chance(0.82)) {
         // a decisive victory over a far weaker neighbour. The victor's aim decides its fate:
         // an EXPANSIONIST realm TAKES the town (annexation — a geography-changing world action,
         // the only thing in 2E that may redraw the map, design/16 principle 5); any other
@@ -869,14 +878,26 @@ export function geographyYearly(world: World): void {
         B.macro.population = B.macro.children + B.macro.adults + B.macro.elders;
         A.macro.stability = clamp(A.macro.stability - rng.range(3, 8), -100, 100);
         B.macro.stability = clamp(B.macro.stability - rng.range(3, 8), -100, 100);
+        // the aggressor pays a FURTHER toll for storming defended or hard-won ground — a hill
+        // fort and a brutal march bleed the assaulting host beyond the shared clash. So terrain
+        // deepens attrition, not just the decisive threshold: a costly siege wearies the strong.
+        const assault = Math.round((strong === A ? aToll : bToll) * (march * hold - 1) * 0.8);
+        if (assault > 0) {
+          raidMacro(strong.macro, assault);
+          strong.macro.population = strong.macro.children + strong.macro.adults + strong.macro.elders;
+        }
         // the blood spilt is the war's weariness (2E richer resolution): a long, lopsided war
         // ends when the far-more-bled side capitulates (warYearly), not only when a seat falls.
         if (war) {
-          addExhaustion(world, war, strong.polityId!, strong === A ? aToll : bToll);
+          addExhaustion(world, war, strong.polityId!, (strong === A ? aToll : bToll) + assault);
           addExhaustion(world, war, weak.polityId!, weak === A ? aToll : bToll);
         }
         const subjects = [A.currentRulerId, B.currentRulerId].filter((x): x is number => x !== undefined);
-        const battleId = emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [A.id, B.id]);
+        // LEGIBILITY (design/24 §7.3): if raw numbers alone would have swept the defender but
+        // its GROUND turned the assault into a bloody stalemate, record that — the chronicle
+        // names the cause. A neutral flag (no fantasy terrain word); the pack renders it.
+        const heldByGround = strong.macro.population > (weak.macro.population + support) * 1.28 && !(effStrong > effWeak * 1.28);
+        const battleId = emit(world, 'battle', subjects, { a: A.name, b: B.name, aToll, bToll, reason: mostOpposedValue(A.cultureId, B.cultureId), heldByGround: heldByGround ? 1 : 0 }, [], [A.id, B.id]);
         // both courts remember meeting in battle (2C: an org-scale thought on the pair).
         if (A.polityId !== undefined && B.polityId !== undefined) noteOrgThought(world, A.polityId, B.polityId, 'wartorn', battleId);
         // if the weak side's ALLIES stood with it (2E mutual defense fielding force), they

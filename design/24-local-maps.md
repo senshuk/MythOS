@@ -328,3 +328,193 @@ adds **zero save state** (Save Philosophy — the seed already implies it):
    functions return their neutral defaults.
 7. *Five years?* Continuous-field terrain with pack-owned vocabulary is the only shape
    that lets a new universe reuse the mechanics without re-tuning an enum of terrain rows.
+
+---
+
+## 8. Town-plan v2 — fidelity & realism
+
+**Document type:** Design note for a fidelity pass on the Close View plan. The L1 plan
+(§3.3) is a deliberately-crude radial *sketch* — spokes from the centre, houses jittered
+along them (overlaps and all), civic buildings dropped at random angles, workshops
+scattered. It reads as *a* town, not as *this people's* town on *this ground*. v2 closes
+that gap in three tiers, all still **presentation-only** (zero sim/save state).
+
+### 8.1 The principle — realism is fidelity to the sim
+
+In MythOS a town is believable when its form truthfully reads its facts: this culture,
+this wealth, this economy, this terrain, this history. So the goal is **not decoration**;
+every element v2 adds must read a real fact. Two ideas carry the pass:
+
+- **Parcels are the new substrate of the plan.** Instead of stamping shapes at jittered
+  points, buildings claim a **footprint** on the ground; nothing overlaps, buildings front
+  a street, yards fall out behind. This one change removes the biggest fake-tell.
+- **Culture is a first-class input to FORM**, not just a label on a tooltip. The pack maps
+  each culture to a **`TownForm`** (grid / organic / dispersed / terraced), a building-shape
+  vocabulary, and a material tone — so a steppe herder folk and a mercantile coast folk lay
+  out visibly differently, the same way `biomeOf`/`MAP_STYLES` are pack data.
+
+Everything below stays deterministic (`mixSeed(seed, settlementId, …)`), pack-owned, and
+derived — a pack swap changes the vocabulary, never the engine.
+
+### 8.2 Tier 1 — structural realism (the big lifts)
+
+1. **Parcel placement (`Parcels`).** A claimed-footprint model replaces `Houses`' jitter:
+   a candidate footprint is accepted only if it clears existing parcels, sits on buildable
+   ground (§7.2 graded), and fronts a street; it reserves a back yard. Deterministic scan
+   in a fixed order so the same town packs the same way.
+2. **A connected, terrain-conforming street network (`TerrainStreets` v2).** Streets follow
+   the **low-`groundMoveCost` grain** — switchbacking a hillside, hugging a valley, running
+   a **bank-road** along the river — and gain **cross-links** between spokes, so the core
+   reads as a web with **blocks** (which the parcel step then fills), not a bare star.
+3. **Culture-specific form.** The pack's `TownForm` per culture drives street pattern
+   (tight grid vs organic tangle vs dispersed compounds vs hillside terraces), the parcel
+   packing density, and the building-shape set. This is the most MythOS-aligned lift:
+   fidelity to *who lives there*.
+
+### 8.3 Tier 2 — sim-grounded detail (cheap now the terrain fields exist)
+
+4. **Livelihood ← real geography.** Extend `Livelihood` with the §7 fields: **mills on
+   fast river reaches** (`cellFlowSpeed`), **terraced fields on slopes** vs strip-plots on
+   the flat (`buildability`), **docks toward deep water**, and a **bridge drawn where a road
+   crosses the river** (we already cost the ford; now show the crossing).
+5. **Zoning / density rings.** Replace uniform outward-thinning with legible rings — civic
+   core → craft quarter → residential → agrarian fringe — so the town *reads* its economy
+   spatially.
+6. **A coarse building-age gradient.** True growth rings need a pop history we don't keep
+   (§ shipped-time deviation 1); approximate it — **old dense core, newer sprawl** from
+   distance-to-centre + `foundedYear` — weathered stone at the heart, fresh timber at the
+   edge. Lands the "this town has lived" feel without new state.
+
+### 8.4 Tier 3 — polish
+
+7. **Footprint variety** — attached row-houses in the dense core, walled compounds for the
+   wealthy, plain cots at the fringe (not one rectangle repeated).
+8. **Depth** — a consistent drop-shadow / light direction so the flat SVG reads as built
+   volume (Atlas line-work, unchanged palette).
+9. **Biome vegetation** — the countryside's flora follows biome (palms at a desert oasis,
+   conifers in taiga, near-bare tundra), not uniform green dots.
+10. **Citadel + terrain-following walls** — a keep on the **highest ground** in the frame
+    and a palisade that hugs defensible terrain (ties to `defensibility`, §7 conflict work).
+
+### 8.5 The Close View now zooms (supersedes the L1 "static vista")
+
+L1 shipped the Close View as a *fixed raster* — a composed vista, not a pannable stage
+(§3.6). That made magnifying it (browser/OS zoom, or just leaning in) hit the raster's
+resolution and blur. §8 lifts that: the Close View now **zooms and pans**, and the terrain
+canvas **re-paints the visible sub-frame at native resolution** on each settle — the world
+map's proven *decoupled-repaint* pattern (`ui/MapView.tsx`): during a gesture the painted
+bitmap rides a cheap CSS transform, and ~160ms after it settles one native repaint lands
+and the transform resets. Because `paintTerrain` is zoom-adaptive (finer fractal octaves as
+the frame tightens), nearing the ground now reveals *real* detail instead of a magnified
+smear. The SVG town-plan overlay rides the same transform, so plan and terrain stay locked.
+This is still pure presentation — no sim state, one seed all the way down.
+
+### 8.6 A 3D terrain view (WebGL prototype)
+
+A flat 2D top-down paint has a hard ceiling — it can never read like a real fly-in, because
+below the 450² grid there is no real data and the shading is 2D. `ui/LocalTerrain3D.tsx` is a
+**raw-WebGL2 prototype** that takes the other road: a heightmap of the settlement's ground —
+the world's real elevation (bilinearly sampled) for the large forms, continued with coherent
+fbm below the grid — rendered as a lit, orbitable 3-D mesh with slope/altitude colouring
+(rock on the steep, snow on cold heights, biome tint on the rest). It runs on the **GPU**, so
+orbit/zoom stay at 60fps with no main-thread repaint stall (the 2D canvas's weakness), and it
+adds **no dependency** (hand-rolled shaders + a tiny mat4). Reached by a **"3D" button** in the
+close view. It extrudes the **town PLAN onto the mesh** — buildings with **pitched gable roofs**
+(pale timber walls, darker roofs; per-role heights, the seat rising over the houses, a peaked
+shrine), monuments as flat-topped boxes, walls/bridges as ribboned boxes, trees as cones — plus
+**streets and fields draped on the surface**, over a **translucent water plane** at sea level
+that gives a smooth shoreline (the land dips under it rather than stair-stepping). It reads as a
+recognisable town on real terrain, orbitable at 60fps. Verified on a mountain settlement
+(Krylylle): snow-capped peaks, forested slopes, red-roofed houses on the mountainside — the
+dramatic relief a flat coastal town (Aisyrivom) can't show.
+
+**Atmosphere pass ("Path B" — hand-written, still no dependency):** a two-pass pipeline now
+renders the scene into an offscreen buffer and resolves it to the screen through **FXAA**
+(NVIDIA 3.11 compact port). The scene shader applies **ACES filmic tone mapping** (+ soft
+skylight) and **exponential distance fog** toward the horizon; a fullscreen **atmospheric sky**
+(view-ray gradient zenith→horizon→ground, with a sun disk + glow) fills the background, and the
+fog fades distant terrain into it for real atmospheric perspective. Together these lift it from
+"flat-shaded mesh" to a graded outdoor scene — the biggest look-per-effort win short of adopting
+a 3-D engine. (The fog is **camera-relative** — normalised by camera distance so the focal
+plane stays clear and only the far background hazes — after a first attempt fogged everything.)
+
+**Shadow maps:** the scene depth is rendered once from the sun into a 2048² depth texture
+(the light and geometry are static), and the main pass projects each fragment into light space
+and PCF-samples it (3×3) for soft self- and cast-shadows over terrain and buildings. Attributes
+use fixed locations (0/1/2) so one VAO feeds both the scene and the depth-only shadow program.
+A lower sun angle gives longer, readable shadows and stronger relief.
+
+**SSAO + reflective water:** the pipeline now renders the scene into a colour + **sampleable
+depth** target, computes **SSAO** (16-sample hemisphere in view space, position + normal
+reconstructed from depth, blurred) and multiplies it into the composite — contact/crevice
+darkening that grounds the buildings and deepens the terrain. The sea is a **reflective water**
+shader (its own program): the analytic sky reflected through a **Fresnel** term, **rippled
+normals** (drifting noise, so it animates via a continuous loop), and a sharp **sun glint** —
+convincing water without a planar-reflection re-render (which would also mirror the terrain — a
+later step). Note: the "rock on steep faces" tint is now gated to TERRAIN (`uRock`), so vertical
+building walls keep their timber colour instead of greying. Vibrance (post-tonemap saturation)
+is tunable — set to 1.15.
+
+**Three.js is now THE 3D renderer** (`ui/LocalTerrain3DThree.tsx`; the hand-rolled WebGL
+renderer was deleted after the comparison). The geometry is renderer-agnostic in
+`ui/terrain3dGeo.ts` (`buildTerrain`/`buildStructures` — the world's real elevation continued
+with fbm, and the town plan extruded), fed into `THREE.BufferGeometry`. What was ~500 lines of
+hand-GLSL is now three built-ins: PCFSoft shadow maps from a `DirectionalLight`, `SSAOPass` +
+`SMAAPass` + `OutputPass` in an `EffectComposer`, an atmospheric `Sky`, `ACESFilmicToneMapping`,
+`FogExp2`, `OrbitControls`, and animated **`Water`** (real reflection + refraction + sun glint,
+with a procedurally-generated tiling normal map so it needs no image asset). Two fixes made on
+consolidation: vertex colours are converted **sRGB→linear** before upload (three renders linear;
+without this the biome colours read pale), and the whole 3D view is **`React.lazy`-loaded** so
+three.js sits in its own chunk (~173 KB gzip) off the initial bundle (which dropped to ~124 KB
+gzip) — it downloads only when the "3D" button is pressed. Cost: one dependency (`three`).
+Notes: adding/removing the dep or editing the `lazy()` host file throws transient Fast-Refresh /
+optimiser errors in dev — a dev-server restart clears them; production builds are clean. **PBR terrain textures (slope/altitude splat).** `scripts/gen-terrain-textures.mjs` generates
+seamless tiling **grass / rock / snow** material sets (albedo + normal) into `public/textures/`
+(committed files — a photo-CC0 set from ambientCG/Poly Haven can replace them 1:1). The terrain's
+`MeshStandardMaterial` **splats them by slope + altitude** via an `onBeforeCompile` injection:
+cliffs (`vWNrm.y` low) bare grey rock, high ground (`vWPos.y`) catches snow, the rest is grass —
+and grass keeps the biome hue (biome vertex colour × grass detail) while rock/snow show their own
+colour, so it reads clean instead of muddy. A per-fragment world position + world normal are
+passed through for the blend.
+
+**Water.** three's `Water` mirrored the (hazy, near-white) Sky and read grey no matter how the
+sky/params were tuned. Replaced with a **custom water `ShaderMaterial`** we fully control: a
+deep-blue base that dominates, a *bluish* grazing sheen (never white), animated ripple normals,
+and a bright sun glint. Colours are authored in LINEAR (the composer's `OutputPass` tone-maps),
+and it uses three's own fog chunks (`fog: true` + `UniformsLib.fog`) so it matches the scene. Now
+the sea reads blue at every angle. The Sky was also clarified (lower turbidity, higher rayleigh).
+
+**SSR — evaluated and deliberately NOT adopted.** The only reflective surface is the flat sea,
+which already uses three's `Water` = a **planar reflection** that renders the full mirrored scene
+(terrain + buildings genuinely reflect). For a flat plane, planar reflection is *strictly better*
+than SSR: SSR is screen-space, so it drops off-screen/behind-camera geometry and shows edge-fade
+artifacts — a downgrade here. `SSRPass` also replaces the render pass and doesn't compose with the
+`SSAOPass` we depend on. SSR is the right tool for arbitrary/curved reflective surfaces, which this
+scene doesn't have. Productive reflection levers instead: an **environment map** (PMREM from the
+`Sky`) for subtle sky reflections on roofs/terrain via metalness, or a **wet-shoreline** band
+(lower roughness near sea level). Remaining polish: streets/fields are
+flat drapes (fine on gentle ground, can clip on steep slopes), and vertical exaggeration vs.
+building scale is hand-tuned. StrictMode note: the WebGL context must NOT be `loseContext()`-ed
+on cleanup, or the remount reuses a dead context and every shader compile fails.
+
+### 8.7 What stays out of scope
+
+Building interiors, per-building economics/sim, real population-history growth rings, and
+any pawn pathing — all still §3.7 / L4 territory. v2 is a richer *rendering* of facts the
+sim already produces, nothing more.
+
+### 8.8 Decision-filter check
+
+1. *Improves the simulation?* Indirectly — it makes the sim's facts (culture, wealth,
+   economy, terrain, age) far more legible in one glance.
+2. *Generic across universes?* Yes — `TownForm`, shapes and tones are pack data; the engine
+   knows only the parcel/step pipeline. A sci-fi pack swaps in domes and habs unchanged.
+3. *Data-driven?* Culture forms, building vocabularies and zoning curves are all pack data.
+4. *Emergent gameplay?* The plan is derived, so every terrace, mill and weathered core is an
+   emergent read of that town's real situation, never authored.
+5. *Legible & traceable?* Its whole purpose — the form answers "what kind of place is this?"
+   at a glance, and every civic/history mark keeps its click-through.
+6. *Special cases?* None — ruins and starfields still flow through the same pipeline; a
+   culture with no declared `TownForm` falls back to the organic default.
+7. *Five years?* Parcels + pack-owned form is the shape that lets new cultures and new
+   universes get distinct towns for free, without touching the renderer.

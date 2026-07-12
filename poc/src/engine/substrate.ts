@@ -24,6 +24,9 @@ import {
   elevationAt,
   moistureAt,
   temperatureAt,
+  hillinessAt,
+  wetnessAt,
+  HILL_MOUNTAIN,
   seaDist,
   freshWaterDist,
   isLand,
@@ -57,6 +60,17 @@ export interface Substrate {
   fallbackSite(rng: Rng): Site | undefined;
   /** spatial distance between two positions (region graph, migration weighting). */
   distance(a: Vec2, b: Vec2): number;
+  /** How strongly the physical ground at `pos` favours a DEFENDER — ≥1, where 1 is open
+   *  ground offering no help and higher means rough, high or boggy terrain a foe must fight
+   *  through (a hill fort, a marsh-ringed town). Conflict resolution reads this so terrain
+   *  shapes who prevails, WITHOUT the engine knowing what the terrain is (design/24 §7.3,
+   *  universe-neutral). A featureless substrate (open space) returns 1. */
+  defensibility(pos: Vec2): number;
+  /** How much the terrain BETWEEN two positions wears a host marching `from`→`to` — ≥1,
+   *  where 1 is an easy road and higher is a punishing crossing of ranges or fens. The
+   *  aggressor's effective strength is divided by this, so a hard approach blunts an assault.
+   *  A featureless substrate returns 1. */
+  marchImpedance(from: Vec2, to: Vec2): number;
 }
 
 // ---------------------------------------------------------------- surface ----
@@ -110,6 +124,29 @@ export class SurfaceSubstrate implements Substrate {
 
   distance(a: Vec2, b: Vec2): number {
     return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  defensibility(pos: Vec2): number {
+    const g = this.geography;
+    // high, steep ground and a girdle of bog are what turn numbers back at a wall
+    const hill = hillinessAt(g, pos.x, pos.y); // 0 flat … 3 mountain
+    const wet = wetnessAt(g, pos.x, pos.y); // 0 firm … 1 mire
+    return 1 + hill * 0.12 + wet * 0.2; // ~1.0 (open plain) … ~1.56 (a marsh-ringed crag)
+  }
+
+  marchImpedance(from: Vec2, to: Vec2): number {
+    const g = this.geography;
+    // sample the ground the host must cross: ranges and fens exhaust and bleed it on the way
+    const STEPS = 12;
+    let rough = 0;
+    for (let i = 1; i < STEPS; i++) {
+      const t = i / STEPS;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      rough += hillinessAt(g, x, y) / HILL_MOUNTAIN + wetnessAt(g, x, y);
+    }
+    rough /= STEPS - 1; // mean roughness, 0 (a lowland road) … ~2 (all peaks and mire)
+    return 1 + Math.min(1, rough) * 0.5; // ~1.0 … ~1.5
   }
 }
 
@@ -172,6 +209,16 @@ export class StarfieldSubstrate implements Substrate {
    *  engine only ever asks the substrate, so it would not notice.) */
   distance(a: Vec2, b: Vec2): number {
     return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  /** Open space offers a defender no terrain and a fleet no hard march — both neutral.
+   *  (A pack modelling asteroid belts or gravity wells could give these meaning; the engine
+   *  would not notice.) */
+  defensibility(): number {
+    return 1;
+  }
+  marchImpedance(): number {
+    return 1;
   }
 }
 
