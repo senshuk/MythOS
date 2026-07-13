@@ -15,7 +15,7 @@
 import { type World, type EntityId, type Thought, type EventId } from './model';
 import { type Intent } from './intent';
 import { Rng } from './rng';
-import { isActive, activeMarks, dropExpired, indexByKind } from './mark';
+import { type Reason, isActive, activeMarks, dropExpired, indexByKind } from './mark';
 import { computeOpinion } from './opinion';
 import { personalityOf } from './social';
 import {
@@ -80,10 +80,10 @@ export function pruneSelfThoughts(world: World, id: EntityId): void {
 const needBand = (v: number) => (v < 200 ? 0 : v < 400 ? 1 : v < 600 ? 2 : v < 800 ? 3 : 4);
 
 /** The situational contributions of the moment: each need, felt (derived, never stored). */
-function situationalRows(world: World, id: EntityId): { label: string; value: number }[] {
+function situationalRows(world: World, id: EntityId): Reason[] {
   const needs = world.needs.get(id);
   if (!needs) return [];
-  const rows: { label: string; value: number }[] = [];
+  const rows: Reason[] = [];
   for (const [k, weight] of Object.entries(MOOD_NEED_WEIGHTS)) {
     const band = needBand(needs[k] ?? 0);
     const value = Math.round(weight * MOOD_NEED_BAND_FACTOR[band]);
@@ -95,11 +95,11 @@ function situationalRows(world: World, id: EntityId): { label: string; value: nu
 }
 
 /** The remembered contributions: active self-thoughts, per kind, diminishing. */
-function memoryRows(world: World, id: EntityId): { label: string; value: number }[] {
+function memoryRows(world: World, id: EntityId): Reason[] {
   const marks = world.selfThoughts.get(id);
   if (!marks || marks.length === 0) return [];
   const byKind = indexByKind(activeMarks(marks as Thought[], world.tick));
-  const rows: { label: string; value: number }[] = [];
+  const rows: Reason[] = [];
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick); // newest counts at full weight
     const spec = selfThoughtSpec(kind);
@@ -132,8 +132,8 @@ export function moodWord(mood: number): string {
 }
 
 /** Every contribution behind a mood, strongest first — legibility (the UI's "why"). */
-export function moodReasons(world: World, id: EntityId, limit = 8): { label: string; value: number }[] {
-  const rows: { label: string; value: number }[] = [];
+export function moodReasons(world: World, id: EntityId, limit = 8): Reason[] {
+  const rows: Reason[] = [];
   const base = Math.round(moodBaseline(personalityOf(world, id).temperament));
   if (base !== 0) rows.push({ label: base > 0 ? 'a bright nature' : 'a heavy nature', value: base });
   rows.push(...situationalRows(world, id), ...memoryRows(world, id));

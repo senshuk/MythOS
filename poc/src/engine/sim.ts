@@ -11,6 +11,7 @@ import {
   type ActorView,
   type EventView,
   type ActorDetail,
+  type BeliefView,
   type RelationView,
   type EventChain,
   type CauseNode,
@@ -51,7 +52,7 @@ import { computeStanding, standingReasons, emptyReputation, standingOf } from '.
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById } from './figures';
-import { computeBelief, coronationSlot } from './belief';
+import { computeBelief, beliefReasons, coronationSlot } from './belief';
 import { computeStatusBelief } from './statusBelief';
 import { focusSettlement } from './lod';
 import { getChildren } from './location';
@@ -1720,7 +1721,46 @@ export function inspectActor(world: World, id: EntityId): ActorDetail | undefine
   // every soul's inner weather is inspectable, per Legibility)
   const mood = world.selfThoughts.has(id) ? buildMoodView(world, id) : undefined;
 
-  return { actor: actorView(world, id), backstory: backstoryFor(world, id) ?? '', relationships, lifeEvents, reputation, mood };
+  const beliefs = buildBeliefViews(world, id);
+
+  return { actor: actorView(world, id), backstory: backstoryFor(world, id) ?? '', relationships, lifeEvents, reputation, mood, beliefs };
+}
+
+/** This actor's own beliefs, as the UI reads them — only the ones with a definite stance (an
+ *  "unknown" belief has no net evidence and nothing legible to show). Belief-layer sibling of
+ *  buildMoodView: the number/word/reasons pattern, applied to what this actor holds true. */
+function buildBeliefViews(world: World, id: EntityId, limit = 6): BeliefView[] {
+  const held = world.beliefs.get(id) ?? [];
+  const views: BeliefView[] = [];
+  for (const b of held) {
+    const state = computeBelief(b, world.tick);
+    if (state.stance === 'unknown') continue;
+    views.push({
+      subjectId: b.subject,
+      subjectName: fullName(world, b.subject),
+      label: assertionLabel(world, b.assertion),
+      stance: state.stance,
+      confidencePct: Math.round(state.confidence * 100),
+      reasons: beliefReasons(b, world.tick),
+    });
+    if (views.length >= limit) break;
+  }
+  return views;
+}
+
+/** A belief's assertion string, as a plain noun phrase ("death", "rule of Eastwatch") — composes
+ *  cleanly with either stance ("confirmed: death" / "denied: death"). Assertions are engine
+ *  vocabulary (the fixed 'dead' predicate and the `reigns:` status-slot convention, both owned
+ *  by belief.ts), not pack data, so the small lookup lives here beside the other
+ *  presentation-only label helpers. */
+function assertionLabel(world: World, assertion: string): string {
+  if (assertion === 'dead') return 'death';
+  const slot = assertion.startsWith('reigns:') ? assertion.slice('reigns:'.length) : undefined;
+  if (slot?.startsWith('ruler:')) {
+    const sid = Number(slot.slice('ruler:'.length));
+    return `rule of ${world.settlements[sid]?.name ?? 'a settlement'}`;
+  }
+  return assertion;
 }
 
 /** A life-story for an actor, rendered from their real history in the pack's voice. Stable per

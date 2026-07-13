@@ -17,7 +17,7 @@
  */
 import { type World, type EntityId, type Reputation, type EventId } from './model';
 import { reputeSpec } from './pack';
-import { activeMarks, dropExpired, indexByKind } from './mark';
+import { type Reason, activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Bound the marks kept on one actor (housekeeping; the deep past lives in events). */
 const REPUTE_MARK_LIMIT = 16;
@@ -90,10 +90,10 @@ export function computeStanding(rep: Reputation, tick: number): number {
 }
 
 /** The human-readable reasons behind a standing, strongest first (for the UI). */
-export function standingReasons(rep: Reputation, tick: number, limit = 6): { label: string; value: number }[] {
+export function standingReasons(rep: Reputation, tick: number, limit = 6): Reason[] {
   // substrate supplies the active per-kind index; the witness-weighted sum is reputation's own.
   const byKind = indexByKind(activeMarks(rep.marks, tick));
-  const rows: { label: string; value: number }[] = [];
+  const rows: Reason[] = [];
   for (const [kind, arr] of byKind) {
     let value = 0;
     for (const m of arr) value += m.value * knownFactor(m.witnesses);

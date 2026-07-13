@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { createWorld } from './sim';
 import { fullActors, emit } from './world';
 import { serializeWorld, deserializeWorld } from './persistence';
-import { computeBelief, witnessBelief, tellBelief, acquireEvidence, beliefOf } from './belief';
+import { computeBelief, witnessBelief, tellBelief, acquireEvidence, beliefOf, beliefReasons } from './belief';
 
 describe('Subjectivity 1A.1 — belief exists (witness)', () => {
   it('two actors derive different beliefs from the same objective death', () => {
@@ -104,5 +104,51 @@ describe('Subjectivity 1A.2 — belief spreads (testimony)', () => {
       return computeBelief(beliefOf(w, bob, king, 'dead')!, w.tick);
     };
     expect(build()).toEqual(build());
+  });
+});
+
+describe('beliefReasons — the belief layer is legible (design/17 §8)', () => {
+  it('a firsthand witness explains the belief with one labelled, strongly-weighted row', () => {
+    const w = createWorld(123);
+    const [king, alice] = fullActors(w);
+    witnessBelief(w, alice, king, 'dead', emit(w, 'died', [king], {}));
+
+    const rows = beliefReasons(beliefOf(w, alice, king, 'dead')!, w.tick);
+    expect(rows.length).toBe(1);
+    expect(rows[0].label).toBe('saw it happen');
+    expect(rows[0].value).toBeGreaterThan(0); // supports the assertion
+  });
+
+  it('contradicting testimony shows as a separate, negatively-signed row', () => {
+    const w = createWorld(123);
+    const [king, alice, bob, fraudster] = fullActors(w);
+    const kingDies = emit(w, 'died', [king], {});
+    witnessBelief(w, alice, king, 'dead', kingDies);
+    tellBelief(w, alice, bob, king, 'dead');
+
+    acquireEvidence(w, fraudster, king, 'dead', {
+      kind: 'witness', polarity: -1, observationConfidence: 1, sourceTrust: 1, sinceTick: w.tick, cause: kingDies,
+    });
+    tellBelief(w, fraudster, bob, king, 'dead');
+
+    const rows = beliefReasons(beliefOf(w, bob, king, 'dead')!, w.tick);
+    expect(rows.length).toBe(1); // both are testimony — one kind, aggregated
+    expect(rows[0].label).toBe('told by another (×2)');
+    // equal-and-opposite testimony (Subjectivity 1A.2's own assertion) nets close to zero
+    expect(Math.abs(rows[0].value)).toBeLessThan(5);
+  });
+
+  it('rows are sorted strongest first and capped at `limit`, like every other *Reasons function', () => {
+    const w = createWorld(123);
+    const [king, alice] = fullActors(w);
+    const kingDies = emit(w, 'died', [king], {});
+    witnessBelief(w, alice, king, 'dead', kingDies); // one strong 'witness' row
+    acquireEvidence(w, alice, king, 'dead', {
+      kind: 'testimony', polarity: 1, observationConfidence: 0.2, sourceTrust: 0.2, sinceTick: w.tick, cause: kingDies,
+    }); // one weak 'testimony' row
+
+    const rows = beliefReasons(beliefOf(w, alice, king, 'dead')!, w.tick, 1);
+    expect(rows.length).toBe(1);
+    expect(rows[0].label).toBe('saw it happen'); // the stronger row survives the cap
   });
 });

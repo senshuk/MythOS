@@ -4,11 +4,27 @@
  * feature, a settlement, or an event's causal ancestry.
  */
 import { Fragment } from 'react';
-import type { EventView, EventRef, SettlementView, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail } from '../engine/model';
+import type { EventView, EventRef, SettlementView, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail, Reason } from '../engine/model';
 import { layoutLineage, LINEAGE_METRICS } from './lineageLayout';
 import { onActivate, EventText } from './common';
 import { HouseShield } from './heraldry';
 import { Icon } from './icons';
+
+/** Renders any subsystem's Reason[] (mood/opinion/standing/belief — see mark.ts's Reason
+ *  convention) the same way — ONE component instead of a bespoke block per subsystem. */
+function ReasonsList({ reasons }: { reasons: Reason[] }) {
+  if (reasons.length === 0) return null;
+  return (
+    <div className="reasons">
+      {reasons.map((why, i) => (
+        <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
+          {why.value >= 0 ? '+' : ''}
+          {why.value} {why.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /** Browser-style trail through inspections — walk a cause chain three deep and still
  *  find your way back (every legends browser learned this the hard way). */
@@ -229,16 +245,7 @@ export function Inspector({
               <h4>
                 Mood: {actorDetail.mood.word} <span className="muted">({actorDetail.mood.value})</span>
               </h4>
-              {actorDetail.mood.reasons.length > 0 && (
-                <div className="reasons">
-                  {actorDetail.mood.reasons.map((why, i) => (
-                    <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
-                      {why.value >= 0 ? '+' : ''}
-                      {why.value} {why.label}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <ReasonsList reasons={actorDetail.mood.reasons} />
             </>
           )}
 
@@ -247,14 +254,25 @@ export function Inspector({
               <h4>
                 Standing <span className="muted">({actorDetail.reputation.standing})</span>
               </h4>
-              <div className="reasons">
-                {actorDetail.reputation.reasons.map((why, i) => (
-                  <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
-                    {why.value >= 0 ? '+' : ''}
-                    {why.value} {why.label}
-                  </span>
+              <ReasonsList reasons={actorDetail.reputation.reasons} />
+            </>
+          )}
+
+          {actorDetail.beliefs.length > 0 && (
+            <>
+              <h4>Beliefs</h4>
+              <ul className="rels">
+                {actorDetail.beliefs.map((b, i) => (
+                  <li key={i}>
+                    <button className="link" onClick={() => onPickActor(b.subjectId)}>
+                      {b.subjectName}
+                    </button>{' '}
+                    — {b.stance === 'true' ? 'confirmed' : 'denied'}: {b.label}{' '}
+                    <span className="muted">({b.confidencePct}% sure)</span>
+                    <ReasonsList reasons={b.reasons} />
+                  </li>
                 ))}
-              </div>
+              </ul>
             </>
           )}
 
@@ -271,16 +289,7 @@ export function Inspector({
                   </button>{' '}
                   <span className="muted">({r.valence})</span>
                   {r.away && <span className="away"> · away in {r.otherSettlement}</span>}
-                  {r.reasons.length > 0 && (
-                    <div className="reasons">
-                      {r.reasons.map((why, i) => (
-                        <span key={i} className={why.value >= 0 ? 'why-pos' : 'why-neg'}>
-                          {why.value >= 0 ? '+' : ''}
-                          {why.value} {why.label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <ReasonsList reasons={r.reasons} />
                 </li>
               ))}
             </ul>

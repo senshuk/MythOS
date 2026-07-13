@@ -8,6 +8,8 @@
 import { Rng } from './rng';
 import { type Intent } from './intent';
 import { type Substrate } from './substrate';
+export { type Reason } from './mark';
+import { type Reason } from './mark';
 
 export type EntityId = number;
 /** A sex label. NOT a fixed 'm'|'f': the set of sexes is SPECIES DATA (a species
@@ -1278,7 +1280,7 @@ export interface RelationView {
   valence: number;
   kind: string;
   /** the thoughts behind this opinion, so the UI can show *why* — legibility. */
-  reasons: { label: string; value: number }[];
+  reasons: Reason[];
   /** true if the other person now lives in a different settlement. */
   away: boolean;
   otherSettlement?: string;
@@ -1674,7 +1676,7 @@ export interface PlayerView {
   needFeels: NeedFeel[];
   /** MOOD — how this life feels overall (0..1000, 500 neutral), as a number, a lived
    *  word ("Weary"), and the legible reasons behind it (mood.ts). The RimWorld pillar. */
-  mood: { value: number; word: string; reasons: { label: string; value: number }[] };
+  mood: { value: number; word: string; reasons: Reason[] };
   /** the single most pressing drive, phrased as a narrative beat ("Hunger is beginning to gnaw at
    *  you.") and folded into the Current Situation instead of a row of meters. Omitted when nothing
    *  is notable. */
@@ -1766,10 +1768,25 @@ export interface ActorDetail {
   relationships: RelationView[];
   lifeEvents: EventView[];
   /** this actor's mood + the reasons behind it (mood.ts); absent below full fidelity. */
-  mood?: { value: number; word: string; reasons: { label: string; value: number }[] };
+  mood?: { value: number; word: string; reasons: Reason[] };
   /** how the community regards this actor: a standing score plus the witnessed deeds
    *  behind it ("shed blood", "a public kindness") — reputation made legible. */
-  reputation: { standing: number; reasons: { label: string; value: number }[] };
+  reputation: { standing: number; reasons: Reason[] };
+  /** this actor's own subjective beliefs with a definite stance (belief.ts) — what they hold
+   *  true or false about someone, and the evidence behind it. Unknown-stance beliefs (no net
+   *  evidence) are omitted; there is nothing legible to show for "I have no idea". */
+  beliefs: BeliefView[];
+}
+
+/** One of an actor's beliefs, as the UI reads it: who/what it's about, in plain words, how
+ *  sure they are, and the evidence rows behind that confidence (beliefReasons, belief.ts). */
+export interface BeliefView {
+  subjectId: EntityId;
+  subjectName: string;
+  label: string;
+  stance: Stance;
+  confidencePct: number;
+  reasons: Reason[];
 }
 
 /** A causal ancestor + how many hops it sits from the root — so the UI can INDENT the
