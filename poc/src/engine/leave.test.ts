@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { createWorld, possess, leaveFor, focusSettlement } from './sim';
-import { fullActors, getEvent, isAlive } from './world';
+import { fullActors, getEvent, isAlive, summaryActors } from './world';
 import { maturityOf } from './pack';
 import { serializeWorld, deserializeWorld } from './persistence';
 
@@ -118,5 +118,21 @@ describe('a possessed actor is never freed by a shifting gaze', () => {
     expect(w.fidelity.get(p)).toBe('summary'); // folded to a summary soul, not erased
     expect(isAlive(w, p)).toBe(true);
     expect(w.playerId).toBe(p); // possession intact across the shift
+  });
+
+  it('follows and promotes a summary actor when possessing them from afar', () => {
+    const w = createWorld(123456);
+    const firstHome = w.focusedSettlementId;
+    const dest = w.settlements.find((s) => s.id !== firstHome && s.ruinedYear === undefined && s.macro.population > 0)!;
+    focusSettlement(w, dest.id);
+    const p = summaryActors(w).find((id) => w.homeSettlement.get(id) === firstHome)!;
+    expect(p).toBeDefined();
+
+    possess(w, p);
+
+    expect(w.playerId).toBe(p);
+    expect(w.focusedSettlementId).toBe(firstHome);
+    expect(w.fidelity.get(p)).toBe('full');
+    expect(fullActors(w)).toContain(p);
   });
 });

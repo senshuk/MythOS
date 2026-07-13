@@ -85,7 +85,9 @@ export function HouseShield({ id, name, size = 22, className, title }: { id: num
       height={size * 1.2}
       aria-hidden={title ? undefined : true}
       role={title ? 'img' : undefined}
-      dangerouslySetInnerHTML={{ __html: (title ? `<title>${title}</title>` : '') + armsMarkup(id, name) }}
-    />
+    >
+      {title ? <title>{title}</title> : null}
+      <g dangerouslySetInnerHTML={{ __html: armsMarkup(id, name) }} />
+    </svg>
   );
 }

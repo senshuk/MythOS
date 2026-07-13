@@ -16,6 +16,7 @@ interface Entry {
   ref: EventRef;
   group: string;
   houseId?: number; // draws arms beside House entries
+  houseName?: string; // raw name, without the "House" label, for stable arms
   dim?: boolean; // ruins, the fallen, the dead
 }
 
@@ -37,6 +38,7 @@ function buildIndex(stat: Snapshot): Entry[] {
       ref: { kind: 'house', id: h.id },
       group: 'Houses',
       houseId: h.id,
+      houseName: h.name,
       dim: h.extinctYear !== undefined,
     });
   }
@@ -143,7 +145,7 @@ export function SearchPalette({
                   onClick={() => go(e)}
                 >
                   {e.houseId !== undefined ? (
-                    <HouseShield id={e.houseId} name={e.label} size={18} />
+                    <HouseShield id={e.houseId} name={e.houseName ?? e.label} size={18} />
                   ) : (
                     <span className={`palette-kind pk-${e.ref.kind}`} aria-hidden="true" />
                   )}

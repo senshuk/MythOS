@@ -16,9 +16,16 @@ import { type Intent } from './intent';
 import { emit, getEvent, fullName, isAlive } from './world';
 import { focusSettlement } from './lod';
 
-/** Take control of an actor. The actor keeps obeying every normal rule. A new life carries no
- *  inherited ambition — the committed goal (if any) belonged to the previous actor. */
+/** Take control of an actor. The actor keeps obeying every normal rule. If the soul
+ *  lives away as a summary actor, attention follows first so the player is full-fidelity
+ *  and can actually take turns. A new life carries no inherited ambition. */
 export function possess(world: World, actorId: EntityId): void {
+  const home = world.homeSettlement.get(actorId);
+  if (home !== undefined && home !== world.focusedSettlementId) {
+    focusSettlement(world, home);
+  } else if (home === world.focusedSettlementId && world.fidelity.get(actorId) === 'summary') {
+    world.fidelity.set(actorId, 'full');
+  }
   world.playerId = actorId;
   world.playerAmbition = undefined;
 }
