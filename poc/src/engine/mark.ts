@@ -19,6 +19,23 @@
  */
 import { type Mark } from './model';
 
+/**
+ * One human-readable contribution behind a derived value, strongest first — the shape
+ * every subjective system's explanation returns: opinionReasons (opinion.ts), standingReasons
+ * (reputation.ts), moodReasons (mood.ts), beliefReasons (belief.ts). Living here, not in any one
+ * consumer, is what lets the UI render all four through a single component (Inspector's
+ * ReasonsList) instead of one bespoke block per subsystem.
+ *
+ * CONVENTION: a `<domain>Reasons(<source>, tick, limit?)` function aggregates that domain's
+ * active marks into rows like this, sorted by `Math.abs(value)` descending, sliced to `limit`.
+ * `moodReasons` is the one exception in shape (it takes `world, id` — mood draws on several
+ * mark stores at once) but returns the same `Reason[]` and follows the same sort/limit rule.
+ */
+export interface Reason {
+  label: string;
+  value: number;
+}
+
 /** A mark is active if it has not yet expired. Permanent marks (no expiry) never lapse. */
 export function isActive(m: Mark, tick: number): boolean {
   return m.expiresTick === undefined || m.expiresTick > tick;

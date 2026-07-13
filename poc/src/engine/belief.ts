@@ -15,13 +15,21 @@
  * documents later) build an Evidence and hand it in. The reducer never learns where it came
  * from; provenance is the producer's concern, not the belief's.
  */
-import { type World, type EntityId, type EventId, type Evidence, type Belief, type BeliefState, type Stance } from './model';
-import { activeMarks } from './mark';
+import { type World, type EntityId, type EventId, type Evidence, type EvidenceKind, type Belief, type BeliefState, type Stance } from './model';
+import { type Reason, activeMarks, indexByKind } from './mark';
 
 /** Evidence strength: scales effective weight [0,1] into log-odds. Pack data (a v1 constant). */
 const STRENGTH = 3;
 /** Confidence at/above which a stance is held TRUE (and ≤ 1−BELIEVE ⇒ FALSE). Pack data. */
 const BELIEVE = 0.66;
+
+/** How each evidence kind reads to a person — the engine's own vocabulary (kinds are a fixed
+ *  EvidenceKind union in model.ts, not pack data), matching the one hardcoded row mood.ts already
+ *  allows itself (temperament's "a bright/heavy nature"). */
+const EVIDENCE_LABELS: Record<EvidenceKind, string> = {
+  witness: 'saw it happen',
+  testimony: 'told by another',
+};
 
 /** The holder's belief about (subject, assertion), or undefined if they hold none. */
 export function beliefOf(
@@ -83,6 +91,23 @@ export function computeBelief(belief: Belief, tick: number): BeliefState {
  */
 export function stanceFromConfidence(confidence: number): Stance {
   return confidence >= BELIEVE ? 'true' : confidence <= 1 - BELIEVE ? 'false' : 'unknown';
+}
+
+/** The human-readable reasons behind a belief, strongest first (for the UI) — the belief-layer
+ *  sibling of opinionReasons/standingReasons/moodReasons, satisfying design/17-epistemics-adr.md
+ *  §8's law that an inspector must ship with the primitive. Evidence is grouped by kind and
+ *  weighted the same way computeBelief weighs it, so the rows explain that number exactly. */
+export function beliefReasons(belief: Belief, tick: number, limit = 6): Reason[] {
+  const byKind = indexByKind(activeMarks(belief.evidence, tick));
+  const rows: Reason[] = [];
+  for (const [kind, arr] of byKind) {
+    let total = 0;
+    for (const e of arr) total += e.polarity * STRENGTH * e.observationConfidence * e.sourceTrust;
+    const label = EVIDENCE_LABELS[kind as EvidenceKind] ?? kind;
+    rows.push({ label: arr.length > 1 ? `${label} (×${arr.length})` : label, value: Math.round(total * 100) });
+  }
+  rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  return rows.slice(0, limit);
 }
 
 /** The per-claimant proposition backing a STATUS: "<claimant> currently fills <slot>". A status

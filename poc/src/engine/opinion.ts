@@ -8,7 +8,7 @@
  */
 import { type RelEdge, type ThoughtKind, type EventId } from './model';
 import { thoughtSpec } from './pack';
-import { isActive, activeMarks, dropExpired, indexByKind } from './mark';
+import { type Reason, isActive, activeMarks, dropExpired, indexByKind } from './mark';
 
 /** Add a thought to an edge, pruning expired ones of that kind and enforcing the
  *  per-kind stack limit (oldest evicted first). Optional value/cause overrides. */
@@ -77,10 +77,10 @@ export function pruneThoughts(edge: RelEdge, tick: number): void {
 }
 
 /** The human-readable reasons behind an opinion, strongest first (for the UI). */
-export function opinionReasons(edge: RelEdge, tick: number, limit = 6): { label: string; value: number }[] {
+export function opinionReasons(edge: RelEdge, tick: number, limit = 6): Reason[] {
   // aggregate active thoughts by kind into one line each, with the diminished total
   const byKind = indexByKind(activeMarks(edge.thoughts, tick));
-  const rows: { label: string; value: number }[] = [];
+  const rows: Reason[] = [];
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => b.sinceTick - a.sinceTick);
     const mult = thoughtSpec(kind).mult;
