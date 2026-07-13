@@ -15,6 +15,7 @@ import {
   type House,
   type HouseId,
   type EntityId,
+  type EventId,
   DAYS_PER_YEAR,
 } from './model';
 import { Rng } from './rng';
@@ -26,6 +27,7 @@ import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_
 import { givenName, houseName } from './pack';
 import { startCivilWarClock } from './factions';
 import { appointLeader, dissolve, getOrganization } from './organization';
+import { type Reason, activeMarks, dropExpired, indexByKind } from './mark';
 
 // ------------------------------------------------------------- houses --------
 // Prestige weights — how much standing a House's deeds earn it. Engine constants for
@@ -36,6 +38,59 @@ const HOUSE_ASCEND = 6; // each new ruler who continues the line
 const HOUSE_REIGN = 4; // a completed reign (+1 per year held, below)
 const HOUSE_CONQUEST = 26; // overrun a rival settlement
 const DYNASTY_TURNOVER = 0.17; // chance a succession brings a NEW dynasty, not continuity
+
+// Prestige mark durations, in years — how long a deed's fame endures before it must be
+// earned again. Founding a line and overrunning a rival are rarer, more legendary acts and
+// fade slowest; the incremental bumps from an ascension or a single completed reign fade
+// sooner, so a House must keep producing rulers and victories worth telling of to stay
+// ranked, rather than coasting forever on what one ancestor once did (design/18
+// "Significance is derived, never stored").
+const PRESTIGE_FOUND_YEARS = 300;
+const PRESTIGE_CONQUEST_YEARS = 250;
+const PRESTIGE_ASCEND_YEARS = 150;
+const PRESTIGE_REIGN_YEARS = 200;
+const PRESTIGE_MARK_LIMIT = 24; // bound the stack (housekeeping; the deep past lives in events)
+
+const PRESTIGE_LABELS: Record<string, string> = {
+  found: 'founded the line',
+  conquest: 'overran a rival',
+  ascend: 'the line endures',
+  reign: 'a completed reign',
+};
+
+/** Add a sourced, decaying contribution to a House's prestige, pruning expired marks and
+ *  bounding the stack (oldest evicted first) — the dynastic analogue of reputation's
+ *  addMark. */
+function addPrestige(house: House, kind: string, value: number, tick: number, durationYears: number, cause?: EventId): void {
+  house.prestigeMarks = dropExpired(house.prestigeMarks, tick);
+  house.prestigeMarks.push({ kind, value, sinceTick: tick, expiresTick: tick + durationYears * DAYS_PER_YEAR, cause });
+  if (house.prestigeMarks.length > PRESTIGE_MARK_LIMIT) house.prestigeMarks.shift();
+}
+
+/** A House's current prestige: the summed value of its still-active marks. Never stored —
+ *  derived on demand, exactly like standing (reputation.ts) and belief (belief.ts). A House
+ *  that has done nothing notable in a long while fades from the rankings; one still winning
+ *  conquests and raising rulers stays near the top. */
+export function computeHousePrestige(house: House, tick: number): number {
+  let sum = 0;
+  for (const m of activeMarks(house.prestigeMarks, tick)) sum += m.value;
+  return sum;
+}
+
+/** The human-readable reasons behind a House's prestige, strongest first — same
+ *  <domain>Reasons(source, tick, limit?) convention as opinionReasons/standingReasons/
+ *  beliefReasons (mark.ts). */
+export function housePrestigeReasons(house: House, tick: number, limit = 6): Reason[] {
+  const byKind = indexByKind(activeMarks(house.prestigeMarks, tick));
+  const rows: Reason[] = [];
+  for (const [kind, arr] of byKind) {
+    let value = 0;
+    for (const m of arr) value += m.value;
+    rows.push({ label: PRESTIGE_LABELS[kind] ?? kind, value: Math.round(value) });
+  }
+  rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  return rows.slice(0, limit);
+}
 
 export function houseById(world: World, id: HouseId | undefined): House | undefined {
   if (id === undefined) return undefined;
@@ -54,9 +109,10 @@ export function foundHouse(world: World, founder: HistoricalFigure, settlementId
     founderId: founder.id,
     foundedYear: year,
     originSettlementId: settlementId,
-    prestige: HOUSE_FOUND,
+    prestigeMarks: [],
     seatSettlementId: settlementId,
   };
+  addPrestige(house, 'found', HOUSE_FOUND, world.tick, PRESTIGE_FOUND_YEARS);
   world.houses.push(house);
   founder.houseId = house.id;
   return house;
@@ -66,7 +122,7 @@ export function foundHouse(world: World, founder: HistoricalFigure, settlementId
 export function houseConquers(world: World, victor: Settlement): void {
   const ruler = getFigure(world, victor.currentRulerId);
   const house = houseById(world, ruler?.houseId);
-  if (house) house.prestige += HOUSE_CONQUEST;
+  if (house) addPrestige(house, 'conquest', HOUSE_CONQUEST, world.tick, PRESTIGE_CONQUEST_YEARS);
 }
 
 /** A settlement's ruling House falls with the city: it loses its seat and its line ends.
@@ -234,7 +290,7 @@ function installRuler(
   let evId: number;
   if (oldHouse && oldHouse.extinctYear === undefined && surnameOf(heir.name) === oldHouse.name) {
     heir.houseId = oldHouse.id;
-    oldHouse.prestige += HOUSE_ASCEND;
+    addPrestige(oldHouse, 'ascend', HOUSE_ASCEND, world.tick, PRESTIGE_ASCEND_YEARS);
     oldHouse.seatSettlementId = s.id;
     s.currentRulerId = heir.id;
     evId = emit(world, 'ascension', [heir.id], { settlement: s.name, title, house: oldHouse.name }, causes, [s.id]);
@@ -302,7 +358,8 @@ export function figuresYearly(world: World): void {
       let deathEv: number | undefined;
       if (gov.succession === 'hereditary') {
         ruler.deathYear = year;
-        if (oldHouse) oldHouse.prestige += HOUSE_REIGN + (year - ruler.reignStart); // a completed reign
+        // a completed reign
+        if (oldHouse) addPrestige(oldHouse, 'reign', HOUSE_REIGN + (year - ruler.reignStart), world.tick, PRESTIGE_REIGN_YEARS);
         deathEv = emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
       }
       // In the focused settlement, rule may pass to a real local heir (so an actor — and the

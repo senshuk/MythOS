@@ -213,6 +213,14 @@ export interface HistoricalFigure {
 
 export type HouseId = EntityId; // shares the id space (monotonic), but never named in the registry
 
+/** A single sourced, decaying contribution to a House's prestige (founding, conquest,
+ *  ascension, a completed reign) — the dynastic analogue of ReputeMark. Prestige is
+ *  DERIVED from the active subset of these (figures.ts computeHousePrestige), never
+ *  stored as a running total — design/18 "Significance is derived, never stored." */
+export interface PrestigeMark extends Mark {
+  value: number;
+}
+
 /**
  * A HOUSE — a named lineage that endures across generations (a noble house, clan, or
  * dynasty; a sci-fi pack might read them as Great Families). Generic and universe-agnostic:
@@ -226,9 +234,11 @@ export interface House {
   founderId: FigureId;
   foundedYear: number;
   originSettlementId: SettlementId;
-  /** standing accrued from its members' deeds (founding, ruling, conquest) — ranks the
-   *  great houses and decays only by losing power. */
-  prestige: number;
+  /** sourced, decaying contributions to standing (founding, ruling, conquest) — read via
+   *  figures.ts computeHousePrestige, which ranks the great houses. A line that has done
+   *  nothing notable in a long while fades from the rankings; one still producing rulers
+   *  and victories stays near the top. */
+  prestigeMarks: PrestigeMark[];
   /** the settlement it currently rules, if any (undefined once it has fallen from power). */
   seatSettlementId?: SettlementId;
   /** the year the line ended — fell with a razed seat. Absent while it endures, even out

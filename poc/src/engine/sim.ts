@@ -51,7 +51,7 @@ import { computeMood, moodWord, moodReasons, pruneSelfThoughts } from './mood';
 import { computeStanding, standingReasons, emptyReputation, standingOf } from './reputation';
 import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
-import { figuresYearly, getFigure, houseById } from './figures';
+import { figuresYearly, getFigure, houseById, computeHousePrestige } from './figures';
 import { computeBelief, beliefReasons, coronationSlot } from './belief';
 import { computeStatusBelief } from './statusBelief';
 import { focusSettlement } from './lod';
@@ -443,7 +443,7 @@ export function inspectHouse(world: World, id: number): HouseDetail | undefined 
     meaning: world.houseMeaning.get(house.name),
     foundedYear: house.foundedYear,
     extinctYear: house.extinctYear,
-    prestige: Math.round(house.prestige),
+    prestige: Math.round(computeHousePrestige(house, world.tick)),
     origin: world.settlements[house.originSettlementId]?.name,
     originId: house.originSettlementId,
     seat: house.seatSettlementId !== undefined ? world.settlements[house.seatSettlementId]?.name : undefined,
@@ -729,7 +729,7 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
         kind: 'house',
         name: `House ${house.name}`,
         lines: [
-          `${meaning ? `“${meaning}” · ` : ''}founded y${house.foundedYear} · ${Math.round(house.prestige)} renown`,
+          `${meaning ? `“${meaning}” · ` : ''}founded y${house.foundedYear} · ${Math.round(computeHousePrestige(house, world.tick))} renown`,
           house.extinctYear !== undefined ? `fallen, y${house.extinctYear}` : seat ? `rules ${seat}` : 'out of power',
         ],
         houseId: house.id,
@@ -1583,8 +1583,11 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     if (!set) houseRulers.set(f.houseId, (set = new Set()));
     set.add(f.id);
   }
+  // prestige computed once per house, not inside the comparator (same discipline as the
+  // "notable" residents selection above).
+  const prestigeOf = new Map(world.houses.map((h) => [h.id, computeHousePrestige(h, world.tick)]));
   const houses = [...world.houses]
-    .sort((a, b) => b.prestige - a.prestige || a.id - b.id)
+    .sort((a, b) => prestigeOf.get(b.id)! - prestigeOf.get(a.id)! || a.id - b.id)
     .slice(0, 12)
     .map((h) => ({
       id: h.id,
@@ -1592,7 +1595,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
       founder: getFigure(world, h.founderId)?.name,
       meaning: world.houseMeaning.get(h.name),
       foundedYear: h.foundedYear,
-      prestige: Math.round(h.prestige),
+      prestige: Math.round(prestigeOf.get(h.id)!),
       origin: world.settlements[h.originSettlementId]?.name ?? '?',
       seat: h.seatSettlementId !== undefined ? world.settlements[h.seatSettlementId]?.name : undefined,
       rulers: houseRulers.get(h.id)?.size ?? 1,
@@ -1966,7 +1969,7 @@ export function canonicalize(world: World): string {
     parts.push(`F${f.id}:${f.name}.${f.role}.s${f.settlementId}.b${f.bornYear}.d${f.deathYear ?? -1}.r${f.reignStart}-${f.reignEnd}.h${f.houseId ?? -1}`);
   }
   for (const h of world.houses) {
-    parts.push(`H${h.id}:${h.name}.f${h.founderId}.y${h.foundedYear}.p${Math.round(h.prestige)}.seat${h.seatSettlementId ?? -1}.x${h.extinctYear ?? -1}`);
+    parts.push(`H${h.id}:${h.name}.f${h.founderId}.y${h.foundedYear}.p${Math.round(computeHousePrestige(h, world.tick))}.seat${h.seatSettlementId ?? -1}.x${h.extinctYear ?? -1}`);
   }
   for (const o of world.organizations) {
     const standing = Math.round(computeStanding(world.reputation.get(o.id) ?? emptyReputation(), world.tick));

@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, setCulturesForSeed } from './pack';
 
-export const SAVE_VERSION = 25;
+export const SAVE_VERSION = 26;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -73,7 +73,10 @@ export interface SaveFile {
   annals: World['annals'];
   director: World['director'];
   figures: World['figures'];
-  houses: World['houses'];
+  /** v26 (prestige decay) replaced the stored `prestige: number` with `prestigeMarks`
+   *  (a decaying stack — see model.ts PrestigeMark). Pre-v26 saves carry the old shape;
+   *  `deserializeWorld` migrates each house to a single permanent legacy mark. */
+  houses: (World['houses'][number] | (Omit<World['houses'][number], 'prestigeMarks'> & { prestige: number }))[];
   /** First-class organizations (plain objects). Optional for saves predating v11. */
   organizations?: Organization[];
   /** per-org membership rosters as entries. Optional for saves predating v12. */
@@ -474,7 +477,14 @@ export function deserializeWorld(save: SaveFile): World {
       }
       return m;
     })(),
-    houses: s.houses ?? [],
+    // v25 → v26 (prestige decay): a pre-v26 house carries `prestige: number` instead of
+    // `prestigeMarks`; migrate it to one permanent legacy mark so existing standings are
+    // preserved exactly at load, while all NEW prestige from this point on decays normally.
+    houses: (s.houses ?? []).map((h): World['houses'][number] => {
+      if ('prestigeMarks' in h) return h;
+      const { prestige, ...rest } = h;
+      return { ...rest, prestigeMarks: prestige ? [{ kind: 'legacy', value: prestige, sinceTick: 0 }] : [] };
+    }),
     organizations,
     organizationsById,
     orgMembers,
