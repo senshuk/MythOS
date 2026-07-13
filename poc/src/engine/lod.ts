@@ -38,6 +38,7 @@ import {
   removeActorCompletely,
   canTakeSpouse,
   clamp,
+  decay,
 } from './world';
 import { addThought } from './opinion';
 import { registerLocation } from './location';
@@ -694,7 +695,7 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   }
 
   // mean-reverting stability prevents getting stuck in a death-spiral
-  m.stability = clamp(Math.round(m.stability * 0.9) + rng.range(-6, 6), -100, 100);
+  m.stability = clamp(Math.round(decay(m.stability, 0.9)) + rng.range(-6, 6), -100, 100);
 
   // Logistic growth: a settlement breeds fast when there's room (so it RECOVERS
   // from shocks instead of spiralling to ruin) and tapers toward a soft carrying
@@ -780,7 +781,7 @@ export function geographyYearly(world: World): void {
         ? clamp(Math.round(orgOpinionOf(world, A.polityId, B.polityId) / 25), -18, 10)
         : 0;
     const cultureTarget = clamp(Math.round((20 - dist) * 1.1), -42, 26) + grudge;
-    e.relation = clamp(Math.round(e.relation * 0.92 + cultureTarget * 0.08) + rng.range(-4, 4), -100, 100);
+    e.relation = clamp(Math.round(decay(e.relation, 0.92, cultureTarget)) + rng.range(-4, 4), -100, 100);
     // a rare border grievance sharply sours relations — the spark that lights the war
     if (rng.chance(0.012)) e.relation = clamp(e.relation - rng.range(18, 44), -100, 100);
 
@@ -1044,7 +1045,7 @@ export function economyYearly(world: World): void {
       const cons = CONSUMPTION[r] * pop;
       e.stock[r] = Math.max(0, e.stock[r] + prod - cons);
     }
-    e.wealth = Math.max(0, e.wealth * 0.96 + e.production[PREMIUM_RESOURCE] * pop * BASE_PRICE[PREMIUM_RESOURCE] * 0.03);
+    e.wealth = Math.max(0, decay(e.wealth, 0.96) + e.production[PREMIUM_RESOURCE] * pop * BASE_PRICE[PREMIUM_RESOURCE] * 0.03);
     computePrices(e, pop);
   }
 
@@ -1054,13 +1055,13 @@ export function economyYearly(world: World): void {
     const A = world.settlements[edge.a];
     const B = world.settlements[edge.b];
     if (edge.relation <= -25) {
-      edge.tradeVolume *= 0.6; // actively hostile — the route is closed
+      edge.tradeVolume = decay(edge.tradeVolume, 0.6); // actively hostile — the route is closed
       continue;
     }
     const popA = popOf(A);
     const popB = popOf(B);
     if (popA <= 0 || popB <= 0) {
-      edge.tradeVolume *= 0.7;
+      edge.tradeVolume = decay(edge.tradeVolume, 0.7);
       continue;
     }
     const proximity = 1 / (1 + edge.distance / 30);

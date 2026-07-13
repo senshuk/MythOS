@@ -254,6 +254,12 @@ export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/** Multiplicative decay toward `target` (default 0) at `rate` per step — the shared
+ *  "mean-reversion" shape used for wealth, stability, relations, trade volume, etc. */
+export function decay(v: number, rate: number, target = 0): number {
+  return v * rate + target * (1 - rate);
+}
+
 /**
  * Shared kill path: mark an actor dead, emit the death event, and widow a
  * surviving spouse. Pure data mutation + event emission — the caller decides
