@@ -2,7 +2,7 @@
 
 **Document type:** Architecture Decision Record — the design of subjective knowledge.
 **Companion documents:** `11-simulation-ontology.md`, `15-execution-model.md` (invariants 8 & 9), `14-component-model.md`.
-**Status:** Proposed. Decisions below are recommendations for ratification; genuinely open forks are collected in §9.
+**Status:** Shipped through 1D + distal (news frontier). §12 (the v1 implementation slice) and §13 (distal propagation) were originally separate design notes (`19-subjectivity-1a-belief-v1.md`, `20-distal-news-frontier.md`), folded in here as the ADR's implementation record once both shipped — one document for the whole epistemics arc rather than three.
 **Supersedes nothing. Extends:** the Perception→Reasoning→Action→History layering (execution-model §Invariants).
 
 ---
@@ -126,7 +126,7 @@ Belief { subject, assertion, evidence: Evidence[], lastUpdated }
 //  confidence AND stance (True/False/Unknown) are DERIVED from evidence — never stored
 ```
 
-The first implementation slice of this design is scoped in `19-subjectivity-1a-belief-v1.md`: witness + testimony producers only, everything else deferred as a future producer/consumer of Evidence.
+The first implementation slice of this design is scoped in §12 below: witness + testimony producers only, everything else deferred as a future producer/consumer of Evidence.
 
 - `observationConfidence` — how direct and clear the sensing was (a personal witnessing ≈ 1.0; a glimpse through fog, far less).
 - `sourceTrust` — how far the holder trusts the source. **Source trust is pack/culture data.** This means cultures differ in *epistemology* with no new system: a mystical culture assigns dreams high trust, a rationalist one near zero; a zealot trusts the priest, a cynic the ledger.
@@ -232,6 +232,82 @@ A status belief is a new **fold + producer** over the unchanged Evidence substra
 5. **Propagation** — Testimony atom; telling (causative), documents (testimony-at-rest), seeded distortion; belief-driven org reasoning.
 
 ---
+
+## 12. Implementation slice — Belief v1 (folded from `19-subjectivity-1a-belief-v1.md`)
+
+**The single question:** What is the smallest Belief system that proves the Subjectivity layer? Answer: actors holding **different beliefs about the same objective event**, derived from **different evidence**. If two actors diverge on one death, Subjectivity exists. Everything else is a later producer or consumer of Evidence — not a new subsystem.
+
+**Scope fence — in v1:** an actor can **witness** an event → gains supporting Evidence (inert, no emit); an actor can **receive testimony** → gains Evidence weighted by trust in the source; an actor holds **multiple pieces of Evidence** for a proposition; `computeBelief` derives a **stance** (True/False/Unknown) and a **confidence**; beliefs are **revised** as new Evidence arrives (never replaced).
+
+**Explicitly NOT in v1** — each a future *producer* or *consumer* of Evidence, never a new subsystem: rumor distortion · lying-as-a-mechanic · documents · books · maps · propaganda · forgetting (beyond mark expiry) · organizations holding beliefs · player fog-of-war · conversation/dialogue · multi-value propositions (v1 is binary).
+
+> The fraudster in the success test is **not** a lying subsystem. It is ordinary testimony whose assertion (`the king lives`) happens to contradict the truth. A false belief is what a trusted source's contrary testimony *produces*.
+
+**The reducer** (`belief.ts`, third reducer alongside `computeOpinion`/`computeStanding`):
+
+```ts
+function computeBelief(belief: Belief, tick: number): BeliefState {
+  let logOdds = 0;
+  for (const e of activeMarks(belief.evidence, tick)) {
+    const weight = e.observationConfidence * e.sourceTrust;
+    logOdds += e.polarity * STRENGTH * weight;              // STRENGTH: pack constant (~3)
+  }
+  const confidence = 1 / (1 + Math.exp(-logOdds));          // logistic → [0,1], 0.5 = no net evidence
+  const stance = confidence >= BELIEVE ? 'true' : confidence <= 1 - BELIEVE ? 'false' : 'unknown';
+  return { stance, confidence };
+}
+```
+
+Derived never stored, order-independent and deterministic (no RNG), accumulation not a winner, and **Unknown is the baseline** (no evidence ⇒ confidence 0.5 ⇒ Unknown — ignorance is the default).
+
+**One funnel, many producers.** Producers never write the belief store directly; they build an `Evidence` and call `acquireEvidence(world, holder, subject, assertion, evidence)` — the ONE way evidence enters a belief. Witness and Testimony are v1's two producers (built one-at-a-time, each with its own test); Document/Inference are later producers of the same funnel.
+
+**Witnessing is an inert read** (writes `world.beliefs`, does not `emit()` — exactly like `remember()`). **Testimony's `sourceTrust` is derived from the hearer's opinion of the teller** — reusing the emergent social graph instead of inventing a trust mechanic (no relationship → neutral 0.5). v1 testimony is itself inert; telling becomes a first-class causative Action only in a later increment.
+
+**Shipped progression since v1** (each stage adds one producer or consumer; Belief itself never changes — see the "belief primitive is fixed, its use grows outward" principle, echoed from Prime Movers `18`):
+
+- **1A — Belief exists** (producers: witness, testimony) ✓
+- **1B — Belief changes behavior** (consumer: mourning, via `reactToBeliefs`) ✓ — reactions ask `computeBelief`, never inspect `Evidence`; reaction state lives in `world.reactions`, never on the `Belief` (Belief ≠ Reaction, as Intent ≠ Action)
+- **1C-local — Belief spreads locally** (producer: conversation, `shareBelief`) ✓
+- **1D — Belief revises** (reducer + producer: `computeStatusBelief` / `learnCoronation` — event assertions are monotonic/append-only, status assertions are competitive/replaceable; a slot with one filler, revised by displacement, never a branchy `computeBelief`) ✓
+- **Organizations derive belief** (`orgBeliefOf`, `orgStatusBeliefOf` — members' beliefs reduced to an institutional stance, never stored; the epistemic twin of `worldviewOf`) ✓
+- **Politics consumes belief** (coronation → allegiance; a `succession_settled` perception fact penalises outward intents only under contestation — ignorance never makes a polity cautious, only instability does) ✓
+- **1C-distal — Belief spreads geographically** ✓ — see §13.
+
+**Known asymmetry (documented, not desired):** emotional reactions (mourning) are subjective — you mourn when you *learn* — while social/legal state (widowhood, inheritance, membership) still updates objectively at the instant of death. A future Epistemic Relationships phase may migrate these behind belief, one at a time.
+
+**The LOD law this establishes:** *subjectivity exists only where agency exists* (now in `11 §Mark`). An Actor holds beliefs; an Organization *derives* them from its members; an aggregate settlement holds none. Evidence has **carriers** (witness, messenger, letter, caravan, priest, sensor, vision, …) — a Universe Pack seam — and `acquireEvidence` fires at the carrier's arrival tick, giving time-delayed causality for free.
+
+## 13. Distal propagation — the News Frontier (folded from `20-distal-news-frontier.md`)
+
+**The collision this resolves:** every epistemic milestone above lives inside the focused settlement, where actors exist to hold beliefs. An aggregate province has no residents, so by the LOD law it can hold no belief — yet the promise of Subjectivity is a world that desynchronizes across the whole map (the capital crowns Beatrice; a frontier province still serves Aldric). The question is not "how does news travel?" but:
+
+> **What exists objectively, before a mind exists to believe it?**
+
+**The boundary this adds:**
+
+> ## News is objective. Belief is subjective. Transport moves news; minds convert news into evidence.
+
+News — an event happening, and word of it *physically arriving* somewhere — is an objective fact, true whether or not anyone there is currently simulated. What a mind makes of that news is subjective, and exists only where minds do. The pipeline grows one tier:
+
+```
+Reality  →  News  →  Evidence  →  Belief
+          (logistics)  (a mind reads it)
+```
+
+News is closer to weather or trade than to opinion — it is not a `Mark`, not history, not subject to epistemic laws. **Epistemics begins only at Evidence.**
+
+**The News Frontier** — not a record, but a *frontier* in the graph-theory sense: a wave of word expanding outward from an event, across the geography/travel graph, at travel speed. A settlement's stored arrival tick is a cache of where the wave has reached, nothing more — which is why intercepted messengers, telegraphs, or magical sending are just swappable propagation mechanics over the same abstraction. **Only transport advances the frontier** — one writer, the same discipline as "only witnesses create Evidence; only producers call `acquireEvidence`."
+
+**Coarse recognition at a distance** is LOD, not a second truth: a non-focused province's org reads recognition straight off the news frontier (whoever's coronation-news last arrived), lossy and objective — the same input the fine, member-derived recognition would produce on focus, just read coarser.
+
+**Reconcile-on-focus:** when a settlement is focused and its residents instantiate, their beliefs are seeded from the settlement's news frontier — they know exactly what had arrived, no more. **The camera never creates information** — focusing reveals no new facts, it materializes minds into an informational environment that already existed.
+
+**Acceptance criterion (the engine's first observer-independence test):** delete the camera, run the world 500 years at aggregate LOD focusing nothing, then focus any settlement — its residents must instantiate believing *exactly* the news that objectively reached that place. Too much = the camera leaked omniscience. Too little = reconcile-on-focus is broken.
+
+**v1 scope:** coronations first (feeds coronation→allegiance across the map), then deaths of notables. Propagation is a computed frontier (arrival tick = event tick + graph-distance × speed along existing routes); no in-transit distortion (clean arrival, latency only — rumor mutation is a later producer refinement). A latency inspector ships alongside ("why hasn't the duke reacted? — the news reaches him in nine days" is a pure read).
+
+**Future generalization (a note, not a change):** News may be the first payload of a more general Propagation substrate — the engine already has physical transport (`travel.ts`), informational transport (News), and biological transport (lifecycle/migration) as instances of *objective fields propagate independently of observation*. Not built; recorded as a seam.
 
 ## Revision History
 

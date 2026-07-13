@@ -1,10 +1,11 @@
 # 26 — POV Gameplay: Living One Life Well
 
-**Document type:** Assessment + staged proposal — how "live as one of them" gets
-cleaned up and pulled toward what Crusader Kings, RimWorld and Warsim each do best.
+**Document type:** ADR — shipped. Originally an assessment + staged proposal for how
+"live as one of them" gets cleaned up and pulled toward what Crusader Kings, RimWorld
+and Warsim each do best; all six phases below are now built (kept as the design record).
 **Companion documents:** `21-the-subjective-journal.md` (the cockpit constitution),
 `16-interaction-principles.md` (org discipline the ruler-levers must respect),
-`01-warsim-analysis.md` §2.2 (throne-room petitioners), `25-venues-adr.md`.
+`01-warsim-analysis.md` §2.2 (throne-room petitioners), `24-local-maps.md` §8 (venues).
 **Status:** P1 (autopilot), P2 (audiences), P3 (value-tinted choices + conscience),
 P4 (steer the polity), P5 (leaving home) SHIPPED (2026-07). P1 note: the
 standing-order lean was deferred — the aspiration decider alone sufficed. P4 note:

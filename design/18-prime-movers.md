@@ -137,6 +137,81 @@ This is why the architecture stayed clean while becoming far richer, and why the
 
 ---
 
+## Significance is derived, never stored
+
+A law discovered inside the Mythic Layer proposal (`30 §7`), generalized here because it
+turned out not to be mythology-specific at all. Every subjective quantity this document
+already governs — opinion, standing, belief — is computed on demand from a decaying stack,
+never a number that only goes up. The same discipline turns out to be the correct answer
+for a wider family of concepts that don't call themselves Marks but have the identical
+shape: historical significance, legendary status, sacredness, dynastic prestige,
+institutional importance, an artifact's renown.
+
+> ## Significance is never an ontology property. It is always an emergent property of accumulated, ongoing simulation — computed from a decaying stack, exactly like opinion, standing, and belief.
+
+The reasoning is the same reasoning that already governs Mark (`11 §Mark`): a stored
+"this is now significant" bit can only accumulate, because nothing is written to
+*decrease* it. Left unchecked, every subsystem that grants significance eventually inflates
+it — a House that was prestigious a thousand years ago and has done nothing since still
+outranks one earning fresh renown today, an object that was in one dramatic event forever
+reads as legendary. The fix is not a special case for mythology; it is the same reducer
+discipline applied one layer further out: *compute significance from what is currently
+still reinforced, not from what was ever true.*
+
+**This is a design law, not yet an enforced one — an audit found a live counter-example.**
+`engine/model.ts`'s House `prestige` (`§Dynasties & Houses`, `figures.ts`) is a plain stored
+`number`, incremented (`+= HOUSE_FOUND`, `+= HOUSE_CONQUEST`, `+= HOUSE_ASCEND`,
+`+= HOUSE_REIGN`) with no decay path anywhere in the engine — exactly the anti-pattern this
+law forbids, shipped today. It is flagged here rather than silently patched, because
+changing it changes game balance (which lines stay prestigious) and that is a product
+decision, not a documentation fix — see the spawned follow-up task. Meanwhile, the engine
+already has a correct worked example right beside it: `sim.ts`'s "notable residents"
+selection recomputes fresh from live `standingOf()` (a Mark reducer) plus context every
+time, never storing "is notable" on an Actor. That is the pattern prestige should converge
+toward.
+
+**A follow-up audit widened the search past significance specifically**, checking every
+stored numeric field in `engine/model.ts` that could plausibly be standing in for
+importance/influence/legitimacy/prosperity, against a two-condition test: a stored value is
+legitimate only if (1) it is genuine simulation state that cannot be reconstructed (an
+actual accumulated fact, like a treasury), or (2) it is a cache of an expensive derived
+computation, refreshed every time it's read, never trusted stale. Anything satisfying
+neither is the same bug as `prestige`.
+
+| Field | Verdict | Why |
+|---|---|---|
+| Settlement/org `wealth` | **Clean** — condition 1 | Genuinely bidirectional: gains from trade/production, spent on tithes and org actions, and actively decays toward its productive base (`lod.ts`: `wealth = wealth * 0.96 + …`). A real accumulated fact, not a disguised significance score. |
+| Settlement `stability` | **Clean** — condition 1 | Rises and falls from real events (raids, boons, unrest), mean-reverts (`stability * 0.9 + …`), clamped both directions. Ongoing state, not monotonic. |
+| Actor/Org `standing` (View types only) | **Clean** — condition 2 | Never mutated directly anywhere in the engine; every occurrence is populated by calling `computeStanding()` fresh at snapshot time. The live source of truth is the Reputation Mark stack, exactly as designed. |
+| The steering Mandate (`design/26` P4) | **Clean** — self-renewing | Explicitly re-evaluated each check against whether the org still rates the intent a contender, and lapses without renewal — the same "must keep being reinforced" shape as a Mark, just not literally one. |
+| House `prestige` | **Violation** (already logged above) | The sole exception found. |
+
+One violation in five checked, and the violation was already known — this is evidence the
+law describes the codebase's actual, mostly-followed discipline rather than an aspiration
+imposed after the fact.
+
+## Admission criteria for this document
+
+As more laws get promoted here — this page has grown from one axis (§1) to five sections
+since first written — the risk shifts from "missing a law" to **diluting this document into
+a collection of good ideas instead of a compact statement of the engine's deepest
+invariants.** Every candidate for promotion into Prime Movers, including the one just added
+above, should pass three questions before landing here rather than in a subsystem ADR:
+
+1. Does it explain multiple, otherwise-unrelated systems? (Not just the one that surfaced it.)
+2. Would violating it predictably cause architectural problems, not just local bugs?
+3. Will it still feel fundamental five years from now, independent of any specific subsystem?
+
+**Applied to "significance is derived, never stored" as a self-check:** *(1)* yes —
+reputation, opinion, belief, House prestige, and every future legendary/sacred/attractor
+mechanism in `30-mythic-layer.md` all reduce to the same shape, none of which named each
+other when the law was found. *(2)* yes — the `prestige` counter-example is a real,
+findable class of bug (unbounded inflation), not a cosmetic inconsistency. *(3)* yes — it
+does not mention mythology, Objects, or Houses in its statement (§ above); it is phrased at
+the same altitude as Observer independence. It passes. A law that only explains one
+subsystem, or whose violation would just be "a bit weird" rather than "a class of bug,"
+belongs in that subsystem's own ADR instead — this page is for the ones that don't.
+
 ## Observer independence (the north star)
 
 "World before player" (CLAUDE.md) has a technical form, and this is it:
@@ -157,3 +232,5 @@ Level-of-detail is an **optimization** — how finely the engine spends compute 
 | 1.1 | 2026-07-03 | Added the project's philosophical thesis as an epigraph: **"Reality is simulated. Minds are inferred."** — the engine models evidence, memory, reasoning, and action, never consciousness; minds are inferred from the gap between the objective world and each entity's evidence of it. |
 | 1.2 | 2026-07-03 | Added the engine-wide **development methodology** ("How the engine grows"): *build a minimal primitive, freeze it, and thereafter grow only producers and consumers — the primitive is fixed, its use grows outward.* Promoted from a Belief-specific note (design/19) to the method behind every layer (Intent, Organization, Mark, Belief); explains why the `11 §Mark` laws are phrased as prohibitions. |
 | 1.3 | 2026-07-03 | Added **Observer independence** ("the north star"): *changing what is simulated must never change what is true* — the technical form of "world before player". LOD is an optimization, not a rule of the world; objective fields (physical/informational/biological transport) propagate independently of observation, and minds are materialized into them. Stated honestly as a target the News Frontier meets fully and older systems (aggregate promotion) only approximate. |
+| 1.4 | 2026-07-12 | Added **Significance is derived, never stored**, promoted from a Mythic Layer-local rule (`30 §7`) once review found it wasn't mythology-specific: historical significance, legendary status, sacredness, dynastic prestige, and institutional importance all belong to the same law already governing Mark (`11 §Mark`) — computed from a decaying stack, never a monotonic stored number. A codebase audit prompted by this promotion found one live counter-example (`House.prestige`, `engine/model.ts`/`figures.ts` — a stored, only-incrementing number with no decay path) and one correct worked example beside it (`sim.ts`'s notable-residents selection, already a fresh reducer over live standing). Stated honestly, per the same convention as Observer independence: a law the engine mostly already follows, with a known, tracked exception rather than a claimed absolute. |
+| 1.5 | 2026-07-12 | Widened the audit into a general **derived-state check** (settlement/org wealth, settlement stability, actor/org standing, the steering Mandate) against a two-condition test (genuine irreducible state, or a refreshed cache of a derived computation) — all four clean, `prestige` remaining the sole violation found across five checks. Added **Admission criteria for this document** (a three-question test: explains multiple unrelated systems, violating it causes architectural not cosmetic problems, still fundamental in five years) to guard against this page diluting into a list of good ideas as more laws get promoted here; applied it retroactively to the significance law as a worked self-check. |

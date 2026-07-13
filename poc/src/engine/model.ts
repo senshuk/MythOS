@@ -135,7 +135,7 @@ export interface Reputation {
   marks: ReputeMark[];
 }
 
-// ── Belief (Subjectivity 1A — see design/19-subjectivity-1a-belief-v1.md, engine/belief.ts) ──
+// ── Belief (Subjectivity 1A — see design/17-epistemics-adr.md §12, engine/belief.ts) ──
 
 /** How an actor came to a piece of Evidence. v1 has two producers; documents/inference later. */
 export type EvidenceKind = 'witness' | 'testimony';

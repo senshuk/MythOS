@@ -14,6 +14,22 @@ It is a living world simulation where stories naturally emerge from interacting 
 
 ---
 
+# How These Documents Relate
+
+This document is the vision, the philosophy, and the decision filter. It explains **why**
+MythOS is built the way it is.
+
+The engine constitution — Prime Movers, Simulation Ontology, Component Model, Simulation
+Rules (`design/18`, `11`, `14`, `13`) — explains **how**. Where a principle here reads as a
+preference ("prefer X"), the constitution states its enforced form: an invariant, a law, a
+reducer.
+
+Read this document first, to understand the project. Read the constitution to build
+against it. If the two ever disagree, the constitution is authoritative for how the engine
+actually works — and this document should be corrected to match, not the reverse.
+
+---
+
 # Project Vision
 
 MythOS simulates an entire fictional universe.
@@ -147,6 +163,16 @@ The simulation produces events. Presentation must narrate them into stories the 
 
 Prefer surfaced affordances over free-text parsing. Show the player what they can do.
 
+Different characters may believe different things about the same history.
+
+One character's understanding can be incomplete, delayed, or simply wrong.
+
+The player is not exempt from this — their character's knowledge is as bounded as anyone's.
+
+Legibility is a promise that the truth is always traceable somewhere in the simulation.
+
+It is not a promise that every character in the world agrees on what that truth is.
+
 ---
 
 # Engine Philosophy
@@ -228,6 +254,11 @@ Examples:
 * World
 
 Every Universe Pack maps onto these concepts.
+
+The engine's actual entity types are narrower than this list: Actor, Organization,
+Location, and Object are the only four. Political Entity, Government, Religion, Economy,
+Species, and the rest are pack data and configuration, not separate engine categories —
+see Simulation Ontology for the precise, capability-first classification.
 
 ---
 
@@ -362,6 +393,11 @@ Pure functions where practical.
 
 Keep simulation separate from presentation.
 
+Verified behavior over assumed behavior.
+
+These are preferences. The constitution states the enforced form of each — as an
+invariant, a law, or a reducer — and is authoritative where the two would ever conflict.
+
 ---
 
 # Coding Standards
@@ -388,32 +424,11 @@ Do not simulate everything continuously.
 
 Use appropriate simulation frequencies.
 
-Example:
+Match a system's cadence to how much it actually changes.
 
-Immediate
-
-* Player actions
-
-Hourly
-
-* Local NPC activities
-
-Daily
-
-* Economy
-
-Weekly
-
-* Trade
-
-Monthly
-
-* Politics
-
-Yearly
-
-* Demographics
-* History
+This document states the principle, not the specific cadences — those are defined, and
+kept current, in the Execution Model (`design/15`), because they change more often than
+this philosophy does.
 
 Simulation detail should depend on relevance.
 
@@ -498,5 +513,10 @@ Before implementing any feature, ask:
 5. Can the player understand the result, and trace why it happened?
 6. Does it introduce unnecessary special cases?
 7. Will this architecture still make sense five years from now?
+8. Does this already exist in the architecture, only unnamed?
 
 If the answer to these questions is "no", reconsider the implementation.
+
+Question 8 deserves its own emphasis: check whether an existing system already does this,
+under a different name, before building something new. Repeatedly, the closest thing to a
+new feature turns out to be an existing one, applied one step further.

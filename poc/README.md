@@ -91,7 +91,7 @@ lets you watch the history and click any event to ask *"why did this happen?"*.
     actors. This is what lets the world run **deep pre-play history** for centuries
     cheaply (200 years in ~10 ms) before a player `focusSettlement`s into it,
     inheriting an already-deep past. (Dwarf Fortress's "the world already exists" —
-    see `../design/09-dwarf-fortress-study.md`. This is prerequisite #1 of the
+    see `../design/archive/09-dwarf-fortress-study.md`. This is prerequisite #1 of the
     worldgen pre-history pass.)
 - **Region graph / geography** (`lod.ts`: positions, `buildRegionGraph`,
   `geographyYearly`) — settlements have 2D positions and form a connected proximity
@@ -234,7 +234,7 @@ history and a traced causal chain to the console.
    rows show specialization, wealth, and food status.
 7. **Opinion as thoughts** (RimWorld-inspired): relationships are summed, decaying,
    sourced thoughts instead of a flat number — legible (the inspector lists *why*)
-   and emergent. (See `../design/08-rimworld-study.md`.)
+   and emergent. (See `../design/archive/08-rimworld-study.md`.)
 8. **Chronicle / Tales**: notable events are scored by interest and remembered;
    the world re-narrates them as **named years** and **legends**, turning emergent
    history into worldbuilding content (e.g. a feud that erupts one year and ends in

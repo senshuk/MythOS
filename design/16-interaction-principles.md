@@ -8,50 +8,11 @@ organization↔organization interaction (Phase 2E) from tangling. The frozen con
 is **feature-complete — Organizations v1**. No new organization features unless a roadmap
 item requires them; otherwise Organizations risk becoming a "god subsystem."
 
-**2E shipped so far (2026-07):** the negotiated pipeline (`engine/orgInteraction.ts`) with
-`trade_agreement`, `non_aggression`, `demand_tribute` (NPC↔NPC); the PLAYER as a party to it
-(parked incoming envoy audiences + outgoing proposals, design/26 P2); and the **alliance**
-pact — a mutual-defense agreement whose teeth are legible in `geographyYearly`: allies never
-turn on one another; when one is raided or conquered its allies that share a border with the
-aggressor are drawn toward the quarrel (a fixed, RNG-free souring); and, fielding real force,
-an ally's strength counts in a defender's favour — enough allied weight turns a would-be
-razing into a battle the town survives, the aggressor bloodied and the allies paying in their
-own blood (an `alliance_answered` event names the coalition). Principle 5 holds: the pact
-itself never razes or moves anyone — `geographyYearly` (the sim's own war layer) does, now
-reading the alliance; and it stays RNG-FREE so alliance-free worlds are byte-identical (no
-seed re-pin was needed for either the alliance or the fielding-force slice).
-
-**Formal WARS shipped (`engine/war.ts`).** When a clash escalates to open BATTLE, a named,
-persistent `War` is declared between the two polities; allies drawn toward the fight JOIN it
-by campaign (offense — co-belligerents, not merely the alliance's defensive weight); and
-`warYearly` resolves it — a fallen primary belligerent hands the other side victory and an
-imposed non-aggression peace on the survivors, a long quiet gutters out in a stalemate. It is
-a legibility + resolution layer OVER the edge-level clashes: the war itself moves no armies
-and razes no town (principle 5). RNG-free — a war-free world is byte-identical.
-
-**Richer war resolution shipped.** Wars now carry EXHAUSTION (per-side cumulative casualties,
-fed by the battle tolls), so a long, one-sided war ends by CAPITULATION — the far-more-bled
-side sues for peace — without any seat needing to fall. On any victory the victor imposes a
-non-aggression peace AND exacts one-time REPARATIONS (a real treasury transfer via the org's
-own funds API). This is deliberately ECONOMIC and political, never territorial: a town
-changing hands is geography, and per principle 5 that stays with an explicit annex/relocate
-world action (deferred — the 2D geography actions), NOT the diplomacy layer. Still RNG-free
-(thresholds on recorded casualties + fixed reparations), so a fifth consecutive slice needed
-no seed re-pin.
-
-**Annexation shipped — the first deliberate GEOGRAPHY change.** When a realm decisively
-overwhelms a far weaker neighbour, an expansionist victor (or any victor taking a city worth
-ruling) ANNEXES rather than razes: the town survives, its old dynasty is deposed and its polity
-dissolves, and it passes into the victor's realm as a PROVINCE (its `polityId` re-points to the
-victor's polity; it raises no local line — `figuresYearly` skips a settlement whose polity is
-seated elsewhere). This is a WORLD ACTION inside the sim's war layer (`geographyYearly`), NOT
-the diplomacy layer — principle 5 holds: diplomacy still never moves the map; only these gated
-war outcomes do (annexation now joins razing as the second). The choice is deterministic (reads
-population + the 2C intent) and keeps the geo RNG stream aligned (the stability toll is drawn on
-either path), so even this map-changing slice needed no seed re-pin. Full multi-settlement
-empires (a polity's tithe/membership/succession spanning its provinces) remain a larger
-follow-on; today a province is governed from the capital with the seat's institutions. Deferred
-next: espionage (a new interaction class — intelligence and subversion rather than open force).
+**What has shipped under this guidance** (negotiated trade/non-aggression/tribute pacts,
+player-as-party envoys, alliances, formal wars with exhaustion/capitulation/reparations,
+and annexation as the first diplomacy-adjacent geography change) is tracked in
+`29-subsystem-appendix.md` §5, not here — this file stays a rule sheet, not a changelog.
+Deferred next: espionage (intelligence/subversion as a new interaction class).
 
 ---
 

@@ -3,9 +3,9 @@
 **Document type:** Assessment + staged proposal — how a settlement stops reading as
 static architecture on nice terrain and starts feeling like a place people live,
 in the spirit of RimWorld's colonies (without RimWorld's cell-grid micro-sim).
-**Companion documents:** `24-local-maps.md` (the Close View; §3.1 the aspatial law),
-`25-venues-adr.md` (venues as the stage; §2 the no-dice law), `22-mood-and-causal-worldgen.md`
-(self-thoughts), `23-precepts-belief-module.md` (creeds), `08-rimworld-study.md`
+**Companion documents:** `24-local-maps.md` (the Close View; §3.1 the aspatial law,
+§8 venues as the stage/no-dice law), `22-mood-and-causal-worldgen.md`
+(self-thoughts), `23-precepts-belief-module.md` (creeds), `archive/08-rimworld-study.md`
 (Thoughts/Tales/Mood already adopted; ThinkTree/Jobs deliberately not).
 **Status:** L1 (inhabitants on the map) + L2 (communal gatherings: weddings, funerals)
 proposed here; L3–L6 staged below. Implementing L1+L2 first.

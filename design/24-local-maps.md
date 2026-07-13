@@ -3,8 +3,8 @@
 **Document type:** Design proposal — the two-scale map (planet ↔ place), studied from the
 RimWorld 1.6 install in `/RimWorld` and mapped onto MythOS's existing substrate, LOD, and
 Location machinery.
-**Companion documents:** `08-rimworld-study.md`, `22-mood-and-causal-worldgen.md` (causal
-worldgen — the geography this builds on), `03-entity-world-data-model.md` (Location),
+**Companion documents:** `archive/08-rimworld-study.md`, `22-mood-and-causal-worldgen.md` (causal
+worldgen — the geography this builds on), `archive/03-entity-world-data-model.md` (Location),
 `14-component-model.md`. Implementation anchors: `engine/geography.ts`,
 `engine/substrate.ts`, `engine/location.ts`, `engine/lod.ts`, `ui/terrain.ts`, `ui/MapView.tsx`.
 **Status:** L1 + L2 + L3 SHIPPED (2026-07 — `content/localmap.ts`, `ui/LocalMapView.tsx`,
@@ -14,7 +14,7 @@ sketches below: (1) growth rings deferred — the sim keeps no population histor
 band building ages from; (2) **L2 shipped as a DERIVED reading, not Location-tree
 state**: households are computed from ties at request time (couples co-housed, the
 unwed under a parent's roof, eldest heads the hearth) — same player experience,
-zero new world state. **L4 v1 SHIPPED as VENUES (design/25 is its ADR):** the
+zero new world state. **L4 v1 SHIPPED as VENUES (§8 below is its ADR):** the
 focused settlement mints its public venues (square, shrine, tavern, ruler's hall)
 as real Locations at promote; weddings, brawls, friendships and feuds name their
 venue in prose ("married at the shrine of the Windwalker"), venues are inspectable
@@ -331,7 +331,38 @@ adds **zero save state** (Save Philosophy — the seed already implies it):
 
 ---
 
-## 8. Town-plan v2 — fidelity & realism
+## 8. Venues — Locations become sim-meaningful (L4 ADR, folded from `25-venues-adr.md`)
+
+**Decision.** Social events happen SOMEWHERE. The focused settlement mints its public
+venues — the market square, the shrine, the tavern, the ruler's hall — as real Locations
+(children of the settlement in the containment tree), and the social outcomes the sim
+already emits (weddings, brawls, friendships, feuds) name the venue they happened at:
+*"Faiyal and Thonios were married at the shrine of the Windwalker."* Venues are
+inspectable (their own event history) and the close view's drawn buildings link to them.
+
+**The laws:**
+
+1. **Venues are stages, never actors.** A venue decides nothing, knows nothing, owns
+   nothing. It is where an outcome is RECORDED to have happened — pure legibility.
+2. **Venue choice must not perturb the streams.** Which venue hosts an event is a pure
+   hash of (participants, tick) over the eligible venues — never a draw from `world.rng`
+   or any actor stream. Adding venues to a build changes NO dice.
+3. **Minting is idempotent, lazy, and stream-free.** `ensureVenues` runs at promote (and
+   after load, for the already-promoted settlement), creates only venues whose
+   pack-defined condition holds and don't already exist, and names them from pure
+   philology (`mixSeed`-seeded, culture's own tongue). No persistence format change.
+4. **The pack owns the vocabulary.** WHICH venues a settlement raises (`VENUES` defs:
+   condition + naming) and WHICH event types happen where (`VENUE_HOSTS`) are pack data.
+   A pack with no venues simply has un-located events.
+5. **Only the lived-in-full settlement has venues.** Macro settlements' social lives are
+   aggregate; there is nothing to locate. Venues persist after demote and re-mint checks
+   keep re-promotion idempotent.
+
+**What this deliberately defers:** travel arrivals at the gate; org actions at the seat;
+per-venue lenses; households as Location entities (still a derived reading, §3.5 above);
+any venue-local simulation. Shipped 2026-07.
+
+## 9. Town-plan v2 — fidelity & realism
 
 **Document type:** Design note for a fidelity pass on the Close View plan. The L1 plan
 (§3.3) is a deliberately-crude radial *sketch* — spokes from the centre, houses jittered
@@ -339,7 +370,7 @@ along them (overlaps and all), civic buildings dropped at random angles, worksho
 scattered. It reads as *a* town, not as *this people's* town on *this ground*. v2 closes
 that gap in three tiers, all still **presentation-only** (zero sim/save state).
 
-### 8.1 The principle — realism is fidelity to the sim
+### 9.1 The principle — realism is fidelity to the sim
 
 In MythOS a town is believable when its form truthfully reads its facts: this culture,
 this wealth, this economy, this terrain, this history. So the goal is **not decoration**;
@@ -356,7 +387,7 @@ every element v2 adds must read a real fact. Two ideas carry the pass:
 Everything below stays deterministic (`mixSeed(seed, settlementId, …)`), pack-owned, and
 derived — a pack swap changes the vocabulary, never the engine.
 
-### 8.2 Tier 1 — structural realism (the big lifts)
+### 9.2 Tier 1 — structural realism (the big lifts)
 
 1. **Parcel placement (`Parcels`).** A claimed-footprint model replaces `Houses`' jitter:
    a candidate footprint is accepted only if it clears existing parcels, sits on buildable
@@ -371,7 +402,7 @@ derived — a pack swap changes the vocabulary, never the engine.
    packing density, and the building-shape set. This is the most MythOS-aligned lift:
    fidelity to *who lives there*.
 
-### 8.3 Tier 2 — sim-grounded detail (cheap now the terrain fields exist)
+### 9.3 Tier 2 — sim-grounded detail (cheap now the terrain fields exist)
 
 4. **Livelihood ← real geography.** Extend `Livelihood` with the §7 fields: **mills on
    fast river reaches** (`cellFlowSpeed`), **terraced fields on slopes** vs strip-plots on
@@ -385,7 +416,7 @@ derived — a pack swap changes the vocabulary, never the engine.
    distance-to-centre + `foundedYear` — weathered stone at the heart, fresh timber at the
    edge. Lands the "this town has lived" feel without new state.
 
-### 8.4 Tier 3 — polish
+### 9.4 Tier 3 — polish
 
 7. **Footprint variety** — attached row-houses in the dense core, walled compounds for the
    wealthy, plain cots at the fringe (not one rectangle repeated).
@@ -396,7 +427,7 @@ derived — a pack swap changes the vocabulary, never the engine.
 10. **Citadel + terrain-following walls** — a keep on the **highest ground** in the frame
     and a palisade that hugs defensible terrain (ties to `defensibility`, §7 conflict work).
 
-### 8.5 The Close View now zooms (supersedes the L1 "static vista")
+### 9.5 The Close View now zooms (supersedes the L1 "static vista")
 
 L1 shipped the Close View as a *fixed raster* — a composed vista, not a pannable stage
 (§3.6). That made magnifying it (browser/OS zoom, or just leaning in) hit the raster's
@@ -409,7 +440,7 @@ the frame tightens), nearing the ground now reveals *real* detail instead of a m
 smear. The SVG town-plan overlay rides the same transform, so plan and terrain stay locked.
 This is still pure presentation — no sim state, one seed all the way down.
 
-### 8.6 A 3D terrain view (WebGL prototype)
+### 9.6 A 3D terrain view (WebGL prototype)
 
 A flat 2D top-down paint has a hard ceiling — it can never read like a real fly-in, because
 below the 450² grid there is no real data and the shading is 2D. `ui/LocalTerrain3D.tsx` is a
@@ -497,13 +528,13 @@ flat drapes (fine on gentle ground, can clip on steep slopes), and vertical exag
 building scale is hand-tuned. StrictMode note: the WebGL context must NOT be `loseContext()`-ed
 on cleanup, or the remount reuses a dead context and every shader compile fails.
 
-### 8.7 What stays out of scope
+### 9.7 What stays out of scope
 
 Building interiors, per-building economics/sim, real population-history growth rings, and
 any pawn pathing — all still §3.7 / L4 territory. v2 is a richer *rendering* of facts the
 sim already produces, nothing more.
 
-### 8.8 Decision-filter check
+### 9.8 Decision-filter check
 
 1. *Improves the simulation?* Indirectly — it makes the sim's facts (culture, wealth,
    economy, terrain, age) far more legible in one glance.

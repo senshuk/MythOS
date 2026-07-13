@@ -123,7 +123,7 @@ why**. Two testable proxies:
 - **Content Registry** — runtime tables of typed records loaded from packs
   (species, governments, items, name grammars, dialogue pools…).
 - **Universe Pack** — a manifest that *selects which modules are on* and *provides
-  the content* that fills their schemas. (See `05-modules-and-universe-packs.md`.)
+  the content* that fills their schemas. (See `archive/05-modules-and-universe-packs.md`.)
 
 This cleanly separates "what the engine *can* do" (modules/code) from "what this
 world *is*" (pack/data) — the separation Warsim only achieved for races.
