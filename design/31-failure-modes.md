@@ -230,13 +230,40 @@ larger.
 
 The permanent, updatable table this document exists to maintain.
 
+**Prioritization (finalized after follow-up review, 2026-07-12).** Of the nine items
+below, three are cheap, high-leverage architectural-debt reductions and are scheduled;
+the rest are correctly deferred — a documented decision not to act, not an oversight.
+Ranked by cost-to-value:
+
+1. **#5 (`beliefReasons()` + shared Reasons/`ReasonProvider` convention)** — tiny cost,
+   the highest value in this document: a direct, confirmed violation of `17 §8`'s own
+   law, on the primitive every `30-mythic-layer.md` mechanism depends on. Spawned as its
+   own task, scope widened to standardize all four reasons functions (opinion/standing/
+   mood/belief) behind one shared convention — a coding convention, not a new primitive —
+   so `Inspector.tsx` can eventually ask any entity to explain itself generically rather
+   than special-casing each subsystem.
+2. **#2 (shared `decay()` helper)** — tiny cost, moderate value: pure deduplication, zero
+   behavior change, zero determinism risk. Spawned as its own task.
+3. **#3 (perf-sanity trip-wire test)** — small cost: the one genuine test-coverage gap
+   this review found. Spawned as its own task. Its *mitigations* (indexing
+   `orgAgreements`, indexing residents-by-settlement) remain correctly deferred — the
+   test's job is only to notice if/when they become necessary, not to build them now.
+
+**Correctly not scheduled**: #1 (Organization) is a watch item with an existing
+mitigation already in force, not an open action. #4 (cache invalidation rule) has nothing
+to build — the rule exists precisely so no cache gets built prematurely. #8's actual fix
+(`House.prestige`) was already spawned in the prior session. #6 and #7 are documentation/
+process items with no code to schedule. Deferring the index-based optimizations behind
+#3's trip-wire, rather than building them speculatively, is itself the correct
+architectural call, not a gap.
+
 | # | Failure signature | Detection method | Mitigation | Test coverage today |
 |---|---|---|---|---|
 | 1 | Organization accreting a 5th/6th engine module | `design/16`'s own stated policy: no new org features without roadmap justification | Already in force; re-state at each Organization-touching PR | `organization.test.ts`, `orgAction.test.ts`, `orgReason` tests exist; no automated "is Organization doing too much" check (a process discipline, not testable) |
-| 2 | A new decaying value added with its own ad hoc multiplier instead of a shared helper | Grep for `\* 0\.\d+` literals outside `mark.ts` | Extract a shared `decay(value, ratePerTick)` util next time `lod.ts`'s economy code is touched | None dedicated; existing determinism tests would catch a math regression, not the duplication itself |
-| 3 | Yearly-pass wall-clock growing faster than settlement/org count | No automated trip-wire exists today | Index `orgAgreements` by org-pair; index residents-by-settlement for `orgBeliefOf`/`orgStatusBeliefOf`/`worldviewOf`, when settlement count is raised materially past ~55 | **Gap**: no perf-sanity test exists (e.g. "step N years over a 200-settlement world under a time budget") — the single most concrete actionable gap this review found |
-| 4 | A reducer gets a cache with time-based or opportunistic invalidation | Code review against the rule in §4 | Cache invalidation must be tied to the exact Mark-write event, never else — stated now, before any cache exists | N/A — preventive rule |
-| 5 | A new Mark-consuming subsystem ships with no `*Reasons` function or Inspector branch | Manual checklist item on review: "does this belief/mark consumer have a reasons function and an inspector panel?" | Extract shared `Reasons` type + `<ReasonsList>` component; write the overdue `beliefReasons()` before `design/30`'s Belief-consuming mechanisms ship | None — a review-checklist gap, not a code gap |
+| 2 | A new decaying value added with its own ad hoc multiplier instead of a shared helper | Grep for `\* 0\.\d+` literals outside `mark.ts` | Extract a shared `decay(value, ratePerTick)` util next time `lod.ts`'s economy code is touched | **Scheduled** — spawned as a follow-up task |
+| 3 | Yearly-pass wall-clock growing faster than settlement/org count | No automated trip-wire exists today | Index `orgAgreements` by org-pair; index residents-by-settlement for `orgBeliefOf`/`orgStatusBeliefOf`/`worldviewOf` — deferred until settlement count is raised materially past ~55 | **Scheduled** — a perf-sanity test spawned as a follow-up task; the indexing mitigations themselves stay deferred |
+| 4 | A reducer gets a cache with time-based or opportunistic invalidation | Code review against the rule in §4 | Cache invalidation must be tied to the exact Mark-write event, never else — stated now, before any cache exists | N/A — preventive rule, nothing to schedule |
+| 5 | A new Mark-consuming subsystem ships with no `*Reasons` function or Inspector branch | Manual checklist item on review: "does this belief/mark consumer have a reasons function and an inspector panel?" | Extract a shared `Reasons` type/`ReasonProvider` convention + `<ReasonsList>` component; write the overdue `beliefReasons()` before `design/30`'s Belief-consuming mechanisms ship | **Scheduled** — spawned as a follow-up task, highest priority of the three |
 | 6 | A contributor assumes History/Chronicle/Director can be disabled via `MODULES` | Confusion/support question | One-line clarification in CLAUDE.md/`13` that history is core, not pack-optional | N/A |
 | 7 | A law proposed for `18-prime-movers.md` that only explains one subsystem | The three-question admission test (`18` §"Admission criteria") | Already in place | N/A, process discipline |
 | 8 | A monotonically-increasing stored "significance" number with no decay (the `House.prestige` class of bug) | Grep for `+=` on any renown/fame/importance-shaped field with no corresponding decay path | `House.prestige` fix already spawned as its own task (prior session) | `sim.determinism.dynasties.test.ts` checks ordering only — would not catch a *re-introduced* violation; recommend a dedicated regression test once the prestige fix lands |
@@ -248,3 +275,4 @@ The permanent, updatable table this document exists to maintain.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-07-12 | Initial failure-modes audit, commissioned as a stress test of architectural deformation rather than a search for missing mechanics. Investigated via four parallel codebase audits (primitive stretch, graph structures, reducer cost, inspectability + historical bias) plus a direct re-review of `18-prime-movers.md` against its own admission criteria. Findings: Organization is a confirmed, self-diagnosed stretch case with an existing mitigation; decay/accumulation outside the Mark substrate is duplicated ~7 times in `lod.ts` with no shared helper (classified as a refactor, not a new primitive); `orgBeliefOf`/`orgStatusBeliefOf`/`worldviewOf` full-scan `world.entities` rather than an indexed resident list, the single most concrete "cost grows with settlement count" finding; `beliefReasons()` is missing entirely, a confirmed violation of `17 §8`'s own stated law, with real consequences for `30-mythic-layer.md`'s pending Belief-consuming mechanisms; the History/Chronicle/Director-is-core boundary is confirmed intentional (matches CLAUDE.md's own vision), not hidden bias; Prime Movers passes its own admission test on every current law, no dilution found. Introduced no new primitives — every finding resolved to a refactor, a test, or a documentation fix. |
+| 1.1 | 2026-07-12 | Follow-up review prioritized §9's checklist rather than adding new findings: confirmed items #5 (beliefReasons + Reasons unification), #2 (shared decay helper), and #3 (perf-sanity trip-wire test) as the cheap, high-leverage set worth scheduling now, and confirmed everything else (Organization watch, cache-invalidation rule, the two indexing optimizations, House.prestige's already-spawned fix) is correctly deferred rather than overlooked. Widened #5's scope on review: unify all four reasons functions (opinion/standing/mood/belief) behind one shared convention (a `ReasonProvider`/`Explainable`-style interface) rather than just a shared return type, so `Inspector.tsx` can eventually ask any entity to explain itself without knowing every subsystem — explicitly a coding convention, not a new primitive. All three scheduled items spawned as follow-up tasks. |
