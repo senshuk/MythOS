@@ -66,6 +66,10 @@ const PLAY_YEARS = 100000;
 type NavTarget = { kind: 'ref'; ref: EventRef } | { kind: 'event'; id: number };
 const sameTarget = (a: NavTarget, b: NavTarget) =>
   a.kind === 'event' ? b.kind === 'event' && a.id === b.id : b.kind === 'ref' && a.ref.kind === b.ref.kind && a.ref.id === b.ref.id;
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+};
 
 export default function App() {
   const sim = useSim(123456);
@@ -172,7 +176,7 @@ export default function App() {
         e.preventDefault();
         setSearchOpen((o) => !o);
       }
-      if (e.key === 'Escape') setCloseViewId(null); // step back out to the world
+      if (e.key === 'Escape' && !isEditableTarget(e.target)) setCloseViewId(null); // step back out to the world
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

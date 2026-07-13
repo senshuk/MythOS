@@ -4,7 +4,7 @@
  * clicking still commits to a full inspection. One layer serves the whole app via
  * context, so panels never carry tooltip plumbing of their own.
  */
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EventRef, PeekCard } from '../engine/model';
 import { HouseShield } from './heraldry';
 
@@ -57,6 +57,7 @@ export function PeekLayer({
     seq.current++;
     setOpen(null);
   }, []);
+  useEffect(() => hide, [hide]);
 
   return (
     <PeekContext.Provider value={{ show, hide }}>

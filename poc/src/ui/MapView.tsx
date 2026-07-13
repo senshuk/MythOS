@@ -60,6 +60,7 @@ export function RegionMap({
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
   const pinchDist = useRef(0);
   const movedRef = useRef(false);
+  const clickTimer = useRef<number | undefined>(undefined);
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
   const [hover, setHover] = useState<{ name: string; meaning?: string; sub: string; cx: number; cy: number } | null>(null);
 
@@ -94,6 +95,7 @@ export function RegionMap({
       window.removeEventListener('resize', measure);
     };
   }, []);
+  useEffect(() => () => window.clearTimeout(clickTimer.current), []);
   const baseVB = useMemo(() => {
     const A0 = MAP_VB.w / MAP_VB.h;
     const A = boxSize.w > 1 && boxSize.h > 1 ? boxSize.w / boxSize.h : A0;
@@ -432,10 +434,12 @@ export function RegionMap({
                 className={busy ? 'mnode' : 'mnode clickable'}
                 onClick={() => {
                   if (movedRef.current) return;
-                  if (!busy) onInspect(n.id);
+                  window.clearTimeout(clickTimer.current);
+                  if (!busy) clickTimer.current = window.setTimeout(() => onInspect(n.id), 180);
                 }}
                 onDoubleClick={() => {
                   if (movedRef.current || busy) return;
+                  window.clearTimeout(clickTimer.current);
                   onEnter?.(n.id);
                 }}
                 onMouseEnter={enter}

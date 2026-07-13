@@ -326,13 +326,22 @@ export function PlayerPanel({
 
   const action = player.actions.find((a) => a.kind === actionKind) ?? player.actions[0];
   const needsTarget = action.needsTarget;
+  useEffect(() => {
+    if (!player.actions.some((a) => a.kind === actionKind)) {
+      setActionKind(player.actions[0].kind);
+      setTargetId('');
+    }
+  }, [actionKind, player.actions]);
+  useEffect(() => {
+    if (targetId !== '' && !player.targets.some((t) => t.id === targetId)) setTargetId('');
+  }, [targetId, player.targets]);
   const canAct = player.alive && !busy && (!needsTarget || targetId !== '');
 
   const submit = () => {
     if (!canAct) return;
     const intent: Intent = needsTarget
-      ? ({ kind: actionKind, target: Number(targetId) } as Intent)
-      : ({ kind: actionKind } as Intent);
+      ? ({ kind: action.kind, target: Number(targetId) } as Intent)
+      : ({ kind: action.kind } as Intent);
     act(intent);
   };
 

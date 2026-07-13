@@ -101,7 +101,8 @@ export function SearchPalette({
       setQ('');
       setSel(0);
       // focus after the overlay paints
-      requestAnimationFrame(() => inputRef.current?.focus());
+      const id = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
     }
   }, [open]);
 
@@ -125,7 +126,10 @@ export function SearchPalette({
             placeholder="Find a place, House, figure, soul, people…"
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') onClose();
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                onClose();
+              }
               else if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, results.length - 1)); }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
               else if (e.key === 'Enter' && results[sel]) go(results[sel]);
