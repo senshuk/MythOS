@@ -37,6 +37,8 @@ philology, culture generation).
 | Biomes | `content/biomes.ts` | Biome classification feeding settlement viability, resources |
 | Settlement founding & location model | `location.ts` (+ `.test.ts`) | Settlement placement, hierarchy, legibility (`design/28-settlement-legibility.md`) |
 | Local/close-view maps | `content/localmap.ts`, `design/24-local-maps.md` | Planet ↔ generated local map (RimWorld-style "Close View"); L1–L4 shipped |
+| Settlement Fortunes | `content/localmap.ts` (`Fortunes`), `design/28-settlement-legibility.md` §2 | Derived decline/prosperity/war/faith read (−1..+1) manifesting as derelict houses, fresh building, a graveyard, watchtowers — #1 of that doc, shipped |
+| Architecture by culture | `content/architecture.ts` (`archStyleFor`), `design/28-settlement-legibility.md` §3 | Pack-defined building styles (wall/roof colour, roof shape, chimney) assigned deterministically per culture — #2 of that doc, shipped |
 | Venues | `venues.ts` (+ `.test.ts`), `content/venues.ts`, `design/24-local-maps.md` §8 | Concrete places-within-settlements (taverns, temples, markets) as the L4 local-map layer |
 | Terrain rendering (3D) | `ui/terrain.ts`, `ui/terrain3dGeo.ts`, `ui/terrainWorker.ts` | Presentation-layer 3D map, decoupled from sim data |
 

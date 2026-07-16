@@ -140,8 +140,10 @@ export function isRuler(world: World, id: EntityId): boolean {
 }
 
 /** Whether this actor's polity even has a leadership seat to aspire to (not a
- *  leaderless government). */
+ *  leaderless government), AND this Age's Rules still permit a peaceful bid for it — so
+ *  the ambition/aspiration offer and what pressClaim actually allows never drift
+ *  (design/30 §4.6: the Resolver's illegality must be visible before the player tries). */
 export function canSeekRule(world: World, id: EntityId): boolean {
   const h = world.homeSettlement.get(id);
-  return h !== undefined && hasLeader(world.settlements[h].governmentId);
+  return h !== undefined && hasLeader(world.settlements[h].governmentId) && world.rules.succession.claimsEnabled;
 }

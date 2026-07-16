@@ -415,11 +415,103 @@ export interface TerrainLabel {
  *  can be structured-cloned to a Web Worker (a class instance / methods would not survive). */
 export type GeoFields = Pick<Geography, 'size' | 'elevation' | 'moisture' | 'temperature' | 'fertility' | 'water' | 'hilliness' | 'seaLevel'>;
 
+/** A GROUND SURFACE the town plan lays over the terrain (design/32 §3) — packed earth, a
+ *  cobbled core, turned field soil. The painter knows only geometry + colour; the surface
+ *  VOCABULARY is the pack's. Discs (`r`) or rotated rects (`w`/`h`/`rot`), world units.
+ *  Painted with a hash-DITHERED boundary (never a lerp): discrete materials with irregular
+ *  edges are what make ground read as ground instead of a gradient. */
+export interface GroundPatch {
+  /** pack vocabulary (e.g. 'packed' | 'cobble' | 'soil') — the painter treats it as opaque */
+  surface: string;
+  x: number; y: number;
+  r?: number; // disc radius
+  w?: number; h?: number; rot?: number; // rotated rect
+  tone: [number, number, number];
+  /** 0..1 — per-dither-cell brightness variation (cobblestones, clods) */
+  speckle?: number;
+  /** 0..1 — how fully the surface replaces the land colour where it wins the dither */
+  blend: number;
+}
+
+/** dither cells are WORLD-ANCHORED (the same world spot lands in the same cell, so the grain
+ *  holds still through a pan) but SCREEN-SIZED (~2.5px however far in you are) — a fixed world
+ *  frequency degenerates to sub-pixel noise zoomed out and to giant blocks zoomed in. */
+const ditherFreq = (W: number, vbW: number) => Math.min(96, Math.max(14, (W / vbW) * 0.4));
+/** the CLUMP field: smooth noise sampled on the dither-cell grid. Thresholding a material
+ *  against this (rather than a per-cell hash) makes it come and go in ragged, cell-quantized
+ *  CLUMPS — the reference-map dither — instead of salt-and-pepper speckle. */
+const clumpAt = (cx: number, cy: number, seed: number) => vnoise(cx * 0.33, cy * 0.33, seed);
+
 /** The heavy per-pixel terrain computation — canvas-free, so it can run OFF the main thread in a
  *  Web Worker (see terrainWorker.ts). At the close view it evaluates dozens of noise octaves per
  *  pixel over millions of pixels (~2s), which would freeze the UI if run inline. Returns a W*H*4
  *  RGBA buffer; the caller does the cheap putImageData + vignette + labels via `paintTerrainOverlay`. */
-export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceTheme, W: number, H: number): Uint8ClampedArray {
+/** The per-GEOGRAPHY derived tables — view-independent, so they are computed once per world
+ *  and reused by every repaint (zoom, pan, resize — and the world map and close view share
+ *  them when both look at the same world).
+ *
+ *  - LAND COLOUR per cell: the biome tint (+ snow) for EVERY cell, even submerged ones.
+ *    Water is NOT baked in: it is decided per-pixel in the paint loop so the coastline stays
+ *    crisp at any zoom, and the bilinear land blend near a shore interpolates land↔land
+ *    (never land↔water), so a beach never bleeds a muddy ramp of sea-colour up the shore.
+ *  - CHANNEL stamp: a shallow valley around every river cell (design/24 §8), bilinear-sampled
+ *    per pixel like elevation; the paint scales it by its zoom gate (`CHANNEL_DEPTH`).
+ *
+ *  Keyed by the caller's `cacheKey` (the world seed) — the worker's structured-cloned geo
+ *  arrays are new objects per request, so identity can't key this. Uncached when no key is
+ *  given. Pure derivation of the geography: caching cannot affect determinism. */
+interface GeoTables { landR: Float32Array; landG: Float32Array; landB: Float32Array; chan: Float32Array }
+const geoTablesCache = new Map<number, GeoTables>();
+function geoTablesFor(geo: GeoFields, cacheKey?: number): GeoTables {
+  if (cacheKey !== undefined) {
+    const hit = geoTablesCache.get(cacheKey);
+    if (hit) return hit;
+  }
+  const N = geo.size;
+  const E = geo.elevation;
+  const M = geo.moisture;
+  const T = geo.temperature;
+  const WTR = geo.water;
+  const NN = N * N;
+  const landR = new Float32Array(NN);
+  const landG = new Float32Array(NN);
+  const landB = new Float32Array(NN);
+  for (let ci = 0; ci < NN; ci++) {
+    const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
+    let c: RGB = [col[0], col[1], col[2]];
+    const e = E[ci];
+    const temp = T[ci];
+    if (e > 0.72 && temp < 0.4) {
+      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
+      const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
+      c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
+    }
+    landR[ci] = c[0];
+    landG[ci] = c[1];
+    landB[ci] = c[2];
+  }
+  const chan = new Float32Array(NN);
+  for (let ci = 0; ci < NN; ci++) {
+    if (WTR[ci] !== WATER_RIVER) continue;
+    const cx0 = ci % N, cy0 = (ci / N) | 0;
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+      const x = cx0 + di, y = cy0 + dj;
+      if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      const f = Math.max(0, 1 - Math.hypot(di, dj) / 2.0);
+      const k = y * N + x;
+      if (f > chan[k]) chan[k] = f;
+    }
+  }
+  const tables: GeoTables = { landR, landG, landB, chan };
+  if (cacheKey !== undefined) {
+    geoTablesCache.set(cacheKey, tables);
+    // keep the couple most recent worlds (reforging with a new seed drops the old)
+    if (geoTablesCache.size > 2) geoTablesCache.delete(geoTablesCache.keys().next().value!);
+  }
+  return tables;
+}
+
+export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceTheme, W: number, H: number, cacheKey?: number, ground?: GroundPatch[]): Uint8ClampedArray {
   const N = geo.size;
   const E = geo.elevation;
   const M = geo.moisture;
@@ -457,50 +549,63 @@ export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceT
   // the close view — there the crisp SVG river RIBBON (LocalMapView) carries the water instead.
   const riverTintK = Math.max(0, Math.min(1, (vb.w - 18) / 30)); // 0 at close view, 1 on the world map
 
-  // 1) LAND COLOUR per cell — the biome tint (+ snow) for EVERY cell, even submerged ones.
-  //    Water is NOT baked in here: it is decided per-pixel in the loop (see below) so the
-  //    coastline stays crisp at any zoom. Computing a land colour for water cells too means
-  //    the bilinear land blend near a shore interpolates land↔land (never land↔water), so a
-  //    beach never bleeds a muddy ramp of sea-colour up the shore.
-  const NN = N * N;
-  const landR = new Float32Array(NN);
-  const landG = new Float32Array(NN);
-  const landB = new Float32Array(NN);
-  for (let ci = 0; ci < NN; ci++) {
-    const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
-    let c: RGB = [col[0], col[1], col[2]];
-    const e = E[ci];
-    const temp = T[ci];
-    if (e > 0.72 && temp < 0.4) {
-      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
-      const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
-      c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
-    }
-    landR[ci] = c[0];
-    landG[ci] = c[1];
-    landB[ci] = c[2];
-  }
-
-  // 1b) CHANNEL DEPTH per cell — a shallow valley stamped around every river cell, so the
-  //     close-view relief carries the watercourse as a carved trench (design/24 §8). Sparse
-  //     (only river cells stamp), then bilinear-sampled per pixel like elevation. Faded with
-  //     the same zoom gate as the river tint so it never disturbs the world map.
-  const chan = new Float32Array(NN);
+  // 1) the per-GEOGRAPHY derived tables (land-colour LUT + channel stamp) — cached by
+  //    world seed, so a zoom/pan repaint skips ~N² biomeOf calls (see geoTablesFor).
+  const { landR, landG, landB, chan } = geoTablesFor(geo, cacheKey);
   const CHANNEL_DEPTH = 0.02 * Math.max(0, Math.min(1, 1 - (vb.w - 6) / 18)); // strongest zoomed-in, gone by world scale
-  if (CHANNEL_DEPTH > 0) {
-    for (let ci = 0; ci < NN; ci++) {
-      if (WTR[ci] !== WATER_RIVER) continue;
-      const cx0 = ci % N, cy0 = (ci / N) | 0;
-      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
-        const x = cx0 + di, y = cy0 + dj;
-        if (x < 0 || y < 0 || x >= N || y >= N) continue;
-        const f = Math.max(0, 1 - Math.hypot(di, dj) / 2.0);
-        const k = y * N + x;
-        if (f > chan[k]) chan[k] = f;
-      }
-    }
-  }
   const chanDepth = (gx: number, gy: number) => bilinear(chan, N, gx, gy) * CHANNEL_DEPTH;
+  // materials (dithered beach/rock hardening) only engage at close zoom — the world map's
+  // thin bands would just read as speckle. The same ≤30 gate as the other close-view knobs.
+  const matGate = vb.w < 30;
+
+  // 1c) GROUND SURFACES (design/32 §3) — stamp the plan's patches into a per-pixel strength
+  //     mask (1 at a patch's core, falling to 0 at its soft rim). The pixel loop then dithers
+  //     each pixel's strength against a world-anchored hash, so the boundary is an irregular
+  //     material edge, not a blend. Later patches win ties (a cobbled core over packed earth).
+  let gStr: Float32Array | undefined;
+  let gIdx: Uint8Array | undefined;
+  if (ground && ground.length > 0) {
+    gStr = new Float32Array(W * H);
+    gIdx = new Uint8Array(W * H);
+    const pxPerW = W / vb.w, pyPerH = H / vb.h;
+    ground.slice(0, 255).forEach((p, pi) => {
+      if (p.r !== undefined) {
+        const px0 = Math.max(0, Math.floor((p.x - p.r - vb.x) * pxPerW)), px1 = Math.min(W - 1, Math.ceil((p.x + p.r - vb.x) * pxPerW));
+        const py0 = Math.max(0, Math.floor((p.y - p.r - vb.y) * pyPerH)), py1 = Math.min(H - 1, Math.ceil((p.y + p.r - vb.y) * pyPerH));
+        for (let py = py0; py <= py1; py++) {
+          const wy = vb.y + ((py + 0.5) / H) * vb.h;
+          for (let px = px0; px <= px1; px++) {
+            const wx = vb.x + ((px + 0.5) / W) * vb.w;
+            const d = Math.hypot(wx - p.x, wy - p.y) / p.r;
+            if (d >= 1) continue;
+            const s = Math.min(1, (1 - d) / 0.5); // full core, a broad outer rim to dither over
+            const k = py * W + px;
+            if (s >= gStr![k]) { gStr![k] = s; gIdx![k] = pi; }
+          }
+        }
+      } else if (p.w !== undefined && p.h !== undefined) {
+        const rr = Math.hypot(p.w, p.h) / 2;
+        const px0 = Math.max(0, Math.floor((p.x - rr - vb.x) * pxPerW)), px1 = Math.min(W - 1, Math.ceil((p.x + rr - vb.x) * pxPerW));
+        const py0 = Math.max(0, Math.floor((p.y - rr - vb.y) * pyPerH)), py1 = Math.min(H - 1, Math.ceil((p.y + rr - vb.y) * pyPerH));
+        const co = Math.cos(-(p.rot ?? 0)), si = Math.sin(-(p.rot ?? 0));
+        const hw = p.w / 2, hh = p.h / 2;
+        for (let py = py0; py <= py1; py++) {
+          const wy = vb.y + ((py + 0.5) / H) * vb.h;
+          for (let px = px0; px <= px1; px++) {
+            const wx = vb.x + ((px + 0.5) / W) * vb.w;
+            const dx = wx - p.x, dy = wy - p.y;
+            const lx = Math.abs(dx * co - dy * si), ly = Math.abs(dx * si + dy * co);
+            if (lx >= hw || ly >= hh) continue;
+            // strength falls off over the outer 20% of the shorter half-extent
+            const edge = Math.min(hw - lx, hh - ly) / (Math.min(hw, hh) * 0.2);
+            const s = Math.min(1, edge);
+            const k = py * W + px;
+            if (s >= gStr![k]) { gStr![k] = s; gIdx![k] = pi; }
+          }
+        }
+      }
+    });
+  }
 
   // 2) pixel loop. The land/water boundary is resolved PER PIXEL from the (bilinearly
   //    interpolated) elevation field, perturbed by sub-cell fractal noise near the waterline —
@@ -583,13 +688,25 @@ export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceT
         r = bilinear(landR, N, gx, gy);
         g = bilinear(landG, N, gx, gy);
         b = bilinear(landB, N, gx, gy);
-        // a sandy BEACH on warm low land right at the waterline (crisp, per-pixel).
+        // the dither cell this pixel falls in — one cell, every material decision (beach,
+        // outcrop, ground surface) quantizes to it, so edges are irregular, chunky, and
+        // hold still through a pan (world-anchored phase).
+        const dfq = ditherFreq(W, vb.w);
+        const cw = Math.floor((vb.x + ((px + 0.5) / W) * vb.w) * dfq);
+        const chh = Math.floor((vb.y + ((py + 0.5) / H) * vb.h) * dfq);
+        // a sandy BEACH on warm low land right at the waterline. At close zoom the beach is a
+        // MATERIAL: solid sand in a compact band at the water, grass right up to it, and a
+        // ragged CLUMPED edge between (design/32 §3) — never a wide speckled wash. The world
+        // map keeps its soft ramp.
         const temp = T[nci];
         if (eP < sea + 0.018 && temp > 0.34) {
           const beach = Math.max(0, 1 - (eP - sea) / 0.018);
-          r = lerp(r, sand[0], beach * 0.7);
-          g = lerp(g, sand[1], beach * 0.7);
-          b = lerp(b, sand[2], beach * 0.7);
+          const bk = matGate
+            ? (beach * 1.4 + (clumpAt(cw, chh, 1697) - 0.5) * 0.9 > 0.75 ? 0.85 : beach * 0.12)
+            : beach * 0.7;
+          r = lerp(r, sand[0], bk);
+          g = lerp(g, sand[1], bk);
+          b = lerp(b, sand[2], bk);
         }
         const e = ePlain;
         const gxp = Math.min(N - 1, gx + shadeDelta);
@@ -650,6 +767,13 @@ export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceT
             r = lerp(r, 150, bare * 0.5);
             g = lerp(g, 150, bare * 0.5);
             b = lerp(b, 152, bare * 0.5);
+            // clumped OUTCROPS (design/32 §3): on the barest crests, whole patches of cells
+            // harden to stone — coherent rock clumps, never salt-and-pepper speckle.
+            if (matGate && bare > 0.1 && bare * 2 + (clumpAt(cw, chh, 733) - 0.5) * 0.8 > 0.9) {
+              r = lerp(r, 148, 0.7);
+              g = lerp(g, 146, 0.7);
+              b = lerp(b, 150, 0.66);
+            }
             const temp = T[nci];
             if (temp < 0.42) {
               const snow = bare * Math.min(1, (0.42 - temp) / 0.3);
@@ -697,6 +821,20 @@ export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceT
           r = lerp(r, river[0], t);
           g = lerp(g, river[1], t);
           b = lerp(b, river[2], t);
+        }
+        // GROUND SURFACES (design/32 §3): where the plan laid a material and this cell wins
+        // the dither, the surface replaces the land colour — lit by the same hillshade so the
+        // floor sits in the light, speckled per cell so cobbles read as individual stones.
+        if (gStr) {
+          const k = py * W + px;
+          const m = gStr[k];
+          if (m > 0 && m + (clumpAt(cw, chh, 4242) - 0.5) * 0.55 > 0.5) {
+            const gp = ground![gIdx![k]];
+            const sp = gp.speckle ? 1 + (hash2(cw, chh, 9091) - 0.5) * gp.speckle : 1;
+            r = lerp(r, gp.tone[0] * sp * s, gp.blend);
+            g = lerp(g, gp.tone[1] * sp * s, gp.blend);
+            b = lerp(b, gp.tone[2] * sp * s, gp.blend);
+          }
         }
       }
       const i = (py * W + px) * 4;
@@ -747,12 +885,12 @@ export function paintTerrainOverlay(ctx: CanvasRenderingContext2D, buf: Uint8Cla
 /** Synchronous terrain paint — computes the pixels inline then finishes. Used by the world map
  *  (cheap at world zoom, where the per-pixel synth relief is disabled) and as a worker fallback.
  *  The CLOSE view offloads `computeTerrainImage` to a Web Worker instead (see LocalMapView). */
-export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[]): void {
+export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[], cacheKey?: number, ground?: GroundPatch[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const W = canvas.width;
   const H = canvas.height;
-  const buf = computeTerrainImage(geo, vb, theme, W, H);
+  const buf = computeTerrainImage(geo, vb, theme, W, H, cacheKey, ground);
   paintTerrainOverlay(ctx, buf, vb, theme, W, H, labels);
 }
 

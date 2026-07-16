@@ -7,7 +7,7 @@
  * (no DOM/canvas), so it imports cleanly into the worker; the main thread does the cheap
  * putImageData + labels once the buffer arrives.
  */
-import { computeTerrainImage, type GeoFields, type ViewBox } from './terrain';
+import { computeTerrainImage, type GeoFields, type GroundPatch, type ViewBox } from './terrain';
 import type { SurfaceTheme } from '../content/mapstyles';
 
 export interface TerrainPaintRequest {
@@ -17,6 +17,11 @@ export interface TerrainPaintRequest {
   theme: SurfaceTheme;
   W: number;
   H: number;
+  /** the world seed — keys the worker-side cache of per-geography tables (the cloned geo
+   *  arrays are new objects each request, so identity can't). */
+  key?: number;
+  /** the town plan's ground surfaces (design/32 §3) — dithered materials under the town */
+  ground?: GroundPatch[];
 }
 export interface TerrainPaintResponse {
   id: number;
@@ -26,8 +31,8 @@ export interface TerrainPaintResponse {
 }
 
 self.onmessage = (e: MessageEvent<TerrainPaintRequest>) => {
-  const { id, geo, vb, theme, W, H } = e.data;
-  const buf = computeTerrainImage(geo, vb, theme, W, H);
+  const { id, geo, vb, theme, W, H, key, ground } = e.data;
+  const buf = computeTerrainImage(geo, vb, theme, W, H, key, ground);
   // transfer the pixel buffer (zero-copy) back to the main thread
   (self as unknown as Worker).postMessage({ id, buf, W, H } satisfies TerrainPaintResponse, [buf.buffer]);
 };

@@ -5,7 +5,12 @@ comes to *show* the simulation that made it: its fortunes, its faith, its wars, 
 culture, its life. Fidelity in service of comprehension (CLAUDE.md), not decoration.
 **Companion documents:** `24-local-maps.md` (the Close View + town plan pipeline),
 `27-lived-in-villages.md` (inhabitants, gatherings), `22-mood-and-causal-worldgen.md`.
-**Status:** proposed. Implementing **#1 (Fortunes)** first.
+**Status:** **#1 (Fortunes) and #2 (Architecture by culture & role) SHIPPED** —
+`content/localmap.ts`'s `Fortunes` interface/computation and `content/architecture.ts`'s
+5-style `ArchStyle` system (wired in via `archStyleFor(cultureId)`) are both live in the
+PoC; this status line had gone stale (corrected 2026-07-13). **#3 (Ambient life)** is the
+current next item — not yet built (confirmed by codebase check: no chimney-smoke,
+livestock, or day-rhythm rendering exists yet).
 
 ---
 
@@ -24,7 +29,7 @@ sim state the plan **already receives** (`SettlementView`: `stability`, `wealth`
 `subsistenceSecurity`, `civilWarYear`, `polity.wars`, `foundedYear`, `patronDeity`; plus
 the `chronicle`) — no new engine tracking.
 
-## 2. #1 — Fortunes (implementing first)
+## 2. #1 — Fortunes (SHIPPED)
 
 A single derived **fortune** (−1 declining … +1 prospering) from `stability`, food
 security and wealth, plus flags for recent grief/boom and war (chronicle + `polity.wars`
@@ -47,14 +52,14 @@ security and wealth, plus flags for recent grief/boom and war (chronicle + `poli
 All deterministic, all traced to a fact ("why is this quarter derelict? — the town has
 lost a third of its people since the plague of y162").
 
-## 3. #2 — Architecture by culture & role (next)
+## 3. #2 — Architecture by culture & role (SHIPPED — `content/architecture.ts`)
 
 Pack-defined **building styles per culture** (timber+thatch, stone+slate, adobe+flat,
 conical) so a Tamar village and a foreign town don't share a silhouette — reinforcing
 "every culture is different". Building **detail** (doors, windows, chimneys) so a house
 reads as a dwelling. Roof variety by culture × wealth.
 
-## 4. #3 — Ambient life (extends design/27)
+## 4. #3 — Ambient life (extends design/27) — the current next item
 
 **Chimney smoke** (the cheapest "inhabited" cue); **livestock** in pastures / **boats**
 at piers / drying racks — the specialization alive; **render the gatherings** already

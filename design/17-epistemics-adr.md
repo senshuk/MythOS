@@ -108,7 +108,7 @@ Because every Belief carries `source`, the provenance chain is already the answe
 
 ## 9. Decisions and remaining forks
 
-Ratified after the Prime Movers capstone (`18`) and a confidence/arbitration review. RESOLVED items are load-bearing. Only §9.6 stays open — and it lives in *propagation*, not the substrate, so it does not block the `Mark` refactor.
+Ratified after the Prime Movers capstone (`18`) and a confidence/arbitration review. RESOLVED items are load-bearing. Every fork is now closed: §9.6, the last open one, was settled by Legend Drift (`30` §4.1) — it lived in *propagation*, not the substrate, so it never blocked the `Mark` refactor.
 
 ### 9.1 Confidence math — RESOLVED: two-axis, derived, never stored
 
@@ -174,9 +174,18 @@ Confirmed by Prime Movers §1 (one subjective layer, one per entity). Actors car
 
 Prime Movers' two-layer world (objective vs. a hold on it) makes belief-about-belief a *third* layer. Deferred; revisit only if organizational diplomacy demands it.
 
-### 9.6 Distortion model — OPEN (belongs to propagation, not the substrate)
+### 9.6 Distortion model — RESOLVED: the ASSERTION mutates, past a pack threshold (Legend Drift)
 
-What mutates when a testimony is retold — its confidence, its detail, its subject, its assertion? Recommendation: v1 lowers `sourceTrust`/`observationConfidence` along the chain and drops detail; assertion-mutation ("the king was *poisoned*") is a later, higher-drama increment. This decision is needed before propagation is coded, not before the `Mark` refactor.
+What mutates when a testimony is retold — its confidence, its detail, its subject, its assertion? **Both, in that order.** Ordinary testimony (`tellBelief`) attenuates `sourceTrust`/`observationConfidence` per hop, as §9.6 originally recommended for v1. The higher-drama increment it deferred — assertion-mutation ("the king was *poisoned*") — is now shipped as **Legend Drift** (`30-mythic-layer.md` §4.1, `engine/belief.ts`'s `retell` producer):
+
+- **When.** Only once a story crosses a pack threshold of hops-in-chain (`DRIFT_HOPS`) *or* years-since-the-original-event (`DRIFT_YEARS`); an eligible retelling then distorts with pack-set probability (`DRIFT_CHANCE`). Nothing drifts while an event is still close at hand — drift is a slow curdle, not noise.
+- **Into what.** A pack-owned table keyed by the base assertion (`DRIFT_SPECS`: `dead` → {`slain`, `taken-by-the-sea`, `cursed`, …}). The engine knows only "a retelling may distort past a threshold"; a universe of meticulous record-keepers ships no table and never drifts. A drifted assertion is `<base>#<variant>` — its own proposition, on the same evidence stack, so a witness who was there can contradict the legend.
+- **How drawn.** A PURE HASH of the retelling chain — `(seed, source event, teller, depth)` — never `world.rng`, never `world.tick` (the discipline of `24-local-maps.md` §8 law 2). A distorted history is exactly as reproducible as a clean one, and a teller tells their version identically to everyone, so a legend spreads coherently instead of dissolving.
+- **Legibility (§8).** Evidence carries `hops`, plus `driftedFrom`/`driftedAt` — set where the tale turned and *carried forward by every faithful retelling after it*, so any holder of a legend can name the exact retelling it changed at, not just whoever changed it. Surfaced by `driftReasons` through the shared `Reason`/ReasonsList surface.
+
+Subject-mutation and detail-loss remain unbuilt, and are not blocking: a subject swap ("it was the *prince*, not the king") is the same producer with a different draw target, if a pack ever wants it.
+
+**Consumer.** `chronicle.ts`'s `cultureLegendOf`/`renderLegendFor` render a culture's *currently held* belief about an event rather than the objective Event — derived from its members exactly as `orgBeliefOf` derives an institution's, so subjectivity still exists only where agency exists. Two peoples' oral histories of one death now genuinely diverge.
 
 ### 9.7 Assertion kinds: event vs status (monotonic vs competitive) — SHIPPED (1D-minimal)
 

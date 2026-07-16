@@ -56,14 +56,25 @@ export function dropExpired<T extends Mark>(marks: T[], tick: number): T[] {
   return marks.some((m) => !isActive(m, tick)) ? marks.filter((m) => isActive(m, tick)) : marks;
 }
 
-/** Index marks by their `kind`, preserving input order within each bucket (Map keeps
- *  insertion order of kinds, so a downstream fold is deterministic). */
-export function indexByKind<T extends Mark>(marks: T[]): Map<string, T[]> {
-  const byKind = new Map<string, T[]>();
+/**
+ * Index marks by a caller-supplied key, preserving input order within each bucket (Map keeps
+ * insertion order of keys, so a downstream fold is deterministic). The substrate stays ignorant:
+ * WHAT the key means is the consumer's concern — this only buckets and preserves order. A
+ * consumer that groups by something richer than `kind` (belief.ts distinguishes a retelling that
+ * changed the story from a plain one) reuses this rather than hand-rolling a Map.
+ */
+export function indexBy<T extends Mark>(marks: T[], key: (m: T) => string): Map<string, T[]> {
+  const by = new Map<string, T[]>();
   for (const m of marks) {
-    const arr = byKind.get(m.kind);
+    const k = key(m);
+    const arr = by.get(k);
     if (arr) arr.push(m);
-    else byKind.set(m.kind, [m]);
+    else by.set(k, [m]);
   }
-  return byKind;
+  return by;
+}
+
+/** Index marks by their `kind` — the common case of `indexBy`. */
+export function indexByKind<T extends Mark>(marks: T[]): Map<string, T[]> {
+  return indexBy(marks, (m) => m.kind);
 }

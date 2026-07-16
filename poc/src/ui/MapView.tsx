@@ -157,10 +157,10 @@ export function RegionMap({
       w: baseVB.w / v.s,
       h: baseVB.h / v.s,
     };
-    paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels);
+    paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels, seed);
     paintedView.current = { ...v };
     c.style.transform = '';
-  }, [sub, mapLabels, baseVB]);
+  }, [sub, mapLabels, baseVB, seed]);
 
   useEffect(() => {
     if (!(sub instanceof SurfaceSubstrate)) return;
