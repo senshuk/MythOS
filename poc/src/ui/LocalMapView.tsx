@@ -12,7 +12,7 @@ import type { RegionMapView, SettlementView, EventRef, EventView, HouseholdView 
 import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
-import { buildLocalPlan, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
+import { buildLocalPlan, LOCAL_FRAME, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
 import { ARCH_BY_ID } from '../content/architecture';
 import { paintTerrain, paintTerrainOverlay, finishTerrain, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields, type GroundPatch } from './terrain';
 import { createTerrainGpu, type TerrainGpu } from './terrainGpu';
@@ -23,7 +23,7 @@ import { featureName } from '../engine/pack';
 import { Icon } from './icons';
 
 const SURF_THEME = (MAP_STYLES.find((s) => s.style.kind === 'surface')?.style as Extract<MapStyle, { kind: 'surface' }> | undefined)?.theme;
-const FRAME = 11; // world units the frame's short side spans (~a town and its hinterland)
+const FRAME = LOCAL_FRAME; // the plan owns this — a through-road's reach is measured against it
 
 export function LocalMapView({
   settlement,

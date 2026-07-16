@@ -12,7 +12,17 @@ import type { LocalPlan } from '../content/localmap';
 import { ARCH_BY_ID, type ArchStyle, type SurfaceMat } from '../content/architecture';
 
 export const RES = 200; // terrain vertices per side
-export const VSCALE = 26; // vertical exaggeration (real relief is subtle over a few km)
+/**
+ * Vertical exaggeration. Real relief IS subtle over a few km, so some is needed — but this was
+ * 26, and measured against the world it renders that made the MEDIAN acre of land a 24° slope
+ * (p90 50°, p99 67°) on ground the simulation itself calls flat or rolling. 93% of land is
+ * flat/rolling and every settlement sits on it; the world was never mountainous, it was drawn
+ * that way. At 8 the same terrain reads median 8°, p90 20°, p99 36° — gentle farmland, real
+ * hills, the occasional crag. (Reference: farmland is <5%, rolling ~8%, hilly 10–15%.)
+ *
+ * Presentation only: VSCALE exists nowhere but this file, so no seed, save, or sim hash moves.
+ */
+export const VSCALE = 8;
 
 export interface Accum { pos: number[]; nrm: number[]; col: number[]; idx: number[]; n: number; sea?: number[]; uv: number[]; mat: number[] }
 const newAccum = (): Accum => ({ pos: [], nrm: [], col: [], idx: [], n: 0, uv: [], mat: [] });

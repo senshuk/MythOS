@@ -4,7 +4,7 @@
  * shape the town; its chronicle leaves clickable marks.
  */
 import { describe, it, expect } from 'vitest';
-import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree, type PlanProp, type PlanPerson, type PlanInterior, type PlanPath } from './localmap';
+import { buildLocalPlan, LOCAL_FRAME, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree, type PlanProp, type PlanPerson, type PlanInterior, type PlanPath } from './localmap';
 import { archStyleFor } from './architecture';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
@@ -494,6 +494,94 @@ describe('layout: clusters, not scatter (design/32 §6)', () => {
     const a = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', population: 420 }));
     const b = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', population: 420 }));
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe('streets are roads, not scribbles', () => {
+  const streetsOf = (o: Partial<SettlementView> = {}) =>
+    buildLocalPlan(worldFacts({ population: 420, ...o })).items.filter((i): i is PlanPath => i.kind === 'street');
+  const turnAt = (pts: { x: number; y: number }[], k: number) => {
+    const a0 = Math.atan2(pts[k].y - pts[k - 1].y, pts[k].x - pts[k - 1].x);
+    const a1 = Math.atan2(pts[k + 1].y - pts[k].y, pts[k + 1].x - pts[k].x);
+    let d = a1 - a0;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+
+  it('no street has an ELBOW — a bend is a curve, not a corner', () => {
+    // was: a 7-segment walk with up to a 45° kink at a joint, drawn raw by both renderers
+    for (const st of streetsOf()) {
+      for (let k = 1; k + 1 < st.pts.length; k++) {
+        expect(Math.abs(turnAt(st.pts, k))).toBeLessThan(0.22); // ~12°
+      }
+    }
+  });
+
+  it('no street SEGMENT is long enough to read as a facet', () => {
+    // A BRIDGE span is the one legitimate straight run: its deck is a straight span by
+    // definition, and smoothing deliberately refuses to cut a corner out over the water.
+    const plan = buildLocalPlan(worldFacts({ population: 420 }));
+    const bridges = plan.items.filter((i): i is PlanPath => i.kind === 'bridge');
+    const spans = (x: number, y: number) => bridges.some((b) =>
+      Math.min(...b.pts.map((q) => Math.hypot(q.x - x, q.y - y))) < 0.9);
+    for (const st of plan.items.filter((i): i is PlanPath => i.kind === 'street')) {
+      for (let k = 1; k < st.pts.length; k++) {
+        const a = st.pts[k - 1], b = st.pts[k];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len >= 0.3 && spans((a.x + b.x) / 2, (a.y + b.y) / 2)) continue; // a bridge deck
+        expect(len).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('a street does not CURL — it arrives roughly where it was sent', () => {
+    // was: `arc` re-added to an already-arced heading every step, curling a street 38–71°
+    for (const st of streetsOf()) {
+      let total = 0;
+      for (let k = 1; k + 1 < st.pts.length; k++) total += turnAt(st.pts, k);
+      expect(Math.abs(total)).toBeLessThan(1.0); // ~57°, and the cone caps it well under
+    }
+  });
+
+  it('a street only crosses water where a BRIDGE carries it', () => {
+    // was: a cross-link was ONE straight segment between two midpoints, up to 4.5 units long
+    // (wider than the town), with only its ENDPOINTS checked — it could lie across open water.
+    // A street may still cross a river, but only on a bridge the plan actually built: so every
+    // wet point must sit on a bridge span, and there is no free-floating road over the sea.
+    const geo = (FIXTURE.substrate as SurfaceSubstrate).geography;
+    const plan = buildLocalPlan(worldFacts({ population: 420, specialization: 'fishing & trade' }));
+    const bridges = plan.items.filter((i): i is PlanPath => i.kind === 'bridge');
+    const onABridge = (x: number, y: number) =>
+      bridges.some((b) => {
+        const [a, c] = [b.pts[0], b.pts[b.pts.length - 1]];
+        // distance from the point to the bridge's span, with a little slack for the deck's width
+        const vx = c.x - a.x, vy = c.y - a.y, L2 = vx * vx + vy * vy || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / L2));
+        return Math.hypot(x - (a.x + vx * t), y - (a.y + vy * t)) < 0.25;
+      });
+    for (const st of plan.items.filter((i): i is PlanPath => i.kind === 'street')) {
+      for (const p of st.pts) {
+        if (!onWater(geo, p.x, p.y)) continue;
+        expect(onABridge(p.x, p.y)).toBe(true); // wet, but carried — never a road on open water
+      }
+    }
+  });
+
+  it('a through-road LEAVES the frame instead of dying in a field', () => {
+    // the roads that carry the road-graph's real bearings must cross the hinterland and exit;
+    // their reach used to fall ~1.5 units short of the frame edge, ending in open meadow.
+    const far = streetsOf().map((st) => {
+      const e = st.pts[st.pts.length - 1];
+      return Math.hypot(e.x - FIXTURE.settlements[0].pos.x, e.y - FIXTURE.settlements[0].pos.y);
+    });
+    // this town is a coastal headland — seaward roads rightly stop at the shore, so we only
+    // require that at least one through-road actually makes it out of the frame
+    expect(Math.max(...far)).toBeGreaterThanOrEqual(LOCAL_FRAME / 2);
+  });
+
+  it('the plan stays deterministic with the routed streets', () => {
+    expect(JSON.stringify(streetsOf())).toBe(JSON.stringify(streetsOf()));
   });
 });
 
