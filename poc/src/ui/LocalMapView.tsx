@@ -14,7 +14,8 @@ import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { buildLocalPlan, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
 import { ARCH_BY_ID } from '../content/architecture';
-import { paintTerrain, paintTerrainOverlay, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields, type GroundPatch } from './terrain';
+import { paintTerrain, paintTerrainOverlay, finishTerrain, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields, type GroundPatch } from './terrain';
+import { createTerrainGpu, type TerrainGpu } from './terrainGpu';
 import type { TerrainPaintResponse } from './terrainWorker';
 // lazy — three.js (~300 KB gzip) loads only when the 3D view is opened, off the initial bundle
 const LocalTerrain3DThree = lazy(() => import('./LocalTerrain3DThree').then((m) => ({ default: m.LocalTerrain3DThree })));
@@ -105,6 +106,11 @@ export function LocalMapView({
   // runs in a Web Worker so it never freezes the UI. The main thread only blits the returned
   // buffer + draws labels. Latest request wins; the canvas rides its CSS transform until the
   // fresh buffer lands. Falls back to a synchronous paint if workers are unavailable.
+  // the GPU painter, built once. Null on a device without WebGL2 — then the worker path below
+  // carries the paint exactly as it did before (design/32 §4 is an accelerator, not a rewrite).
+  const gpuRef = useRef<TerrainGpu | null>(null);
+  if (gpuRef.current === null) gpuRef.current = createTerrainGpu();
+  useEffect(() => () => { gpuRef.current?.dispose(); gpuRef.current = null; }, []);
   const workerRef = useRef<Worker | null>(null);
   const reqIdRef = useRef(0);
   const pendingRef = useRef(new Map<number, { vb: ViewBox; v: { s: number; x: number; y: number }; W: number; H: number }>());
@@ -250,6 +256,28 @@ export function LocalMapView({
       h: frame.h / v.s,
     };
     const g = sub.geography;
+    // THE GPU PATH (design/32 §4) — the same painter as a shader, ~5ms instead of ~900ms, so the
+    // frame is drawn inline and the worker's request/settle machinery never engages. Verified
+    // against the CPU reference pixel-for-pixel (see terrainGpu.ts). Falls through to the worker
+    // when WebGL2 is unavailable, and the worker to a synchronous paint.
+    const gpu = gpuRef.current;
+    if (gpu) {
+      const geo: GeoFields = {
+        size: g.size, elevation: g.elevation, moisture: g.moisture, temperature: g.temperature,
+        fertility: g.fertility, water: g.water, hilliness: g.hilliness, seaLevel: g.seaLevel,
+      };
+      gpu.paint(geo, vb, SURF_THEME, W, H, seed, groundRef.current);
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(gpu.surface, 0, 0);
+        finishTerrain(ctx, vb, SURF_THEME, W, H, labels);
+      }
+      paintedView.current = { ...v };
+      c.style.transform = '';
+      return;
+    }
     const worker = workerRef.current;
     if (worker) {
       // Offload the heavy pixel loop. The canvas is NOT resized here (that would blank it) —
