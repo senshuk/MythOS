@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Snapshot, ActorDetail, EventChain, FigureDetail, SettlementDetail, HouseDetail, CultureDetail, DeityDetail, FeatureDetail, VenueDetail, EventRef, PeekCard, EventView, HouseholdView } from '../engine/model';
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
-import type { SimRequest, SimResponse, LocalVenue } from '../worker/protocol';
+import type { SimRequest, SimResponse, LocalVenue, LocalGathering } from '../worker/protocol';
 import { setCultureLegend } from './common';
 
 /** Everything the close view asks about one settlement, in one round trip. */
@@ -14,6 +14,7 @@ export interface LocalFacts {
   events: EventView[];
   households: HouseholdView[];
   venues: LocalVenue[];
+  gatherings: LocalGathering[];
 }
 
 export function useSim(initialSeed: number) {
@@ -103,7 +104,7 @@ export function useSim(initialSeed: number) {
         peekPending.current.get(msg.token)?.(msg.card);
         peekPending.current.delete(msg.token);
       } else if (msg.kind === 'localFacts') {
-        factsPending.current.get(msg.token)?.({ events: msg.events, households: msg.households, venues: msg.venues });
+        factsPending.current.get(msg.token)?.({ events: msg.events, households: msg.households, venues: msg.venues, gatherings: msg.gatherings });
         factsPending.current.delete(msg.token);
       } else if (msg.kind === 'saveList') {
         setSaves(msg.saves);

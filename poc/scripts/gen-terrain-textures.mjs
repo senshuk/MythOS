@@ -1,7 +1,12 @@
 /**
- * Generates seamless, tiling terrain material textures (albedo + normal) into
- * public/textures/. Run: `node scripts/gen-terrain-textures.mjs`. These are procedural
- * stand-ins for CC0 grass/rock/snow sets — the terrain material splats them by slope/altitude.
+ * Generates seamless, tiling material textures (albedo + normal) into public/textures/.
+ * Run: `node scripts/gen-terrain-textures.mjs`. These are procedural stand-ins for CC0
+ * texture sets — the terrain material splats them by slope/altitude, and the structures
+ * material selects among the ARCHITECTURE set (thatch, slate, plank, …) per face.
+ *
+ * The architecture textures carry PATTERN AND RELIEF ONLY; the per-culture hue arrives as a
+ * vertex colour from ArchStyle, exactly as the terrain tints its splat by biome. So one
+ * `thatch` map serves every people that thatches — theirs is the colour, ours is the weave.
  */
 import { PNG } from 'pngjs';
 import fs from 'node:fs';
@@ -32,6 +37,33 @@ function fbm(x, y, baseCells, seed, oct = 5) {
     norm += amp; amp *= 0.5;
   }
   return val / norm; // 0..1
+}
+// value noise with INDEPENDENT periods per axis — wraps on both, so it still tiles. Lets a
+// material be directional: straw and wood grain are stretched along one axis, not isotropic.
+function pnoise2(x, y, PX, PY, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+  const w = (a, b) => hash(((a % PX) + PX) % PX, ((b % PY) + PY) % PY, seed);
+  const v00 = w(ix, iy), v10 = w(ix + 1, iy), v01 = w(ix, iy + 1), v11 = w(ix + 1, iy + 1);
+  const sx = smooth(fx), sy = smooth(fy);
+  return (v00 + (v10 - v00) * sx) * (1 - sy) + (v01 + (v11 - v01) * sx) * sy;
+}
+/** anisotropic fbm: `cx`×`cy` cells at the base octave (cx≪cy ⇒ streaks along x). */
+function fbmA(x, y, cx, cy, seed, oct = 4) {
+  let val = 0, amp = 0.5, norm = 0;
+  for (let o = 0; o < oct; o++) {
+    const GX = cx * (1 << o), GY = cy * (1 << o);
+    val += amp * pnoise2((x / SIZE) * GX, (y / SIZE) * GY, GX, GY, seed + o * 31);
+    norm += amp; amp *= 0.5;
+  }
+  return val / norm;
+}
+/** STAGGERED COURSES — the shared skeleton of masonry and roof tiles. Returns the unit cell
+ *  coords within a brick plus its per-brick hash, so each stone/tile can vary. `rows` must be
+ *  even for the alternating stagger to wrap seamlessly at the tile edge. */
+function courses(x, y, cols, rows, seed, stagger = 0.5) {
+  const ry = (y / SIZE) * rows, row = Math.floor(ry);
+  const rx = (x / SIZE) * cols + (((row % 2) + 2) % 2) * stagger, col = Math.floor(rx);
+  return { fx: rx - col, fy: ry - row, rnd: hash(((col % cols) + cols) % cols, ((row % rows) + rows) % rows, seed) };
 }
 function writePNG(name, rgb) {
   const png = new PNG({ width: SIZE, height: SIZE });
@@ -98,5 +130,81 @@ gen('field', 6, 71,
     const ridge = Math.sin((y / SIZE) * Math.PI * 2 * FURROWS) * 0.5 + 0.5; // raised ridges, sunken furrows
     return ridge * 0.72 + (n * 0.65 + f * 0.35) * 0.28;
   });
+
+// ---------------------------------------------------------- ARCHITECTURE --
+// Pattern + relief only; the culture's ArchStyle colour tints these at render time, so these
+// are deliberately near-GREY. Anything strongly hued here would fight the per-people palette.
+
+// thatch — combed straw: fine strands running along x, a soft fibrous mat with a deep pile.
+// The strongest relief of the set: thatch should read fuzzy where slate reads hard.
+gen('thatch', 4, 131,
+  (n, f, x, y) => {
+    const strand = fbmA(x, y, 3, 96, 131, 4);          // long fibres, stretched along x
+    const clump = fbmA(x, y, 5, 14, 77, 3);            // broader bundles laid in courses
+    const v = 150 + strand * 74 + clump * 26 - f * 14;
+    return [v * 1.02, v * 0.96, v * 0.84];             // faintly warm straw, tint does the rest
+  }, 46,
+  (n, f, x, y) => fbmA(x, y, 3, 96, 131, 4) * 0.7 + fbmA(x, y, 5, 14, 77, 3) * 0.3);
+
+// slate — hard overlapping courses: each tile a flat plate, a shadowed lip where the course
+// above laps it, and a per-tile shade so a roof reads as many stones, not one sheet.
+const SL_COLS = 8, SL_ROWS = 16;
+gen('slate', 6, 137,
+  (n, f, x, y) => {
+    const { fx, fy, rnd } = courses(x, y, SL_COLS, SL_ROWS, 137);
+    const gap = (fx < 0.035 || fx > 0.965) ? 0.45 : 1;   // vertical joint between tiles
+    const lip = fy < 0.14 ? 0.55 : 1;                    // the shadow line where the next course laps
+    const plate = 0.86 + rnd * 0.28;                     // this tile's own shade
+    const v = (150 + n * 34) * gap * lip * plate;
+    return [v * 0.97, v, v * 1.04];                      // a whisper of blue-grey
+  }, 34,
+  (n, f, x, y) => {
+    const { fx, fy } = courses(x, y, SL_COLS, SL_ROWS, 137);
+    const gap = (fx < 0.035 || fx > 0.965) ? 0 : 1;
+    return (fy < 0.14 ? 0.25 : 0.55 + fy * 0.45) * gap + n * 0.08; // each plate steps up over the one below
+  });
+
+// clay — a flat rendered roof: smooth, sun-baked, faintly cracked. Almost no relief, so it
+// reads as a plane against the deep pile of thatch next door.
+gen('clay', 7, 139,
+  (n, f) => { const crack = f < 0.2 ? 0.78 : 1; const v = (176 + n * 30) * crack; return [v * 1.04, v * 0.97, v * 0.88]; }, 12);
+
+// plank — vertical boards: grain running along y, a dark shadow gap at every board edge.
+const PK_COLS = 12;
+gen('plank', 6, 149,
+  (n, f, x, y) => {
+    const bx = (x / SIZE) * PK_COLS, col = Math.floor(bx), fx = bx - col;
+    const edge = (fx < 0.06 || fx > 0.94) ? 0.5 : 1;                 // the gap between boards
+    const board = 0.88 + hash(((col % PK_COLS) + PK_COLS) % PK_COLS, 0, 149) * 0.24; // per-board tone
+    const grain = fbmA(x, y, 40, 3, 149, 4);                          // grain runs UP the board
+    const v = (140 + grain * 56 + n * 18) * edge * board;
+    return [v * 1.04, v * 0.94, v * 0.8];
+  }, 30,
+  (n, f, x, y) => {
+    const bx = (x / SIZE) * PK_COLS, fx = bx - Math.floor(bx);
+    const edge = (fx < 0.06 || fx > 0.94) ? 0.1 : 0.6;
+    return edge + fbmA(x, y, 40, 3, 149, 4) * 0.4;
+  });
+
+// masonry — coursed stone blocks with recessed mortar; each block its own shade so a wall
+// reads as many stones. Even ROWS so the alternating stagger wraps.
+const MS_COLS = 6, MS_ROWS = 10;
+gen('masonry', 7, 151,
+  (n, f, x, y) => {
+    const { fx, fy, rnd } = courses(x, y, MS_COLS, MS_ROWS, 151);
+    const m = (fx < 0.05 || fx > 0.95 || fy < 0.08 || fy > 0.92) ? 0.6 : 1; // mortar course
+    const block = 0.84 + rnd * 0.32;
+    const v = (146 + n * 40 + f * 16) * m * block;
+    return [v, v * 0.985, v * 0.95];
+  }, 32,
+  (n, f, x, y) => {
+    const { fx, fy, rnd } = courses(x, y, MS_COLS, MS_ROWS, 151);
+    const m = (fx < 0.05 || fx > 0.95 || fy < 0.08 || fy > 0.92) ? 0.15 : 0.7; // mortar sits back
+    return m + rnd * 0.12 + n * 0.1;
+  });
+
+// adobe — hand-rendered mud: soft undulation, no joints. The quiet one of the set.
+gen('adobe', 5, 157,
+  (n, f) => { const v = 168 + n * 34 + f * 12; return [v * 1.03, v * 0.95, v * 0.83]; }, 16);
 
 console.log('done');

@@ -28,6 +28,10 @@ const MOOD_OF: Record<GatheringKind, string> = {
   funeral: 'mourned',
 };
 
+/** every gathering kind, as event types — the one place the roster is enumerated, so a
+ *  consumer (the close view's crowd) can recognize one without re-listing the kinds. */
+export const GATHERING_KINDS: ReadonlySet<string> = new Set(Object.keys(MOOD_OF));
+
 /**
  * The people who would come: the principals' living kin (spouse / parents / children)
  * and their strongest friends, deduped, capped, ordered kin-first with a hash tie-break.
@@ -84,7 +88,7 @@ export function holdGathering(
   const data: Record<string, number | string> = { count: living.length };
   if (where) { data.venue = where.venue; data.venueId = where.venueId; }
   if (home !== undefined && world.settlements[home]) data.settlement = world.settlements[home].name;
-  const id = emit(world, kind, focal, data, cause !== undefined ? [cause] : []);
+  const id = emit(world, kind, focal, data, cause !== undefined ? [cause] : [], home !== undefined ? [home] : []);
   const mood = MOOD_OF[kind];
   for (const att of living) addSelfThought(world, att, mood, { cause: id });
   return id;

@@ -1043,6 +1043,10 @@ button { font-family: inherit; }
 .plan-person[role="button"] { cursor: pointer; }
 .plan-person[role="button"]:hover .plan-person-head { fill: var(--gold); }
 .plan-person[role="button"]:hover .plan-person-body { stroke: var(--gold); }
+/* WORKING-LIFE PROPS (design/28 §4.2) — livestock, moored boats, drying racks */
+.plan-prop-livestock ellipse { fill: #a08868; stroke: #4a3c28; stroke-width: 0.004; }
+.plan-prop-boat path { fill: #5a4632; stroke: #2a2018; stroke-width: 0.004; }
+.plan-prop-rack line { stroke: #6a5a44; stroke-width: 0.006; }
 /* buildings cast a soft shadow so the flat plan reads as built VOLUME (design/24 §8.4) */
 /* one consistent SE sun (design/32 §3): a firmer shadow + heavier wall line give the roofs
    the depth the reference maps get from their wall outlines */
@@ -1054,6 +1058,8 @@ button { font-family: inherit; }
 .plan-building .plan-hip { stroke: rgba(20, 16, 12, 0.5); stroke-width: 0.009; }
 .plan-building .plan-parapet { stroke: rgba(30, 24, 18, 0.6); stroke-width: 0.012; }
 .plan-building .plan-chimney { fill: rgba(54, 48, 42, 0.9); stroke: rgba(24, 20, 16, 0.6); stroke-width: 0.005; }
+/* SMOKE (design/28 §4.1) — a lived-in hearth's wisp, the cheapest "someone's home" cue */
+.plan-building .plan-smoke { stroke: rgba(210, 208, 200, 0.55); stroke-width: 0.006; stroke-linecap: round; }
 .plan-building.inhabited .plan-hip { stroke: rgba(233, 196, 106, 0.3); }
 /* AGE GRADIENT (design/24 §8.3) — weathered pale stone in the old core, fresh warm timber
    at the growing edge, so the town's growth reads at a glance */

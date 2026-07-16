@@ -80,6 +80,16 @@ export interface PlanPerson {
   ref?: EventRef; // a notable figure inspects its actor
   label?: string; // hover text, in the pack's voice
 }
+/** a small piece of WORKING LIFE on the ground — the settlement's specialization made
+ *  visible as ambient activity (design/28 §4.2): livestock in a herder's paddock, a
+ *  boat drawn up at a fisher's pier, racks of drying catch by the boathouse. Derived
+ *  purely from Specialization + what the plan already placed — nothing new tracked. */
+export interface PlanProp {
+  kind: 'prop';
+  x: number; y: number; rot: number;
+  propKind: 'livestock' | 'boat' | 'rack';
+  label?: string;
+}
 /** a GROUND SURFACE under the town (design/32 §3) — packed earth where feet and carts strip
  *  the grass, a cobbled core where wealth has paved the heart, turned soil under the plots.
  *  Painted INTO the terrain canvas with hash-dithered edges (a material, not a gradient);
@@ -97,7 +107,7 @@ export interface PlanGround {
   /** 0..1 — how fully the surface replaces the land colour where it wins the dither */
   blend: number;
 }
-export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanGround;
+export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanProp | PlanGround;
 
 export interface LocalPlanFacts {
   seed: number;
@@ -115,6 +125,10 @@ export interface LocalPlanFacts {
   /** the settlement's PUBLIC VENUES (L4, design/25) — real Locations the sim's events
    *  happen at. The drawn shrine/square/tavern link to them (click = its history). */
   venues?: { id: number; name: string; meaning?: string; type: string }[];
+  /** communal gatherings still fresh this year (design/27 §4) — the Gatherings step draws
+   *  the crowd this already-simulated event produced (design/28 §4.3). Presentation only:
+   *  nothing new is tracked, this is a narrow read of the settlement's own recent events. */
+  gatherings?: { kind: string; venueId?: number; year: number }[];
 }
 
 export interface LocalPlan {
@@ -883,11 +897,12 @@ const Livelihood: LocalGenStep = {
           const perp = wa + Math.PI / 2;
           const ox = Math.cos(perp) * (p - (piers - 1) / 2) * 0.35;
           const oy = Math.sin(perp) * (p - (piers - 1) / 2) * 0.35;
+          const tip = { x: sx + ox + Math.cos(wa) * (0.35 + rng.next() * 0.2), y: sy + oy + Math.sin(wa) * (0.35 + rng.next() * 0.2) };
           plan.items.push({
             kind: 'pier',
             pts: [
               { x: sx + ox - Math.cos(wa) * 0.15, y: sy + oy - Math.sin(wa) * 0.15 },
-              { x: sx + ox + Math.cos(wa) * (0.35 + rng.next() * 0.2), y: sy + oy + Math.sin(wa) * (0.35 + rng.next() * 0.2) },
+              tip,
             ],
             width: 0.05,
           });
@@ -901,7 +916,37 @@ const Livelihood: LocalGenStep = {
                 role: 'boathouse', label: 'a boathouse', tone: 'plain',
               });
             }
+            // DRYING RACKS on the shore beside the pier — the catch hung out to cure. Anchored
+            // to the SHORE, not the boathouse: a cramped waterfront often has no room for a
+            // boathouse, but a fishing town still dries its catch, so the cue must not vanish
+            // with it. A rack is small and takes no parcel — it just needs dry, clear ground.
+            const rackA = wa + Math.PI / 2;
+            for (const side of [1, -1]) {
+              const rx = bx + Math.cos(rackA) * 0.13 * side, ry = by + Math.sin(rackA) * 0.13 * side;
+              if (buildable(geo, rx, ry) && !occupied(ctx, rx, ry, 0.03)) {
+                plan.items.push({ kind: 'prop', x: rx, y: ry, rot: wa, propKind: 'rack', label: 'drying racks — the catch hung out to cure' });
+                break;
+              }
+            }
+            // a BOAT moored at the pier's tip — the fleet at rest, not out on the water
+            plan.items.push({ kind: 'prop', x: tip.x, y: tip.y, rot: wa + Math.PI / 2, propKind: 'boat', label: 'a boat moored at the pier' });
           }
+        }
+      }
+    }
+
+    if (/herd|pastur|ranch|nomad/.test(spec) && !ruined) {
+      // LIVESTOCK grazing a paddock beyond the houses — a herding people's wealth on the hoof
+      const herds = 1 + Math.min(2, Math.floor(settlement.population / 130));
+      for (let h = 0; h < herds; h++) {
+        const a = rng.next() * Math.PI * 2, d = ctx.townRadius + 0.4 + rng.next() * 1.2;
+        const cx = pos.x + Math.cos(a) * d, cy = pos.y + Math.sin(a) * d;
+        if (!buildable(geo, cx, cy)) continue;
+        const count = 4 + Math.floor(rng.next() * 5);
+        for (let i = 0; i < count; i++) {
+          const lx = cx + (rng.next() - 0.5) * 0.5, ly = cy + (rng.next() - 0.5) * 0.5;
+          if (!buildable(geo, lx, ly) || occupied(ctx, lx, ly, 0.03)) continue;
+          plan.items.push({ kind: 'prop', x: lx, y: ly, rot: rng.next() * Math.PI * 2, propKind: 'livestock', label: 'grazing stock' });
         }
       }
     }
@@ -1310,6 +1355,38 @@ const Inhabitants: LocalGenStep = {
   },
 };
 
+/** GATHERINGS rendered (design/27 §4, design/28 §4.3): a wedding/funeral/feast/rite that
+ *  happened THIS YEAR draws its crowd at the venue it was actually held — drawing what the
+ *  sim already simulated, nothing new tracked. A funeral's crowd mourns; the rest revel. */
+const Gatherings: LocalGenStep = {
+  name: 'gatherings',
+  run(facts, rng, plan) {
+    if (facts.settlement.ruinedYear !== undefined) return;
+    const gatherings = facts.gatherings;
+    if (!gatherings || gatherings.length === 0) return;
+    const structures = plan.items;
+    for (const g of gatherings) {
+      if (g.venueId === undefined) continue;
+      const venue = structures.find((it): it is PlanBuilding | PlanPatch =>
+        (it.kind === 'building' || it.kind === 'square') && it.ref?.kind === 'venue' && it.ref.id === g.venueId);
+      if (!venue) continue;
+      const mourning = g.kind === 'funeral';
+      const tone: PlanPerson['tone'] = mourning ? 'mourner' : 'reveller';
+      const crowd = 4 + Math.floor(rng.next() * 5);
+      for (let i = 0; i < crowd; i++) {
+        const ang = (i / crowd) * Math.PI * 2 + rng.next() * 0.3;
+        const rad = venue.w * 0.3 + rng.next() * venue.w * 0.15;
+        const px = venue.x + Math.cos(ang) * rad, py = venue.y + Math.sin(ang) * rad;
+        if (!buildable(facts.geo, px, py)) continue;
+        plan.items.push({
+          kind: 'person', x: px, y: py, tone, facing: ang + Math.PI,
+          label: mourning ? 'a mourner, come to grieve' : 'a reveller, come to celebrate',
+        });
+      }
+    }
+  },
+};
+
 /** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3).
  *  HistoryMarks runs BEFORE Houses so fresh burn scars read as gaps, not overlays. */
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
@@ -1324,7 +1401,8 @@ export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   Graveyard, // after the shrine + houses exist; claims a clear plot beside the shrine
   Palisade,
   TreesAndRuin,
-  Inhabitants, // last — draws no plan RNG that anything before it depends on
+  Inhabitants, // draws no plan RNG that anything before it depends on
+  Gatherings, // last — a crowd drawn from this year's own gathering events
 ];
 
 /** Build the deterministic town plan for one settlement. Pure: same facts ⇒ same plan. */

@@ -14,6 +14,13 @@ export interface LocalVenue {
   meaning?: string;
   type: string;
 }
+
+/** A communal gathering (design/27 §4) still fresh enough to draw a crowd (design/28 §4.3). */
+export interface LocalGathering {
+  kind: string;
+  venueId?: number;
+  year: number;
+}
 import type { Intent } from '../engine/intent';
 import type { SaveMeta } from '../engine/idb';
 
@@ -71,5 +78,5 @@ export type SimResponse =
   | { kind: 'featureDetail'; detail: FeatureDetail | null }
   | { kind: 'venueDetail'; detail: VenueDetail | null }
   | { kind: 'peek'; token: number; card: PeekCard | null }
-  | { kind: 'localFacts'; token: number; events: EventView[]; households: HouseholdView[]; venues: LocalVenue[] }
+  | { kind: 'localFacts'; token: number; events: EventView[]; households: HouseholdView[]; venues: LocalVenue[]; gatherings: LocalGathering[] }
   | { kind: 'saveList'; saves: SaveMeta[] };

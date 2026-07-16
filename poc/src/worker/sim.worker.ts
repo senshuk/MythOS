@@ -22,6 +22,7 @@ import {
   buildPeek,
   buildLocalChronicle,
   buildHouseholds,
+  recentGatherings,
   ensureFocusedVenues,
   isPlayerAlive,
   pendingDecisionIds,
@@ -286,6 +287,7 @@ ctx.onmessage = async (e: MessageEvent<SimRequest>) => {
         events: world ? buildLocalChronicle(world, msg.id) : [],
         households: world ? buildHouseholds(world, msg.id) : [],
         venues: world ? localVenues(world, msg.id) : [],
+        gatherings: world ? recentGatherings(world, msg.id) : [],
       });
       break;
     }

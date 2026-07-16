@@ -53,6 +53,7 @@ import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById, computeHousePrestige } from './figures';
 import { computeBelief, beliefReasons, coronationSlot } from './belief';
+import { GATHERING_KINDS } from './gathering';
 import { computeStatusBelief } from './statusBelief';
 import { focusSettlement } from './lod';
 import { getChildren } from './location';
@@ -604,6 +605,24 @@ export function buildLocalChronicle(world: World, id: SettlementId): EventView[]
     .filter((ev): ev is WorldEvent => ev !== undefined && eventInterest(ev.type, ev.data) >= LOCAL_CHRONICLE_FLOOR)
     .slice(-LOCAL_CHRONICLE_CAP) // the most recent notable N (history marks fade anyway)
     .map((ev) => eventView(world, ev));
+}
+
+/** A GATHERING still fresh enough to draw — this settlement's own crowd (design/27 §4),
+ *  read for the close view's ambient-life pass (design/28 §4.3: render what already
+ *  happens, not new state). Unlike buildLocalChronicle this ISN'T filtered by interest —
+ *  a modest wedding still gathers a crowd, it just never earns a permanent history mark —
+ *  only by recency: a gathering is a moment, not a monument, so only THIS YEAR'S count.
+ *  A pure read: no rng, no mutation, nothing stored. */
+export interface LocalGathering { kind: string; venueId?: number; year: number }
+export function recentGatherings(world: World, id: SettlementId): LocalGathering[] {
+  const year = Math.floor(world.tick / DAYS_PER_YEAR);
+  const out: LocalGathering[] = [];
+  for (const eid of world.eventsBySettlement.get(id) ?? []) {
+    const ev = getEvent(world, eid);
+    if (!ev || ev.year !== year || !GATHERING_KINDS.has(ev.type)) continue;
+    out.push({ kind: ev.type, venueId: typeof ev.data.venueId === 'number' ? ev.data.venueId : undefined, year: ev.year });
+  }
+  return out;
 }
 
 /**
