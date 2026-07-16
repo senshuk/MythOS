@@ -5,12 +5,23 @@ comes to *show* the simulation that made it: its fortunes, its faith, its wars, 
 culture, its life. Fidelity in service of comprehension (CLAUDE.md), not decoration.
 **Companion documents:** `24-local-maps.md` (the Close View + town plan pipeline),
 `27-lived-in-villages.md` (inhabitants, gatherings), `22-mood-and-causal-worldgen.md`.
-**Status:** **#1 (Fortunes) and #2 (Architecture by culture & role) SHIPPED** —
-`content/localmap.ts`'s `Fortunes` interface/computation and `content/architecture.ts`'s
-5-style `ArchStyle` system (wired in via `archStyleFor(cultureId)`) are both live in the
-PoC; this status line had gone stale (corrected 2026-07-13). **#3 (Ambient life)** is the
-current next item — not yet built (confirmed by codebase check: no chimney-smoke,
-livestock, or day-rhythm rendering exists yet).
+**Status:** **#1 (Fortunes), #2 (Architecture by culture & role) and #3 (Ambient life)
+SHIPPED** (corrected 2026-07-16). #1 is `content/localmap.ts`'s `Fortunes`
+interface/computation; #2 is `content/architecture.ts`'s 5-style `ArchStyle` (wired via
+`archStyleFor(cultureId)`), now also carrying `wallMat`/`roofMat` so the 3D renders each
+people's actual fabric, not just its hue. #3 landed three of its four pieces: chimney
+smoke on `inhabited` roofs whose style raises chimneys; `PlanProp` livestock/boats/drying
+racks driven off `Specialization`; and gathering crowds (mourners at a funeral, revellers
+at a wedding) drawn at the venue `engine/gathering.ts` actually chose — all rendered from
+facts the sim already produces, with no new tracked state.
+
+**#3's remaining piece is the DAY-RHYTHM** (item 4, figures at the market by day and home
+by dusk, derived from the clock) — deliberately skipped as the stated stretch goal, and the
+only part of this document not yet built.
+
+> This status line has now gone stale twice (2026-07-13, 2026-07-16), both times claiming
+> shipped work was unbuilt and costing the next reader a codebase check to find out. If you
+> ship against this document, correct this line in the same commit.
 
 ---
 
