@@ -1047,6 +1047,34 @@ button { font-family: inherit; }
 .plan-prop-livestock ellipse { fill: #a08868; stroke: #4a3c28; stroke-width: 0.004; }
 .plan-prop-boat path { fill: #5a4632; stroke: #2a2018; stroke-width: 0.004; }
 .plan-prop-rack line { stroke: #6a5a44; stroke-width: 0.006; }
+/* DISTRICT WALLS (design/32 §6) — a shrine's precinct, a lord's bailey. Lighter than the town
+   palisade: this marks a zone, it does not hold one. The gap in the ring is its gateway. */
+.plan-precinct { fill: none; stroke: rgba(126, 116, 98, 0.85); stroke-linecap: round; stroke-linejoin: round; }
+/* CLUTTER (design/32 §5) — the props that say someone works here */
+.plan-prop-woodpile circle { fill: #7a6242; stroke: #33281a; stroke-width: 0.003; }
+.plan-prop-cart rect { fill: #6a5540; stroke: #2a2018; stroke-width: 0.004; }
+.plan-prop-cart .plan-prop-wheel { fill: #4a3c2c; stroke: #241c14; stroke-width: 0.003; }
+.plan-prop-coal ellipse { fill: #2e2a28; stroke: #171412; stroke-width: 0.004; }
+.plan-prop-cargo rect { fill: #7c6444; stroke: #2e2418; stroke-width: 0.004; }
+/* stone in the countryside — lit from the same SE sun as everything else */
+.plan-prop-boulder path { fill: #8b8578; stroke: #4a463e; stroke-width: 0.004; }
+
+/* INTERIORS (design/32 §5) — the floor under a lifted roof. Warm, low-contrast: a room seen
+   from above, not a diagram. Unclickable (pointer-events none) so the roof above still owns
+   the hover — you meet the household, not "a bed". */
+.plan-interior { pointer-events: none; }
+.plan-interior rect, .plan-interior circle, .plan-interior path { fill: #6b5946; stroke: #2b2118; stroke-width: 0.003; }
+.plan-interior .plan-fit-fire { fill: #e8a341; stroke: none; }
+.plan-interior .plan-fit-ring { fill: none; stroke: #3a2c1e; stroke-width: 0.005; }
+.plan-fit-bed rect { fill: #8a7256; }
+.plan-fit-table rect, .plan-fit-bench rect { fill: #5f4d3a; }
+.plan-fit-altar rect { fill: #6a6274; }
+.plan-fit-anvil path { fill: #45403a; }
+/* THE CUTAWAY: past the zoom threshold a furnished roof lifts to show its floor. The walls
+   stay (they are the room's outline); only the roof plate and its ridge give way. */
+.plan-building.cutaway rect { fill-opacity: 0.18; }
+.plan-building.cutaway .plan-ridge, .plan-building.cutaway .plan-roof { opacity: 0.12; }
+.plan-building.cutaway { filter: none; }
 /* buildings cast a soft shadow so the flat plan reads as built VOLUME (design/24 §8.4) */
 /* one consistent SE sun (design/32 §3): a firmer shadow + heavier wall line give the roofs
    the depth the reference maps get from their wall outlines */

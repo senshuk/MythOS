@@ -460,9 +460,11 @@ const clumpAt = (cx: number, cy: number, seed: number) => vnoise(cx * 0.33, cy *
  *  Keyed by the caller's `cacheKey` (the world seed) — the worker's structured-cloned geo
  *  arrays are new objects per request, so identity can't key this. Uncached when no key is
  *  given. Pure derivation of the geography: caching cannot affect determinism. */
-interface GeoTables { landR: Float32Array; landG: Float32Array; landB: Float32Array; chan: Float32Array }
+export interface GeoTables { landR: Float32Array; landG: Float32Array; landB: Float32Array; chan: Float32Array }
 const geoTablesCache = new Map<number, GeoTables>();
-function geoTablesFor(geo: GeoFields, cacheKey?: number): GeoTables {
+/** exported so the GPU painter (design/32 §4) can upload the SAME derived tables the CPU
+ *  reference paints from — the two must agree texel for texel to be comparable. */
+export function geoTablesFor(geo: GeoFields, cacheKey?: number): GeoTables {
   if (cacheKey !== undefined) {
     const hit = geoTablesCache.get(cacheKey);
     if (hit) return hit;
@@ -853,7 +855,14 @@ export function paintTerrainOverlay(ctx: CanvasRenderingContext2D, buf: Uint8Cla
   const img = ctx.createImageData(W, H);
   img.data.set(buf);
   ctx.putImageData(img, 0, 0);
+  finishTerrain(ctx, vb, theme, W, H, labels);
+}
 
+/** The vignette + named-feature lettering, WITHOUT the pixel blit — everything the painter does
+ *  after the ground is down. Split out so the GPU path (design/32 §4) can `drawImage` its own
+ *  canvas straight across and still get the same finish, instead of reading pixels back just to
+ *  put them straight down again. */
+export function finishTerrain(ctx: CanvasRenderingContext2D, vb: ViewBox, theme: SurfaceTheme, W: number, H: number, labels?: TerrainLabel[]): void {
   const v = theme.vignette;
   const grd = ctx.createRadialGradient(W / 2, H * 0.46, H * 0.32, W / 2, H / 2, H * 0.74);
   grd.addColorStop(0, 'rgba(0,0,0,0)');

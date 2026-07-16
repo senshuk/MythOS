@@ -41,9 +41,14 @@ export interface PlanBuilding {
   /** the culture's ARCHITECTURAL style id (design/28 §3) — drives wall/roof colour, roof
    *  silhouette and chimney in both renderers, so a people's dwellings read as their own. */
   arch?: string;
+  /** set only on buildings the Interiors step furnished (design/32 §5) — the handle its
+   *  `PlanInterior` fittings point back at, so the renderer knows which roof to fade. */
+  id?: number;
 }
 export interface PlanPath {
-  kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed' | 'bridge';
+  /** `precinct` is a district boundary (design/32 §6) — a shrine's enclosure, a seat's bailey.
+   *  Drawn lighter than `wall`: it marks a zone, it does not hold one. */
+  kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed' | 'bridge' | 'precinct';
   pts: { x: number; y: number }[];
   width: number; // world units
   label?: string;
@@ -87,7 +92,26 @@ export interface PlanPerson {
 export interface PlanProp {
   kind: 'prop';
   x: number; y: number; rot: number;
-  propKind: 'livestock' | 'boat' | 'rack';
+  /** `livestock`/`boat`/`rack` came with the ambient-life pass (design/28 §4.2); the rest are
+   *  design/32 §5's clutter — each one an answer to "who works here?", read off the plan's own
+   *  livelihood and household professions. `boulder` is countryside, not labour: stone where the
+   *  land is steep, because the reference maps get half their character from rock. */
+  propKind: 'livestock' | 'boat' | 'rack' | 'woodpile' | 'cart' | 'coal' | 'cargo' | 'boulder';
+  label?: string;
+  /** 0.6…1.6 — a per-prop size jitter so a row of woodpiles isn't a row of clones */
+  scale?: number;
+}
+/** A FITTING inside a building (design/32 §5) — revealed when the view zooms past the roof.
+ *  Derived: the beds are the household the plan ALREADY carries (L2), the workbench is the
+ *  workshop's function, the altar the shrine's. Nothing new is tracked; this is the textual
+ *  "hover a lit roof, meet the family" made visible. Local coords are baked to world here so
+ *  the renderer stays a dumb draw. */
+export interface PlanInterior {
+  kind: 'interior';
+  x: number; y: number; rot: number;
+  fitting: 'hearth' | 'bed' | 'table' | 'bench' | 'cask' | 'altar' | 'anvil' | 'sack';
+  /** the building this fitting sits in — the renderer fades that roof to show its floor */
+  ofBuilding: number;
   label?: string;
 }
 /** a GROUND SURFACE under the town (design/32 §3) — packed earth where feet and carts strip
@@ -107,7 +131,7 @@ export interface PlanGround {
   /** 0..1 — how fully the surface replaces the land colour where it wins the dither */
   blend: number;
 }
-export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanProp | PlanGround;
+export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanProp | PlanGround | PlanInterior;
 
 export interface LocalPlanFacts {
   seed: number;
@@ -136,6 +160,11 @@ export interface LocalPlan {
   /** the town's overall radius (world units) — the UI frames around it */
   radius: number;
 }
+
+/** World units the close view's short side spans — a town and its hinterland. The PLAN owns
+ *  this, not the view: how far a through-road must run to leave the frame is a fact about the
+ *  frame, and when the two numbers lived apart the roads quietly stopped short of the edge. */
+export const LOCAL_FRAME = 11;
 
 /** One step of the pipeline: reads facts + the plan so far, appends what it lays out. */
 export interface LocalGenStep {
@@ -257,6 +286,33 @@ function settlementFortunes(facts: LocalPlanFacts): Fortunes {
  *  as a local sampler over this pack's bilinear terrain reads). */
 function marchCostAt(geo: Geography, x: number, y: number): number {
   return elevAt(geo, x, y) * 3 + hillinessAt(geo, x, y) * 1.1 + wetnessAt(geo, x, y) * 2.2;
+}
+
+/** CHAIKIN corner-cutting — round a polyline's corners without overshooting it. Applied to a
+ *  street at the SOURCE, so both renderers get the same smooth run: the 2D draws the points as
+ *  a raw `M/L` path and the 3D extrudes a strip along them, so a hard corner in the plan is a
+ *  hard corner in both. (It was: a 7-segment walk with up to a 45° kink at a joint.) Endpoints
+ *  are pinned — a street must still start at the square and end where it ended. */
+function smoothPts(pts: { x: number; y: number }[], ok: (x: number, y: number) => boolean, passes = 2): { x: number; y: number }[] {
+  let out = pts;
+  for (let p = 0; p < passes; p++) {
+    if (out.length < 3) return out;
+    const next: { x: number; y: number }[] = [out[0]];
+    for (let i = 0; i + 1 < out.length; i++) {
+      const a = out[i], b = out[i + 1];
+      const c = { x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 };
+      const d = { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 };
+      // A cut point is NEW ground the walk never tested. The walk's steps are ~0.2 apart but a
+      // water cell is ~0.44 across, so a point rounded off the line can land in water even
+      // though both its parents were dry — and a bridge's span is a long chord over a river by
+      // design. Where a cut cannot stand, keep the original corner: a slightly sharper bend is
+      // a far better failure than a road lying on the water.
+      if (ok(c.x, c.y) && ok(d.x, d.y)) { next.push(c, d); } else { next.push({ ...a }, { ...b }); }
+    }
+    next.push(out[out.length - 1]);
+    out = next;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------- shared state --
@@ -409,19 +465,35 @@ const TerrainStreets: LocalGenStep = {
     // running dead-straight over a crag. `form.bend` sets how far a people lets its streets
     // wander (a grid stays near-straight; an organic tangle follows every contour). Where a
     // street meets a river, it BRIDGES to the far bank rather than stopping dead.
+    //
+    // A street must still ARRIVE where it was sent: `angle0` points at a real road-graph
+    // neighbour, so the walk is held inside a CONE around it. Two bugs used to break that —
+    // the per-street `arc` was re-added to an already-arced heading every step (seven times
+    // over, curling a street through 40–70°), and the terrain steering fed back into itself
+    // unbounded. Now the drift is a small per-step curvature and the heading is clamped to the
+    // cone, so a road bends around a hill and then carries on toward where it was going.
+    const wrapPi = (r: number) => { let v = r; while (v > Math.PI) v -= Math.PI * 2; while (v < -Math.PI) v += Math.PI * 2; return v; };
     const lay = (angle0: number, reach: number, width: number) => {
       const pts: { x: number; y: number }[] = [{ x: pos.x, y: pos.y }];
-      const STEPS = 7;
+      // Step COUNT follows the reach, so the segment length is what's actually fixed (~0.2
+      // world units). A fixed count silently coarsens every long road — which is what a
+      // 7-step walk over a 4-unit reach was: half-unit facets with up to a 45° kink between
+      // them, and that is exactly the jaggedness both renderers were drawing.
+      const STEPS = Math.max(8, Math.round(reach / 0.2));
       const stepLen = reach / STEPS;
       let a = angle0;
       let px = pos.x, py = pos.y;
-      const arc = (rng.next() - 0.5) * form.bend; // this street's own gentle drift
+      // a gentle constant curvature over the whole run, NOT per-step compounding: scaled by
+      // 1/STEPS so the total drift is the same handful of degrees whatever the step count.
+      const drift = ((rng.next() - 0.5) * form.bend * 0.5) / STEPS;
+      const CONE = 0.35 + form.bend * 0.5; // how far a people lets a road stray from its errand
       for (let i = 0; i < STEPS; i++) {
-        let bestA = a + arc, bestCost = Infinity;
+        let bestA = a + drift, bestCost = Infinity;
         const eHere = elevAt(geo, px, py);
-        // wider steering (±0.7) so a lane can genuinely swing around a hill, not just nudge
+        // steering is applied to THIS step's heading and re-clamped below, so it can round a
+        // hill without the deviation accumulating into a spiral
         for (const da of [-0.7, -0.42, -0.2, 0, 0.2, 0.42, 0.7]) {
-          const ta = a + arc + da * form.bend * 2.0;
+          const ta = a + drift + da * form.bend * 0.9;
           const tx = px + Math.cos(ta) * stepLen, ty = py + Math.sin(ta) * stepLen;
           if (!buildable(geo, tx, ty)) continue;
           // a real road hugs low ground AND SHUNS STEEP GRADES — it contours a slope, never
@@ -430,7 +502,9 @@ const TerrainStreets: LocalGenStep = {
           const cost = marchCostAt(geo, tx, ty) + Math.abs(da) * 1.4 + grade * 7;
           if (cost < bestCost) { bestCost = cost; bestA = ta; }
         }
-        a = bestA;
+        // hold the road to its errand: never more than CONE off the bearing it set out on
+        const dev = wrapPi(bestA - angle0);
+        a = angle0 + Math.max(-CONE, Math.min(CONE, dev));
         const nx = px + Math.cos(a) * stepLen, ny = py + Math.sin(a) * stepLen;
         if (!buildable(geo, nx, ny)) {
           // blocked — if it's a RIVER (not the sea/a lake), throw a bridge across to dry land
@@ -453,23 +527,69 @@ const TerrainStreets: LocalGenStep = {
         pts.push({ x: px, y: py });
       }
       if (pts.length >= 2) {
-        streets.push({ angle: angle0, pts, reach });
-        plan.items.push({ kind: 'street', pts, width });
+        const run = smoothPts(pts, (x, y) => buildable(geo, x, y));
+        streets.push({ angle: angle0, pts: run, reach });
+        plan.items.push({ kind: 'street', pts: run, width });
       }
     };
-    for (const angle of angles.slice(0, 5)) lay(angle, townRadius + 1.6, 0.07);
+    // A THROUGH-ROAD MUST LEAVE. `angles` are the bearings of real road-graph neighbours, so
+    // these roads are going somewhere beyond the frame — they should exit it, and the world
+    // map's own roads carry on from there. They used to reach townRadius+1.6 (~4.0) inside a
+    // frame whose half-width is LOCAL_FRAME/2 (5.5), so every one of them stopped a unit and a
+    // half short and died in an open field. A road that ends in a meadow reads as scenery.
+    for (const angle of angles.slice(0, 5)) lay(angle, LOCAL_FRAME * 0.8, 0.07);
+    // …lanes are the town's OWN streets and are meant to end at its edge.
     for (const angle of laneAngles) lay(angle, townRadius * 0.75, 0.045);
     // CROSS-LINKS (design/24 §8.2): tie neighbouring spokes together at a mid radius so the
     // core reads as a connected WEB with blocks, not a bare star. A grid folk links more.
+    //
+    // These are ROUTED, not ruled. They used to be a single straight segment between the two
+    // midpoints — 3–4.5 world units long (wider than the town itself), with only the ENDPOINTS
+    // checked for buildable ground. A link could and did lie straight across a river, a cliff
+    // or the sea. Now the walk aims at its goal and pays the same terrain cost the spokes do,
+    // and if it cannot get there over dry land it is simply not built.
+    const linkRoute = (p0: { x: number; y: number }, p1: { x: number; y: number }): { x: number; y: number }[] | null => {
+      const span = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      const STEPS = Math.max(6, Math.round(span / 0.16));
+      const stepLen = span / STEPS;
+      const out: { x: number; y: number }[] = [{ ...p0 }];
+      let px = p0.x, py = p0.y;
+      for (let i = 0; i < STEPS * 2; i++) { // the allowance lets it detour, not wander forever
+        const rest = Math.hypot(p1.x - px, p1.y - py);
+        if (rest <= stepLen * 1.2) break;
+        const toGoal = Math.atan2(p1.y - py, p1.x - px);
+        const eHere = elevAt(geo, px, py);
+        let bestA: number | undefined, bestCost = Infinity;
+        for (const da of [0, -0.3, 0.3, -0.6, 0.6, -0.95, 0.95]) {
+          const ta = toGoal + da;
+          const tx = px + Math.cos(ta) * stepLen, ty = py + Math.sin(ta) * stepLen;
+          if (!buildable(geo, tx, ty)) continue;
+          const grade = Math.abs(elevAt(geo, tx, ty) - eHere) / Math.max(0.001, stepLen);
+          // |da| is weighted hard: a link is a shortcut between two lanes, so it should hold a
+          // near-straight line and only bend where the ground genuinely refuses it
+          const cost = marchCostAt(geo, tx, ty) + Math.abs(da) * 2.6 + grade * 7;
+          if (cost < bestCost) { bestCost = cost; bestA = ta; }
+        }
+        if (bestA === undefined) return null; // boxed in by water — no link belongs here
+        px += Math.cos(bestA) * stepLen; py += Math.sin(bestA) * stepLen;
+        out.push({ x: px, y: py });
+      }
+      if (Math.hypot(p1.x - px, p1.y - py) > stepLen * 2) return null; // never arrived
+      out.push({ ...p1 });
+      return out;
+    };
     const links = form.pattern === 'grid' ? streets.length : Math.max(1, Math.floor(streets.length / 2));
     for (let i = 0; i < links && i + 1 < streets.length; i++) {
       const s0 = streets[i], s1 = streets[i + 1];
       const mid = (arr: { x: number; y: number }[]) => arr[Math.max(1, Math.floor(arr.length * 0.5))];
       const p0 = mid(s0.pts), p1 = mid(s1.pts);
-      if (buildable(geo, p0.x, p0.y) && buildable(geo, p1.x, p1.y)) {
-        plan.items.push({ kind: 'street', pts: [p0, p1], width: 0.04 });
-        streets.push({ angle: Math.atan2((p0.y + p1.y) / 2 - pos.y, (p0.x + p1.x) / 2 - pos.x), pts: [p0, p1], reach: townRadius });
-      }
+      if (!buildable(geo, p0.x, p0.y) || !buildable(geo, p1.x, p1.y)) continue;
+      if (Math.hypot(p1.x - p0.x, p1.y - p0.y) > townRadius * 1.5) continue; // not neighbours at all
+      const route = linkRoute(p0, p1);
+      if (!route) continue;
+      const run = smoothPts(route, (x, y) => buildable(geo, x, y));
+      plan.items.push({ kind: 'street', pts: run, width: 0.04 });
+      streets.push({ angle: Math.atan2((p0.y + p1.y) / 2 - pos.y, (p0.x + p1.x) / 2 - pos.x), pts: run, reach: townRadius });
     }
     plan.radius = townRadius;
     ctxOf.set(plan, { streets, townRadius, houses, form, parcels: [], scars: [] });
@@ -741,6 +861,13 @@ const Houses: LocalGenStep = {
     // dry, standable ground (the geography, not the plan, has the final word). Lots are laid
     // in a fixed order; the PARCEL gate (claim) keeps them from overlapping each other or the
     // civic buildings (design/24 §8.2), so back yards fall out of the spacing.
+    // ROTATION DISCIPLINE (design/32 §6): half the difference between one people's village and
+    // another's is rectilinearity, not ornament. A GRID people builds to the square — every
+    // house squares to the compass, and the jitter that gives an organic town its charm is
+    // exactly what stops a planned one reading as planned. An organic people keeps its wander.
+    const disciplined = form.pattern === 'grid';
+    const snap90 = (a: number) => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
+    const jitter = disciplined ? 0 : 0.04;
     const lots: { x: number; y: number; rot: number; t: number }[] = [];
     for (const st of ctx.streets) {
       for (let t = spacing; t <= Math.min(st.reach, ctx.townRadius + 0.3); t += spacing) {
@@ -753,12 +880,19 @@ const Houses: LocalGenStep = {
         const fx = si - i0;
         const px = p0.x + (p1.x - p0.x) * fx;
         const py = p0.y + (p1.y - p0.y) * fx;
-        const tangent = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        const rawTangent = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        // the house squares to the street's DOMINANT run, not to every wobble in it
+        const tangent = disciplined ? snap90(rawTangent) : rawTangent;
         for (const side of [-1, 1]) {
-          const off = baseOff + rng.next() * 0.08;
+          // ALWAYS draw, then choose how to use it. Skipping a draw when disciplined would
+          // shift the whole rng stream for grid towns — and everything downstream of Houses
+          // (piers, boathouses, the drying racks beside them) would silently move with it.
+          // A layout knob must change the layout, not the stream.
+          const vary = rng.next();
+          const off = baseOff + (disciplined ? 0.04 : vary * 0.08); // a planned people holds one set-back
           const lx = px + Math.cos(tangent + Math.PI / 2) * off * side;
           const ly = py + Math.sin(tangent + Math.PI / 2) * off * side;
-          lots.push({ x: lx + (rng.next() - 0.5) * 0.04, y: ly + (rng.next() - 0.5) * 0.04, rot: tangent, t });
+          lots.push({ x: lx + (rng.next() - 0.5) * jitter, y: ly + (rng.next() - 0.5) * jitter, rot: tangent, t });
         }
       }
     }
@@ -920,13 +1054,25 @@ const Livelihood: LocalGenStep = {
             // to the SHORE, not the boathouse: a cramped waterfront often has no room for a
             // boathouse, but a fishing town still dries its catch, so the cue must not vanish
             // with it. A rack is small and takes no parcel — it just needs dry, clear ground.
+            // Search a small fan of spots rather than testing two and giving up: the waterfront
+            // is the most contested ground in the town, and whether one exact point is free is
+            // an accident of how the houses happened to fall. (It is: a layout change upstream
+            // put a roof on the old spot and the racks silently vanished.)
             const rackA = wa + Math.PI / 2;
-            for (const side of [1, -1]) {
-              const rx = bx + Math.cos(rackA) * 0.13 * side, ry = by + Math.sin(rackA) * 0.13 * side;
-              if (buildable(geo, rx, ry) && !occupied(ctx, rx, ry, 0.03)) {
-                plan.items.push({ kind: 'prop', x: rx, y: ry, rot: wa, propKind: 'rack', label: 'drying racks — the catch hung out to cure' });
-                break;
+            let racked = false;
+            for (const back of [0, 0.06, 0.12]) { // step landward, away from the crowded shore
+              for (const side of [1, -1]) {
+                for (const out of [0.13, 0.18, 0.09]) {
+                  const rx = bx + Math.cos(rackA) * out * side - Math.cos(wa) * back;
+                  const ry = by + Math.sin(rackA) * out * side - Math.sin(wa) * back;
+                  if (!buildable(geo, rx, ry) || occupied(ctx, rx, ry, 0.03)) continue;
+                  plan.items.push({ kind: 'prop', x: rx, y: ry, rot: wa, propKind: 'rack', label: 'drying racks — the catch hung out to cure' });
+                  racked = true;
+                  break;
+                }
+                if (racked) break;
               }
+              if (racked) break;
             }
             // a BOAT moored at the pier's tip — the fleet at rest, not out on the water
             plan.items.push({ kind: 'prop', x: tip.x, y: tip.y, rot: wa + Math.PI / 2, propKind: 'boat', label: 'a boat moored at the pier' });
@@ -939,9 +1085,16 @@ const Livelihood: LocalGenStep = {
       // LIVESTOCK grazing a paddock beyond the houses — a herding people's wealth on the hoof
       const herds = 1 + Math.min(2, Math.floor(settlement.population / 130));
       for (let h = 0; h < herds; h++) {
-        const a = rng.next() * Math.PI * 2, d = ctx.townRadius + 0.4 + rng.next() * 1.2;
-        const cx = pos.x + Math.cos(a) * d, cy = pos.y + Math.sin(a) * d;
-        if (!buildable(geo, cx, cy)) continue;
+        // SEARCH for a paddock rather than guessing once. A single blind draw meant a herding
+        // people's whole herd could vanish because one random spot happened to be wet — and it
+        // did, the moment the streets moved. The stock is the point of a herding town.
+        let cx = 0, cy = 0, found = false;
+        for (let tries = 0; tries < 14 && !found; tries++) {
+          const a = rng.next() * Math.PI * 2, d = ctx.townRadius + 0.4 + rng.next() * 1.2;
+          cx = pos.x + Math.cos(a) * d; cy = pos.y + Math.sin(a) * d;
+          if (buildable(geo, cx, cy)) found = true;
+        }
+        if (!found) continue;
         const count = 4 + Math.floor(rng.next() * 5);
         for (let i = 0; i < count; i++) {
           const lx = cx + (rng.next() - 0.5) * 0.5, ly = cy + (rng.next() - 0.5) * 0.5;
@@ -1146,10 +1299,17 @@ const Palisade: LocalGenStep = {
     // WATCHTOWERS at the gates when the town stands to arms (design/28 §2)
     if (fort.atWar) {
       for (const g of gateAngles) {
-        const x = facts.pos.x + Math.cos(g) * r, y = facts.pos.y + Math.sin(g) * r;
-        if (!buildable(facts.geo, x, y)) continue;
-        if (!claim(ctx, x, y, 0.08)) continue;
-        plan.items.push({ kind: 'building', x, y, w: 0.12, h: 0.12, rot: faceToward(x, y, facts.pos.x, facts.pos.y), role: 'watchtower', label: 'a watchtower — the town stands to arms', tone: 'grand' });
+        // slide along the wall to find standing room: one exact point on the ring is easily
+        // taken by whatever house fell nearest it, and then the town at war has no towers at all
+        for (let k = 0; k < 7; k++) {
+          const off = (k === 0 ? 0 : (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 0.09);
+          const a = g + off;
+          const x = facts.pos.x + Math.cos(a) * r, y = facts.pos.y + Math.sin(a) * r;
+          if (!buildable(facts.geo, x, y)) continue;
+          if (!claim(ctx, x, y, 0.08)) continue;
+          plan.items.push({ kind: 'building', x, y, w: 0.12, h: 0.12, rot: faceToward(x, y, facts.pos.x, facts.pos.y), role: 'watchtower', label: 'a watchtower — the town stands to arms', tone: 'grand' });
+          break;
+        }
       }
     }
   },
@@ -1387,6 +1547,251 @@ const Gatherings: LocalGenStep = {
   },
 };
 
+/** TERRACES (design/32 §6) — the `claim()` circle-parcel model produces detached scatter; a real
+ *  dense core reads as CLUSTERS. This is a fold over the plan, not a new placement pass: it finds
+ *  runs of `row` houses that already line the same lane at the same angle and pulls them into
+ *  contact, so they share walls instead of each keeping a polite gap. Every house stays its own
+ *  item — its household, its label, its lit window are untouched — which is why this is a nudge
+ *  and not a merge: merging the footprints would merge the families with them. */
+const Terraces: LocalGenStep = {
+  name: 'terraces',
+  run(facts, _rng, plan) {
+    if (facts.settlement.ruinedYear !== undefined) return;
+    const rows = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house' && i.shape === 'row' && !i.derelict);
+    if (rows.length < 2) return;
+    // Group by the line they front: same heading, then same offset across it. The `across`
+    // grouping CLUSTERS BY TOLERANCE rather than rounding into fixed buckets — with buckets,
+    // two neighbours a hair apart can fall either side of an edge and never be compared, which
+    // is exactly the pair a terrace is made of.
+    const head = (b: PlanBuilding) => ((b.rot % Math.PI) + Math.PI) % Math.PI; // mod a half-turn
+    const byHead = new Map<number, PlanBuilding[]>();
+    for (const b of rows) {
+      const k = Math.round(head(b) / 0.15);
+      let g = byHead.get(k);
+      if (!g) byHead.set(k, (g = []));
+      g.push(b);
+    }
+    const runs: PlanBuilding[][] = [];
+    for (const group of byHead.values()) {
+      const a = head(group[0]);
+      const nx = Math.cos(a + Math.PI / 2), ny = Math.sin(a + Math.PI / 2);
+      const across = (b: PlanBuilding) => b.x * nx + b.y * ny;
+      group.sort((p, q) => across(p) - across(q));
+      let cur: PlanBuilding[] = [];
+      for (const b of group) {
+        if (cur.length && Math.abs(across(b) - across(cur[cur.length - 1])) > 0.07) { runs.push(cur); cur = []; }
+        cur.push(b);
+      }
+      if (cur.length) runs.push(cur);
+    }
+    for (const run of runs) {
+      if (run.length < 2) continue;
+      // one heading for the whole run — a house at rot π and one at rot 0 front the same line
+      const a = head(run[0]);
+      const ux = Math.cos(a), uy = Math.sin(a); // along the terrace
+      run.sort((p, q) => (p.x * ux + p.y * uy) - (q.x * ux + q.y * uy));
+      // walk the run, seating each house against its neighbour's wall
+      for (let i = 1; i < run.length; i++) {
+        const prev = run[i - 1], cur = run[i];
+        const along = (p: PlanBuilding) => p.x * ux + p.y * uy;
+        const want = along(prev) + prev.w * 0.5 + cur.w * 0.5; // touching, wall to wall
+        const gap = along(cur) - want;
+        // The tolerance has to match the gap the pipeline ACTUALLY leaves, which is ~0.16–0.20:
+        // `claim()`'s footprint radius is wider than half the lot spacing, so the parcel gate
+        // rejects every other lot along a street. That rejection is precisely the detached
+        // scatter this fold exists to undo — so the reach must clear it, while still refusing
+        // the half-unit gaps that mean two genuinely separate rows.
+        if (gap <= 0 || gap > 0.24) continue;
+        cur.x -= ux * gap;
+        cur.y -= uy * gap;
+      }
+    }
+  },
+};
+
+/** DISTRICT WALLS (design/32 §6) — the town already ZONES (a craft row, a burial ground beside
+ *  the shrine) without ENCLOSING, and enclosure is what makes a zone legible at a glance. A
+ *  shrine keeps its precinct; a lord's seat keeps its bailey. Low walls, drawn lighter than the
+ *  town's own palisade — a boundary, not a defence. */
+const Districts: LocalGenStep = {
+  name: 'districts',
+  run(facts, rng, plan) {
+    const s = facts.settlement;
+    if (s.ruinedYear !== undefined) return;
+    const ring = (b: PlanBuilding, r: number, label: string) => {
+      const pts: { x: number; y: number }[] = [];
+      const SEG = 22;
+      // the gate faces the town centre, so the precinct opens toward the people it serves
+      const toC = Math.atan2(facts.pos.y - b.y, facts.pos.x - b.x);
+      for (let k = 0; k <= SEG; k++) {
+        const a = (k / SEG) * Math.PI * 2;
+        const d = Math.abs(((a - toC + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (d < 0.42) { // the gateway gap
+          if (pts.length > 2) plan.items.push({ kind: 'precinct', pts: [...pts], width: 0.022, label });
+          pts.length = 0;
+          continue;
+        }
+        const px = b.x + Math.cos(a) * r * (1 + (rng.next() - 0.5) * 0.04);
+        const py = b.y + Math.sin(a) * r * (1 + (rng.next() - 0.5) * 0.04);
+        if (!buildable(facts.geo, px, py)) { // never wall out over the water
+          if (pts.length > 2) plan.items.push({ kind: 'precinct', pts: [...pts], width: 0.022, label });
+          pts.length = 0;
+          continue;
+        }
+        pts.push({ x: px, y: py });
+      }
+      if (pts.length > 2) plan.items.push({ kind: 'precinct', pts, width: 0.022, label });
+    };
+    const shrine = plan.items.find((i): i is PlanBuilding => i.kind === 'building' && i.role === 'shrine');
+    if (shrine) ring(shrine, Math.max(shrine.w, shrine.h) * 1.35, s.patronDeity ? `the precinct of ${s.patronDeity.name}` : 'the shrine precinct');
+    const seat = plan.items.find((i): i is PlanBuilding => i.kind === 'building' && i.role === 'seat' && i.tone !== 'ruin');
+    if (seat) ring(seat, Math.max(seat.w, seat.h) * 1.3, s.ruler ? `the bailey of ${s.leaderTitle} ${s.ruler}` : 'the bailey');
+  },
+};
+
+/** CLUTTER (design/32 §5) — the props that say *someone works here*. Every one is read off a
+ *  building the pipeline already placed plus the town's own livelihood: a woodpile and cart by
+ *  the homes of a farming people, a coal heap at the smith's workshop, cargo stacked on the
+ *  piers. (The livestock/boats/racks of design/28 §4.2 already cover the herder and fisher; this
+ *  fills the gap for everyone else.) Runs after Livelihood so the workshops and piers exist. */
+const Clutter: LocalGenStep = {
+  name: 'clutter',
+  run(facts, rng, plan) {
+    const ctx = ctxOf.get(plan)!;
+    const { geo, settlement } = facts;
+    if (settlement.ruinedYear !== undefined) return;
+    const spec = settlement.specialization.toLowerCase();
+    const farming = /farm|plant|grain|orchard|vine|rice|paddy/.test(spec);
+    const smithy = /smith|forge|iron|ore|mine/.test(spec);
+    const structures = plan.items.slice();
+    let put = 0;
+    const CAP = 30; // clutter is seasoning; a town buried in woodpiles reads as a junkyard
+    /** `onDeck` props ride a structure that is ITSELF over water (a pier's boards), so they are
+     *  exempt from the dry-ground gate every other prop passes. */
+    const add = (x: number, y: number, rot: number, propKind: PlanProp['propKind'], label: string, scale?: number, onDeck = false) => {
+      if (put >= CAP) return;
+      if (!onDeck && !buildable(geo, x, y)) return;
+      plan.items.push({ kind: 'prop', x, y, rot, propKind, label, scale });
+      put++;
+    };
+    // TWO PASSES, and the order is the point. The SIGNATURE clutter — cargo on the piers, coal
+    // at the works — is what tells you what this town does, and there is only ever a handful of
+    // it. The ambient house clutter is wallpaper and there are forty roofs of it. One shared cap
+    // walked in document order let the wallpaper eat the whole budget before the piers were
+    // reached (houses are laid before Livelihood), so a fishing town landed no cargo at all.
+    // Characterful first; filler takes what's left.
+    for (const it of structures) {
+      if (put >= CAP) break;
+      if (it.kind === 'building' && (it.role === 'workshop' || it.role === 'minehead') && smithy) {
+        // a smithing/mining people raises a MINEHEAD, not a craft workshop — the coal belongs
+        // wherever this town actually does its hot work.
+        const a = it.rot - Math.PI / 2;
+        add(it.x + Math.cos(a) * (it.h * 0.5 + 0.05), it.y + Math.sin(a) * (it.h * 0.5 + 0.05), a, 'coal', 'a coal heap — the smith’s fire', 0.7 + rng.next() * 0.4);
+      } else if (it.kind === 'pier' && it.pts.length >= 2) {
+        // cargo stacked ON the boards, near the landward end where a boat's load is put down.
+        // It rides the pier, so it is over water by design — hence `onDeck`.
+        const foot = it.pts[0], tip = it.pts[it.pts.length - 1];
+        const along = Math.atan2(tip.y - foot.y, tip.x - foot.x);
+        const perp = along + Math.PI / 2;
+        for (let k = 0; k < 2; k++) {
+          const t = 0.14 + k * 0.13;
+          const cx2 = foot.x + (tip.x - foot.x) * t + Math.cos(perp) * 0.03;
+          const cy2 = foot.y + (tip.y - foot.y) * t + Math.sin(perp) * 0.03;
+          add(cx2, cy2, along, 'cargo', 'cargo landed from the boats', 0.75 + rng.next() * 0.4, true);
+        }
+      }
+    }
+    if (farming) {
+      for (const it of structures) {
+        if (put >= CAP) break;
+        if (it.kind !== 'building' || it.role !== 'house' || it.derelict) continue;
+        // NOT every house: a woodpile at each of forty roofs is wallpaper, not detail
+        const side = it.rot + Math.PI / 2;
+        if (rng.next() < 0.34) {
+          add(it.x + Math.cos(it.rot) * (it.w * 0.5 + 0.03), it.y + Math.sin(it.rot) * (it.w * 0.5 + 0.03), it.rot, 'woodpile', 'a woodpile — the winter’s fuel', 0.7 + rng.next() * 0.5);
+        }
+        if (it.inhabited && rng.next() < 0.4) {
+          add(it.x + Math.cos(side) * (it.h * 0.5 + 0.07), it.y + Math.sin(side) * (it.h * 0.5 + 0.07), side, 'cart', 'a cart', 0.8 + rng.next() * 0.4);
+        }
+      }
+    }
+    // BOULDERS in the countryside where the land is steep — the reference maps get half their
+    // terrain character from stone, and ours varied only by tree. Never inside the town's lots.
+    const rocks = 34;
+    for (let i = 0; i < rocks; i++) {
+      const a = rng.next() * Math.PI * 2;
+      const d = ctx.townRadius * 0.85 + rng.next() * 3.2;
+      const bx = facts.pos.x + Math.cos(a) * d, by = facts.pos.y + Math.sin(a) * d;
+      if (!buildable(geo, bx, by)) continue;
+      if (hillinessAt(geo, bx, by) < HILL_HILLS) continue; // stone bares on steep ground, not lawns
+      if (occupied(ctx, bx, by, 0.06)) continue;
+      if (rng.next() > 0.55) continue;
+      plan.items.push({ kind: 'prop', x: bx, y: by, rot: rng.next() * Math.PI, propKind: 'boulder', scale: 0.6 + rng.next() * 1.0 });
+    }
+  },
+};
+
+/** INTERIORS (design/32 §5) — what is under each roof, revealed when the view zooms past it.
+ *  Every fitting is DERIVED from what the plan already knows: the beds are the household's own
+ *  members (L2), the anvil is the workshop's function, the altar the shrine's. A dwelling with
+ *  no known family gets a bare hearth — the LOD made visible, exactly as its dark roof already
+ *  says. Runs after every building exists; draws no rng that anything before it depends on. */
+const Interiors: LocalGenStep = {
+  name: 'interiors',
+  // rng-free on purpose: a fitting's place is fixed by its building and its household, so
+  // furnishing the town draws nothing from the stream and perturbs nothing after it.
+  run(facts, _rng, plan) {
+    if (facts.settlement.ruinedYear !== undefined) return; // a ruin has no hearth
+    const byHead = new Map<number, HouseholdView>();
+    for (const hh of facts.households ?? []) byHead.set(hh.members[0].id, hh);
+    let nextId = 0;
+    // local (along-wall, across-wall) → world, so the renderer never has to know the rotation
+    const place = (b: PlanBuilding, lx: number, lz: number): { x: number; y: number } => {
+      const c = Math.cos(b.rot), s = Math.sin(b.rot);
+      return { x: b.x + lx * c - lz * s, y: b.y + lx * s + lz * c };
+    };
+    for (const it of plan.items.slice()) {
+      if (it.kind !== 'building' || it.derelict) continue;
+      const fits: { fitting: PlanInterior['fitting']; lx: number; lz: number; label?: string }[] = [];
+      const hw = it.w * 0.5, hh = it.h * 0.5;
+      if (it.role === 'house') {
+        // the hearth sits against the back wall (the chimney end); the family's beds line the
+        // other. A household of five beds five — the roster IS the furniture.
+        fits.push({ fitting: 'hearth', lx: hw * 0.55, lz: -hh * 0.5, label: 'the hearth' });
+        const hh2 = it.ref?.kind === 'actor' ? byHead.get(it.ref.id) : undefined;
+        const beds = hh2 ? Math.min(4, hh2.members.length) : 0;
+        for (let k = 0; k < beds; k++) {
+          const m = hh2!.members[k];
+          fits.push({ fitting: 'bed', lx: -hw * 0.55 + (k % 2) * hw * 0.5, lz: -hh * 0.45 + Math.floor(k / 2) * hh * 0.7, label: `${m.name}'s bed` });
+        }
+        if (hh2) fits.push({ fitting: 'table', lx: 0, lz: hh * 0.4, label: 'the table' });
+      } else if (it.role === 'workshop' || it.role === 'minehead') {
+        fits.push({ fitting: 'anvil', lx: 0, lz: -hh * 0.3, label: 'a workbench' });
+        fits.push({ fitting: 'hearth', lx: hw * 0.5, lz: -hh * 0.45, label: 'the forge' });
+      } else if (it.role === 'tavern') {
+        fits.push({ fitting: 'hearth', lx: hw * 0.55, lz: -hh * 0.5, label: 'the tavern hearth' });
+        for (let k = 0; k < 3; k++) fits.push({ fitting: 'bench', lx: -hw * 0.5 + k * hw * 0.5, lz: hh * 0.3, label: 'a bench' });
+        fits.push({ fitting: 'cask', lx: -hw * 0.6, lz: -hh * 0.5, label: 'the casks' });
+      } else if (it.role === 'shrine') {
+        fits.push({ fitting: 'altar', lx: 0, lz: -hh * 0.45, label: facts.settlement.patronDeity ? `the altar of ${facts.settlement.patronDeity.name}` : 'the altar' });
+      } else if (it.role === 'seat') {
+        fits.push({ fitting: 'hearth', lx: hw * 0.6, lz: -hh * 0.5, label: 'the great hearth' });
+        fits.push({ fitting: 'table', lx: 0, lz: 0, label: 'the high table' });
+        for (let k = 0; k < 2; k++) fits.push({ fitting: 'bench', lx: -hw * 0.3 + k * hw * 0.6, lz: hh * 0.4, label: 'a bench' });
+      } else if (it.role === 'granary' || it.role === 'warehouse') {
+        for (let k = 0; k < 4; k++) fits.push({ fitting: 'sack', lx: -hw * 0.5 + (k % 2) * hw, lz: -hh * 0.4 + Math.floor(k / 2) * hh * 0.8, label: 'stores' });
+      } else continue;
+      if (fits.length === 0) continue;
+      const id = nextId++;
+      it.id = id;
+      for (const f of fits) {
+        const p = place(it, f.lx, f.lz);
+        plan.items.push({ kind: 'interior', x: p.x, y: p.y, rot: it.rot, fitting: f.fitting, ofBuilding: id, label: f.label });
+      }
+    }
+  },
+};
+
 /** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3).
  *  HistoryMarks runs BEFORE Houses so fresh burn scars read as gaps, not overlays. */
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
@@ -1399,8 +1804,12 @@ export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   Houses,
   Livelihood,
   Graveyard, // after the shrine + houses exist; claims a clear plot beside the shrine
+  Terraces, // a fold over the houses just laid — pulls the row cores into shared-wall runs
+  Districts, // …then encloses the shrine/seat, once nothing will move again
   Palisade,
   TreesAndRuin,
+  Clutter, // after every building/pier exists — its props hang off what the town actually has
+  Interiors, // …and after Clutter, so furnishing a roof perturbs no yard around it
   Inhabitants, // draws no plan RNG that anything before it depends on
   Gatherings, // last — a crowd drawn from this year's own gathering events
 ];

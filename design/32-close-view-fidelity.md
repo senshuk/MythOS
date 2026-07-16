@@ -8,9 +8,38 @@ already carries — nothing stored, nothing scripted, deterministic per seed.
 **Companion documents:** `24-local-maps.md` (the Close View + town plan pipeline),
 `27-lived-in-villages.md` (inhabitants), `28-settlement-legibility.md` (fortunes,
 architecture), `22-mood-and-causal-worldgen.md`.
-**Status:** Stage 1 (performance floor) SHIPPED. Stage 2 (ground materials + shadows)
-SHIPPED — `GroundPatch` painting with clump-dithered edges, the `Grounds` LocalGenStep
-(rng-free), clumped beach/outcrops, deeper building/wall shadows. Stages 3–5 unscheduled.
+**Status:** **ALL FIVE STAGES SHIPPED** (updated 2026-07-16).
+
+- **Stage 1** (performance floor) — table caching, batched tree scatter, memoized glyphs.
+- **Stage 2** (ground as materials) — `GroundPatch` painting with clump-dithered edges, the
+  `Grounds` LocalGenStep (rng-free), clumped beach/outcrops, deeper building/wall shadows.
+- **Stage 3** (the canvas goes GPU) — `ui/terrainGpu.ts` is `computeTerrainImage` as a
+  fragment shader. Measured against the CPU reference on the same frame: close view
+  **902ms → 4.87ms**, world map 471ms → 0.99ms. It is a PORT, not a reimagining — the noise
+  is ported through `uint` so it is bit-exact, and at world zoom (dither gates off) the two
+  agree to within **1/255**, which is what says the bilinear/biome/water/hillshade port is
+  faithful. `terrain.ts` remains the reference AND the fallback when WebGL2 is absent.
+- **Stage 4** (interiors and clutter) — interior cutaway past a zoom threshold (hearth, beds
+  scaled to the household the plan already carries, workbench/casks/altar by role), clutter
+  with causes, boulders on steep ground.
+- **Stage 5** (clusters, not scatter) — rotation discipline by culture, terraces as a fold
+  that pulls row houses into shared walls, district walls with gateways.
+
+**Two notes for whoever reads this next:**
+
+1. **Stage 4's clutter list was already half-built when it was written.** "Livestock dots in
+   pens", "nets drying at boathouses" and "cargo on piers" had shipped as `PlanProp` under
+   design/28 §4.2. Scope against the merged code, not this document.
+2. **§4's caution about profiling was right, and the way it was right is worth keeping:** the
+   preview pane throttles rAF, so no frame-rate number from it is real. Stage 3 was verified
+   on wall-clock paint TIME (which the throttle does not touch) plus an in-browser pixel diff
+   against the CPU path. The first timing attempt read `0.00ms` / "98240× speedup" because
+   `performance.now()` is coarsened — amortise over many draws or you will report fiction.
+
+**Related, found while shipping these:** the 3D view's `VSCALE` was 26, which rendered the
+median acre of land as a 24° slope (p90 50°, p99 67°) on ground the sim calls flat — 93% of
+land is flat/rolling and every settlement sits on it. The world was never mountainous; it was
+drawn that way. Now 12 (median 11°, p90 29°). Presentation only — no seed or save moves.
 
 ---
 

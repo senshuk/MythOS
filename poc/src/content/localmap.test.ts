@@ -4,7 +4,7 @@
  * shape the town; its chronicle leaves clickable marks.
  */
 import { describe, it, expect } from 'vitest';
-import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree, type PlanProp, type PlanPerson } from './localmap';
+import { buildLocalPlan, LOCAL_FRAME, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree, type PlanProp, type PlanPerson, type PlanInterior, type PlanPath } from './localmap';
 import { archStyleFor } from './architecture';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
@@ -296,6 +296,292 @@ describe('ambient life (design/28 #3)', () => {
     const strip = (p: ReturnType<typeof buildLocalPlan>) =>
       JSON.stringify(p.items.filter((i) => !(i.kind === 'person' && (i.tone === 'mourner' || i.tone === 'reveller'))));
     expect(strip(buildLocalPlan(withCrowd))).toBe(strip(buildLocalPlan(bare)));
+  });
+});
+
+describe('interiors and clutter (design/32 §5)', () => {
+  const HH: HouseholdView[] = [
+    { family: 'Vrihi', members: [
+      { id: 11, name: 'Sisvrer Vrihi', role: 'head', ageYears: 52, profession: 'trader' },
+      { id: 12, name: 'Ony Vrihi', role: 'spouse', ageYears: 49, profession: 'smith' },
+      { id: 13, name: 'Little Vrihi', role: 'child', ageYears: 8, profession: 'child' },
+    ] },
+  ];
+  const furnished = (o: Partial<SettlementView> = {}, households?: HouseholdView[]) => {
+    const f = worldFacts({ detailed: true, ...o });
+    if (households) f.households = households;
+    return buildLocalPlan(f);
+  };
+
+  it("a household's beds ARE its members — the roster is the furniture", () => {
+    const plan = furnished({}, HH);
+    const fits = plan.items.filter((i): i is PlanInterior => i.kind === 'interior');
+    const beds = fits.filter((f) => f.fitting === 'bed');
+    expect(beds.length).toBe(3); // head + spouse + child, one bed each
+    expect(beds.map((b) => b.label)).toContain("Ony Vrihi's bed");
+    expect(fits.some((f) => f.fitting === 'hearth')).toBe(true);
+  });
+
+  it('every fitting names the roof it lies under, and that roof carries the id', () => {
+    const plan = furnished({}, HH);
+    const ids = new Set(plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.id !== undefined).map((b) => b.id!));
+    const fits = plan.items.filter((i): i is PlanInterior => i.kind === 'interior');
+    expect(fits.length).toBeGreaterThan(0);
+    for (const f of fits) expect(ids.has(f.ofBuilding)).toBe(true); // no orphan fitting
+  });
+
+  it('a fitting sits INSIDE the building it belongs to', () => {
+    const plan = furnished({}, HH);
+    const byId = new Map(plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.id !== undefined).map((b) => [b.id!, b]));
+    for (const f of plan.items.filter((i): i is PlanInterior => i.kind === 'interior')) {
+      const b = byId.get(f.ofBuilding)!;
+      // rotate the fitting back into the building's own frame and check it is within the walls
+      const c = Math.cos(-b.rot), s = Math.sin(-b.rot);
+      const dx = f.x - b.x, dy = f.y - b.y;
+      const lx = Math.abs(dx * c - dy * s), lz = Math.abs(dx * s + dy * c);
+      expect(lx).toBeLessThanOrEqual(b.w * 0.5 + 1e-6);
+      expect(lz).toBeLessThanOrEqual(b.h * 0.5 + 1e-6);
+    }
+  });
+
+  it('a shrine gets an altar naming its god; a tavern gets casks — function, not decoration', () => {
+    const fits = furnished({}, HH).items.filter((i): i is PlanInterior => i.kind === 'interior');
+    const altar = fits.find((f) => f.fitting === 'altar');
+    expect(altar?.label).toContain('the Windwalker');
+  });
+
+  it('a ruin has no hearth — nothing is furnished', () => {
+    const plan = furnished({ ruinedYear: 150 }, HH);
+    expect(plan.items.some((i) => i.kind === 'interior')).toBe(false);
+  });
+
+  it('an anonymous roof gets a bare hearth and no beds (the LOD made visible)', () => {
+    // no households => no known family => a hearth, but nobody to sleep by it
+    const fits = buildLocalPlan(worldFacts()).items.filter((i): i is PlanInterior => i.kind === 'interior');
+    const houseBeds = fits.filter((f) => f.fitting === 'bed');
+    expect(houseBeds.length).toBe(0);
+    expect(fits.some((f) => f.fitting === 'hearth')).toBe(true);
+  });
+
+  it('clutter answers to the livelihood: a farming town stacks wood, a smithing town heaps coal', () => {
+    const kinds = (spec: string) =>
+      new Set(buildLocalPlan(worldFacts({ specialization: spec, population: 300 }))
+        .items.filter((i): i is PlanProp => i.kind === 'prop').map((p) => p.propKind));
+    expect(kinds('grain farming').has('woodpile')).toBe(true);
+    expect(kinds('grain farming').has('coal')).toBe(false); // no smith, no coal heap
+    expect(kinds('iron & smithing').has('coal')).toBe(true);
+  });
+
+  it('a fishing town lands cargo on its piers', () => {
+    const props = buildLocalPlan(worldFacts({ specialization: 'fishing & trade', population: 420 }))
+      .items.filter((i): i is PlanProp => i.kind === 'prop');
+    expect(props.some((p) => p.propKind === 'cargo')).toBe(true);
+  });
+
+  it('the signature clutter is never starved by the wallpaper', () => {
+    // A town that BOTH fishes and plants has forty-odd roofs wanting woodpiles and only three
+    // piers wanting cargo. Walking the plan in document order let the houses (laid first) eat
+    // the whole budget and the piers land nothing — the thing that says "this town fishes".
+    const props = buildLocalPlan(worldFacts({ specialization: 'fishing & plantation', population: 420 }))
+      .items.filter((i): i is PlanProp => i.kind === 'prop');
+    expect(props.some((p) => p.propKind === 'cargo')).toBe(true);
+    expect(props.some((p) => p.propKind === 'woodpile')).toBe(true); // …and the filler still lands
+  });
+
+  it('boulders bare only on steep ground, never on the town’s own lots', () => {
+    const plan = buildLocalPlan(worldFacts({ population: 300 }));
+    const rocks = plan.items.filter((i): i is PlanProp => i.kind === 'prop' && i.propKind === 'boulder');
+    const buildings = plan.items.filter((i): i is PlanBuilding => i.kind === 'building');
+    for (const r of rocks) {
+      for (const b of buildings) {
+        expect(Math.hypot(r.x - b.x, r.y - b.y)).toBeGreaterThan(Math.max(b.w, b.h) * 0.5);
+      }
+    }
+  });
+
+  it('a ruin keeps no clutter — no woodpiles by fallen roofs', () => {
+    const props = buildLocalPlan(worldFacts({ specialization: 'grain farming', ruinedYear: 150 }))
+      .items.filter((i): i is PlanProp => i.kind === 'prop');
+    expect(props.every((p) => p.propKind === 'boulder' || p.propKind === undefined)).toBe(true);
+  });
+
+  it('the plan stays deterministic with the new steps in the pipeline', () => {
+    const a = furnished({}, HH), b = furnished({}, HH);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe('layout: clusters, not scatter (design/32 §6)', () => {
+  /** a culture id whose town lays out in the given pattern (searched, not pinned — which id
+   *  hashes to which character is an implementation detail) */
+  const cultureLayingOut = (want: 'grid' | 'organic'): string => {
+    for (let i = 0; i < 400; i++) {
+      const c = `c${i}`;
+      const plan = buildLocalPlan(worldFacts({ cultureId: c, specialization: 'crafts', population: 320 }));
+      const houses = plan.items.filter((i2): i2 is PlanBuilding => i2.kind === 'building' && i2.role === 'house');
+      const sq = houses.filter((h) => Math.abs(h.rot % (Math.PI / 2)) < 1e-6).length;
+      const isGrid = houses.length > 0 && sq / houses.length > 0.9;
+      if ((want === 'grid') === isGrid) return c;
+    }
+    throw new Error(`no culture found laying out ${want}`);
+  };
+
+  it('a GRID people squares its houses to the compass; an organic one keeps its wander', () => {
+    const rots = (cid: string) =>
+      buildLocalPlan(worldFacts({ cultureId: cid, specialization: 'crafts', population: 320 }))
+        .items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house').map((h) => h.rot);
+    const grid = rots(cultureLayingOut('grid'));
+    const organic = rots(cultureLayingOut('organic'));
+    expect(grid.length).toBeGreaterThan(5);
+    // every disciplined house sits on an exact quarter-turn…
+    expect(grid.every((r) => Math.abs(r % (Math.PI / 2)) < 1e-6)).toBe(true);
+    // …while an organic people's roofs do not all agree
+    expect(organic.some((r) => Math.abs(r % (Math.PI / 2)) > 1e-6)).toBe(true);
+  });
+
+  it('terraced row houses share walls instead of scattering — and never overlap', () => {
+    const plan = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', wealth: 260, population: 420 }));
+    const rows = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house' && i.shape === 'row');
+    // a terrace is a RUN: at least one row house sits wall-to-wall with a neighbour
+    let touching = 0;
+    for (let a = 0; a < rows.length; a++) {
+      for (let b = a + 1; b < rows.length; b++) {
+        const A = rows[a], B = rows[b];
+        const d = Math.hypot(A.x - B.x, A.y - B.y);
+        const wall = (A.w + B.w) * 0.5;
+        if (d < wall * 1.06) touching++;
+        // …but pulling them together must never drive one THROUGH another
+        expect(d).toBeGreaterThan(Math.min(A.w, B.w) * 0.35);
+      }
+    }
+    expect(touching).toBeGreaterThan(0);
+  });
+
+  it('terracing preserves every household — a shared wall must not merge two families', () => {
+    const facts = worldFacts({ detailed: true, specialization: 'trade & crafts', wealth: 260, population: 420 });
+    facts.households = [
+      { family: 'Vrihi', members: [{ id: 11, name: 'Sisvrer Vrihi', role: 'head', ageYears: 52, profession: 'trader' }] },
+      { family: 'Anva', members: [{ id: 21, name: 'Faivrai Anva', role: 'head', ageYears: 61, profession: 'trader' }] },
+    ];
+    const houses = buildLocalPlan(facts).items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    expect(houses.filter((h) => h.inhabited).length).toBe(2); // both roofs still stand, both named
+  });
+
+  it('a shrine keeps a precinct and a seat keeps a bailey, each with a gateway', () => {
+    const plan = buildLocalPlan(worldFacts());
+    const walls = plan.items.filter((i): i is PlanPath => i.kind === 'precinct');
+    expect(walls.length).toBeGreaterThan(0);
+    expect(walls.some((w) => (w.label ?? '').includes('the Windwalker'))).toBe(true); // the shrine's own god
+    expect(walls.some((w) => (w.label ?? '').includes('bailey'))).toBe(true);
+    // a ring broken for a gate: no single run closes the full circle
+    for (const w of walls) expect(w.pts.length).toBeLessThan(23);
+  });
+
+  it('a precinct never walls out over the water', () => {
+    const geo = (FIXTURE.substrate as SurfaceSubstrate).geography;
+    const plan = buildLocalPlan(worldFacts({ specialization: 'fishing & trade', population: 420 }));
+    for (const w of plan.items.filter((i): i is PlanPath => i.kind === 'precinct')) {
+      for (const p of w.pts) expect(onWater(geo, p.x, p.y)).toBe(false);
+    }
+  });
+
+  it('a ruin encloses nothing', () => {
+    const plan = buildLocalPlan(worldFacts({ ruinedYear: 150 }));
+    expect(plan.items.some((i) => i.kind === 'precinct')).toBe(false);
+  });
+
+  it('the plan stays deterministic with the layout folds in the pipeline', () => {
+    const a = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', population: 420 }));
+    const b = buildLocalPlan(worldFacts({ specialization: 'trade & crafts', population: 420 }));
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe('streets are roads, not scribbles', () => {
+  const streetsOf = (o: Partial<SettlementView> = {}) =>
+    buildLocalPlan(worldFacts({ population: 420, ...o })).items.filter((i): i is PlanPath => i.kind === 'street');
+  const turnAt = (pts: { x: number; y: number }[], k: number) => {
+    const a0 = Math.atan2(pts[k].y - pts[k - 1].y, pts[k].x - pts[k - 1].x);
+    const a1 = Math.atan2(pts[k + 1].y - pts[k].y, pts[k + 1].x - pts[k].x);
+    let d = a1 - a0;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+
+  it('no street has an ELBOW — a bend is a curve, not a corner', () => {
+    // was: a 7-segment walk with up to a 45° kink at a joint, drawn raw by both renderers
+    for (const st of streetsOf()) {
+      for (let k = 1; k + 1 < st.pts.length; k++) {
+        expect(Math.abs(turnAt(st.pts, k))).toBeLessThan(0.22); // ~12°
+      }
+    }
+  });
+
+  it('no street SEGMENT is long enough to read as a facet', () => {
+    // A BRIDGE span is the one legitimate straight run: its deck is a straight span by
+    // definition, and smoothing deliberately refuses to cut a corner out over the water.
+    const plan = buildLocalPlan(worldFacts({ population: 420 }));
+    const bridges = plan.items.filter((i): i is PlanPath => i.kind === 'bridge');
+    const spans = (x: number, y: number) => bridges.some((b) =>
+      Math.min(...b.pts.map((q) => Math.hypot(q.x - x, q.y - y))) < 0.9);
+    for (const st of plan.items.filter((i): i is PlanPath => i.kind === 'street')) {
+      for (let k = 1; k < st.pts.length; k++) {
+        const a = st.pts[k - 1], b = st.pts[k];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len >= 0.3 && spans((a.x + b.x) / 2, (a.y + b.y) / 2)) continue; // a bridge deck
+        expect(len).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('a street does not CURL — it arrives roughly where it was sent', () => {
+    // was: `arc` re-added to an already-arced heading every step, curling a street 38–71°
+    for (const st of streetsOf()) {
+      let total = 0;
+      for (let k = 1; k + 1 < st.pts.length; k++) total += turnAt(st.pts, k);
+      expect(Math.abs(total)).toBeLessThan(1.0); // ~57°, and the cone caps it well under
+    }
+  });
+
+  it('a street only crosses water where a BRIDGE carries it', () => {
+    // was: a cross-link was ONE straight segment between two midpoints, up to 4.5 units long
+    // (wider than the town), with only its ENDPOINTS checked — it could lie across open water.
+    // A street may still cross a river, but only on a bridge the plan actually built: so every
+    // wet point must sit on a bridge span, and there is no free-floating road over the sea.
+    const geo = (FIXTURE.substrate as SurfaceSubstrate).geography;
+    const plan = buildLocalPlan(worldFacts({ population: 420, specialization: 'fishing & trade' }));
+    const bridges = plan.items.filter((i): i is PlanPath => i.kind === 'bridge');
+    const onABridge = (x: number, y: number) =>
+      bridges.some((b) => {
+        const [a, c] = [b.pts[0], b.pts[b.pts.length - 1]];
+        // distance from the point to the bridge's span, with a little slack for the deck's width
+        const vx = c.x - a.x, vy = c.y - a.y, L2 = vx * vx + vy * vy || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / L2));
+        return Math.hypot(x - (a.x + vx * t), y - (a.y + vy * t)) < 0.25;
+      });
+    for (const st of plan.items.filter((i): i is PlanPath => i.kind === 'street')) {
+      for (const p of st.pts) {
+        if (!onWater(geo, p.x, p.y)) continue;
+        expect(onABridge(p.x, p.y)).toBe(true); // wet, but carried — never a road on open water
+      }
+    }
+  });
+
+  it('a through-road LEAVES the frame instead of dying in a field', () => {
+    // the roads that carry the road-graph's real bearings must cross the hinterland and exit;
+    // their reach used to fall ~1.5 units short of the frame edge, ending in open meadow.
+    const far = streetsOf().map((st) => {
+      const e = st.pts[st.pts.length - 1];
+      return Math.hypot(e.x - FIXTURE.settlements[0].pos.x, e.y - FIXTURE.settlements[0].pos.y);
+    });
+    // this town is a coastal headland — seaward roads rightly stop at the shore, so we only
+    // require that at least one through-road actually makes it out of the frame
+    expect(Math.max(...far)).toBeGreaterThanOrEqual(LOCAL_FRAME / 2);
+  });
+
+  it('the plan stays deterministic with the routed streets', () => {
+    expect(JSON.stringify(streetsOf())).toBe(JSON.stringify(streetsOf()));
   });
 });
 
