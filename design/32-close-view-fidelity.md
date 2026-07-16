@@ -8,7 +8,9 @@ already carries — nothing stored, nothing scripted, deterministic per seed.
 **Companion documents:** `24-local-maps.md` (the Close View + town plan pipeline),
 `27-lived-in-villages.md` (inhabitants), `28-settlement-legibility.md` (fortunes,
 architecture), `22-mood-and-causal-worldgen.md`.
-**Status:** Stage 1 (performance floor) IN PROGRESS. Stages 2–5 unscheduled.
+**Status:** Stage 1 (performance floor) SHIPPED. Stage 2 (ground materials + shadows)
+SHIPPED — `GroundPatch` painting with clump-dithered edges, the `Grounds` LocalGenStep
+(rng-free), clumped beach/outcrops, deeper building/wall shadows. Stages 3–5 unscheduled.
 
 ---
 
@@ -72,8 +74,13 @@ a hash-threshold per pixel, RimWorld's exact trick, deterministic by constructio
   (wealth is already in `SettlementView`; distance-to-centre is free).
 - **Sand** along shores (waterline distance already resolved per pixel), **exposed
   rock** above a hilliness threshold, **dark turned soil** under the plan's fields.
-- Boundaries dither (hash ≥ blend fraction → surface A, else B) instead of lerping —
-  the difference between "ground" and "gradient" is exactly this.
+- Boundaries dither instead of lerping — the difference between "ground" and
+  "gradient" is exactly this. IMPLEMENTATION NOTE (learned by eye): a per-cell hash
+  threshold yields salt-and-pepper speckle, not the reference look. The dither must be
+  a smooth CLUMP field (value noise sampled on the dither-cell grid, thresholded), so
+  materials come and go in ragged, cell-quantized clumps. And dither cells must be
+  screen-sized (~2.5px, world-anchored phase) — a fixed world frequency degenerates to
+  sub-pixel noise zoomed out and giant blocks zoomed in.
 
 Alongside: **shadows and wall weight** in the SVG overlay. One consistent shadow
 direction (SE), a soft dark offset shape per building, heavier wall outlines. An

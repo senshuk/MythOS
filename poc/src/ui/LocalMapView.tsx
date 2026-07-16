@@ -14,7 +14,7 @@ import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { buildLocalPlan, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
 import { ARCH_BY_ID } from '../content/architecture';
-import { paintTerrain, paintTerrainOverlay, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields } from './terrain';
+import { paintTerrain, paintTerrainOverlay, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields, type GroundPatch } from './terrain';
 import type { TerrainPaintResponse } from './terrainWorker';
 // lazy — three.js (~300 KB gzip) loads only when the 3D view is opened, off the initial bundle
 const LocalTerrain3DThree = lazy(() => import('./LocalTerrain3DThree').then((m) => ({ default: m.LocalTerrain3DThree })));
@@ -172,11 +172,13 @@ export function LocalMapView({
 
   // the overlay's DRAW LIST: the non-interactive scatter (trees, reeds — no hover, no click)
   // BATCHES into one <path> per (form, tone) group, so ~200 DOM nodes become a dozen; every
-  // interactive item stays its own glyph, and persons keep drawing over the canopy.
+  // interactive item stays its own glyph, and persons keep drawing over the canopy. GROUND
+  // surfaces (design/32 §3) leave the SVG entirely — they are painted into the terrain canvas.
   const overlay = useMemo(() => {
     if (!plan) return null;
     const structures: { it: PlanItem; i: number }[] = [];
     const persons: { it: PlanItem; i: number }[] = [];
+    const ground: GroundPatch[] = [];
     const groups = new Map<string, { form: TreeForm | 'round'; tone?: string; trees: PlanTree[] }>();
     plan.items.forEach((it, i) => {
       if (it.kind === 'tree') {
@@ -186,10 +188,17 @@ export function LocalMapView({
         if (!g) groups.set(k, (g = { form, tone: it.tone, trees: [] }));
         g.trees.push(it);
       } else if (it.kind === 'person') persons.push({ it, i });
+      else if (it.kind === 'ground') ground.push(it);
       else structures.push({ it, i });
     });
-    return { structures, persons, clusters: [...groups.values()] };
+    return { structures, persons, clusters: [...groups.values()], ground };
   }, [plan]);
+  // the paint reads ground through a ref (like labels): the plan is re-derived every streamed
+  // year, and its patches almost never change — routing them through paintClose's deps would
+  // re-run the whole ~1s terrain paint per tick for nothing. Fresh patches simply ride the
+  // next natural repaint (entering a town, zoom, resize).
+  const groundRef = useRef<GroundPatch[]>([]);
+  groundRef.current = overlay?.ground ?? [];
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -249,11 +258,11 @@ export function LocalMapView({
         size: g.size, elevation: g.elevation, moisture: g.moisture, temperature: g.temperature,
         fertility: g.fertility, water: g.water, hilliness: g.hilliness, seaLevel: g.seaLevel,
       };
-      worker.postMessage({ id, geo, vb, theme: SURF_THEME, W, H, key: seed });
+      worker.postMessage({ id, geo, vb, theme: SURF_THEME, W, H, key: seed, ground: groundRef.current });
     } else {
       c.width = W;
       c.height = H;
-      paintTerrain(c, g, vb, SURF_THEME, labels, seed);
+      paintTerrain(c, g, vb, SURF_THEME, labels, seed, groundRef.current);
       paintedView.current = { ...v };
       c.style.transform = '';
     }
@@ -546,6 +555,7 @@ const PlanGlyph = memo(function PlanGlyph({
     );
   }
   if (it.kind === 'tree') return null; // trees batch into TreeCluster paths, never per-glyph
+  if (it.kind === 'ground') return null; // ground surfaces paint into the terrain canvas
   if (it.kind === 'person') {
     // a tiny figure — a head over a cloaked body — so the town reads as peopled (design/27 §3).
     // Size varies by role and a per-figure hash (no two folk exactly alike); the body faces

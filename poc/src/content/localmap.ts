@@ -80,7 +80,24 @@ export interface PlanPerson {
   ref?: EventRef; // a notable figure inspects its actor
   label?: string; // hover text, in the pack's voice
 }
-export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson;
+/** a GROUND SURFACE under the town (design/32 §3) — packed earth where feet and carts strip
+ *  the grass, a cobbled core where wealth has paved the heart, turned soil under the plots.
+ *  Painted INTO the terrain canvas with hash-dithered edges (a material, not a gradient);
+ *  the SVG overlay never draws it. Surface names and tones are this pack's vocabulary.
+ *  A disc (`r`) or a rotated rect (`w`/`h`/`rot`), world units. */
+export interface PlanGround {
+  kind: 'ground';
+  surface: 'packed' | 'cobble' | 'soil';
+  x: number; y: number;
+  r?: number; // disc
+  w?: number; h?: number; rot?: number; // rotated rect
+  tone: [number, number, number];
+  /** 0..1 — per-cell brightness variation (individual cobbles, turned clods) */
+  speckle?: number;
+  /** 0..1 — how fully the surface replaces the land colour where it wins the dither */
+  blend: number;
+}
+export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanGround;
 
 export interface LocalPlanFacts {
   seed: number;
@@ -914,14 +931,25 @@ const Livelihood: LocalGenStep = {
         const fertile = fertilityAt(geo, fx, fy) > (riceCulture ? 0.45 : 0.55);
         const paddyHere = !sloped && low && wet && fertile;
         const crop: CropKind = isVine ? 'vine' : sowsGrain || settlement.population >= 120 ? (paddyHere ? 'paddy' : 'grain') : 'plain';
+        const fw = 0.55 + rng.next() * 0.4, fh = (sloped ? 0.22 : 0.32) + rng.next() * 0.2;
+        const frot = a + Math.PI / 2 + (rng.next() - 0.5) * 0.3;
         plan.items.push({
           kind: sloped ? 'terrace' : 'field',
           x: fx, y: fy,
-          w: 0.55 + rng.next() * 0.4, h: (sloped ? 0.22 : 0.32) + rng.next() * 0.2,
-          rot: a + Math.PI / 2 + (rng.next() - 0.5) * 0.3,
+          w: fw, h: fh,
+          rot: frot,
           crop,
           label: ruined ? 'fields gone to seed' : crop === 'vine' ? 'vineyard rows' : crop === 'paddy' ? 'flooded paddies' : sloped ? 'terraced fields' : 'worked fields',
         });
+        // turned SOIL under the plot (design/32 §3) — dark worked earth painted into the
+        // ground beneath the translucent field glyph. A ruin's plots have grassed over.
+        if (!ruined) {
+          plan.items.push({
+            kind: 'ground', surface: 'soil',
+            x: fx, y: fy, w: fw + 0.05, h: fh + 0.05, rot: frot,
+            tone: [97, 78, 54], speckle: 0.22, blend: 0.5,
+          });
+        }
         placed++;
       }
       // ORCHARDS/VINEYARDS as TREES IN ROWS (design/28 §5) — a fruit or vine town plants a
@@ -1182,6 +1210,34 @@ const Wear: LocalGenStep = {
   },
 };
 
+/**
+ * GROUND SURFACES (design/32 §3) — the town's floor, read from facts the plan already has:
+ * packed earth under the whole built town (feet, carts and stock strip the grass), and a
+ * cobbled core where wealth has paved the market heart. Turned field soil is laid by
+ * Livelihood beside each plot. DRAWS NO RNG — inserting it must not reshuffle any town.
+ * A ruin lays nothing: its ground has healed back to country.
+ */
+const Grounds: LocalGenStep = {
+  name: 'grounds',
+  run(facts, _rng, plan) {
+    const ctx = ctxOf.get(plan)!;
+    const s = facts.settlement;
+    if (s.ruinedYear !== undefined) return;
+    plan.items.push({
+      kind: 'ground', surface: 'packed',
+      x: facts.pos.x, y: facts.pos.y, r: ctx.townRadius * 0.85,
+      tone: [134, 110, 78], blend: 0.5,
+    });
+    if (s.wealth > 200 && s.population >= 120) {
+      plan.items.push({
+        kind: 'ground', surface: 'cobble',
+        x: facts.pos.x, y: facts.pos.y, r: ctx.townRadius * 0.4,
+        tone: [128, 122, 112], speckle: 0.55, blend: 0.66,
+      });
+    }
+  },
+};
+
 /** INHABITANTS (design/27 §3) — scatter static figures so the town reads as peopled:
  *  folk in the yards of the lived-in houses, hands at the workshops/piers/fields, and a
  *  little knot around the market square. Derived from what the plan already placed;
@@ -1259,6 +1315,7 @@ const Inhabitants: LocalGenStep = {
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   TerrainStreets,
   Wear,
+  Grounds, // draws no rng — the towns lay out exactly as they did before it existed
   MarketSquare,
   CivicBuildings,
   HistoryMarks,

@@ -1010,7 +1010,7 @@ button { font-family: inherit; }
 .plan-packed { stroke: #a89372; opacity: 0.4; stroke-linecap: round; }
 .plan-street { stroke: #b4a682; opacity: 0.75; }
 .plan-pier { stroke: #8a7a5c; opacity: 0.95; }
-.plan-wall { stroke: #6d6154; opacity: 0.95; }
+.plan-wall { stroke: #6d6154; opacity: 0.95; filter: drop-shadow(0.014px 0.02px 0.01px rgba(0, 0, 0, 0.5)); }
 .plan-square { fill: rgba(180, 166, 130, 0.4); stroke: #b4a682; stroke-width: 0.015; }
 .plan-field { fill: rgba(196, 178, 105, 0.32); stroke: rgba(150, 135, 80, 0.75); stroke-width: 0.014; }
 .plan-furrow { stroke: rgba(150, 135, 80, 0.5); stroke-width: 0.012; }
@@ -1044,8 +1044,10 @@ button { font-family: inherit; }
 .plan-person[role="button"]:hover .plan-person-head { fill: var(--gold); }
 .plan-person[role="button"]:hover .plan-person-body { stroke: var(--gold); }
 /* buildings cast a soft shadow so the flat plan reads as built VOLUME (design/24 §8.4) */
-.plan-building { filter: drop-shadow(0.012px 0.02px 0.012px rgba(0, 0, 0, 0.45)); }
-.plan-building rect { fill: #4a4038; stroke: #241f1a; stroke-width: 0.016; }
+/* one consistent SE sun (design/32 §3): a firmer shadow + heavier wall line give the roofs
+   the depth the reference maps get from their wall outlines */
+.plan-building { filter: drop-shadow(0.016px 0.026px 0.012px rgba(0, 0, 0, 0.55)); }
+.plan-building rect { fill: #4a4038; stroke: #1e1a15; stroke-width: 0.018; }
 .plan-building .plan-ridge { stroke: rgba(20, 16, 12, 0.55); stroke-width: 0.012; }
 .plan-building .plan-yard { fill: none; stroke: rgba(60, 52, 44, 0.85); stroke-width: 0.014; }
 /* ARCHITECTURE by culture (design/28 §3) — roof silhouette cues + hearth chimney */

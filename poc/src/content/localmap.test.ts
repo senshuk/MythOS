@@ -305,3 +305,31 @@ describe('households on the map (L2)', () => {
     expect(houses.every((h) => !h.inhabited)).toBe(true);
   });
 });
+
+describe('ground surfaces (design/32 §3)', () => {
+  it('a living town packs its earth; a wealthy, peopled one cobbles its core', () => {
+    const plan = buildLocalPlan(worldFacts({ wealth: 260 }));
+    const grounds = plan.items.filter((i) => i.kind === 'ground');
+    const surfaces = grounds.map((g) => (g as Extract<PlanItem, { kind: 'ground' }>).surface);
+    expect(surfaces).toContain('packed');
+    expect(surfaces).toContain('cobble');
+    // a poor town packs its earth but paves nothing
+    const poor = buildLocalPlan(worldFacts({ wealth: 60 }));
+    const poorSurfaces = poor.items.filter((i) => i.kind === 'ground').map((g) => (g as Extract<PlanItem, { kind: 'ground' }>).surface);
+    expect(poorSurfaces).toContain('packed');
+    expect(poorSurfaces).not.toContain('cobble');
+  });
+
+  it('every worked plot turns dark soil beneath it, matching the field footprint', () => {
+    const plan = buildLocalPlan(worldFacts({ specialization: 'farming & grain' }));
+    const fields = plan.items.filter((i): i is PlanPatch => i.kind === 'field' || i.kind === 'terrace');
+    const soil = plan.items.filter((i) => i.kind === 'ground' && (i as Extract<PlanItem, { kind: 'ground' }>).surface === 'soil');
+    expect(fields.length).toBeGreaterThan(0);
+    expect(soil.length).toBe(fields.length);
+  });
+
+  it('a ruin lays no ground — its floor has healed back to country', () => {
+    const plan = buildLocalPlan(worldFacts({ ruinedYear: 120 }));
+    expect(plan.items.some((i) => i.kind === 'ground')).toBe(false);
+  });
+});
