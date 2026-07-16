@@ -41,9 +41,14 @@ export interface PlanBuilding {
   /** the culture's ARCHITECTURAL style id (design/28 §3) — drives wall/roof colour, roof
    *  silhouette and chimney in both renderers, so a people's dwellings read as their own. */
   arch?: string;
+  /** set only on buildings the Interiors step furnished (design/32 §5) — the handle its
+   *  `PlanInterior` fittings point back at, so the renderer knows which roof to fade. */
+  id?: number;
 }
 export interface PlanPath {
-  kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed' | 'bridge';
+  /** `precinct` is a district boundary (design/32 §6) — a shrine's enclosure, a seat's bailey.
+   *  Drawn lighter than `wall`: it marks a zone, it does not hold one. */
+  kind: 'street' | 'pier' | 'wall' | 'barricade' | 'packed' | 'bridge' | 'precinct';
   pts: { x: number; y: number }[];
   width: number; // world units
   label?: string;
@@ -87,7 +92,26 @@ export interface PlanPerson {
 export interface PlanProp {
   kind: 'prop';
   x: number; y: number; rot: number;
-  propKind: 'livestock' | 'boat' | 'rack';
+  /** `livestock`/`boat`/`rack` came with the ambient-life pass (design/28 §4.2); the rest are
+   *  design/32 §5's clutter — each one an answer to "who works here?", read off the plan's own
+   *  livelihood and household professions. `boulder` is countryside, not labour: stone where the
+   *  land is steep, because the reference maps get half their character from rock. */
+  propKind: 'livestock' | 'boat' | 'rack' | 'woodpile' | 'cart' | 'coal' | 'cargo' | 'boulder';
+  label?: string;
+  /** 0.6…1.6 — a per-prop size jitter so a row of woodpiles isn't a row of clones */
+  scale?: number;
+}
+/** A FITTING inside a building (design/32 §5) — revealed when the view zooms past the roof.
+ *  Derived: the beds are the household the plan ALREADY carries (L2), the workbench is the
+ *  workshop's function, the altar the shrine's. Nothing new is tracked; this is the textual
+ *  "hover a lit roof, meet the family" made visible. Local coords are baked to world here so
+ *  the renderer stays a dumb draw. */
+export interface PlanInterior {
+  kind: 'interior';
+  x: number; y: number; rot: number;
+  fitting: 'hearth' | 'bed' | 'table' | 'bench' | 'cask' | 'altar' | 'anvil' | 'sack';
+  /** the building this fitting sits in — the renderer fades that roof to show its floor */
+  ofBuilding: number;
   label?: string;
 }
 /** a GROUND SURFACE under the town (design/32 §3) — packed earth where feet and carts strip
@@ -107,7 +131,7 @@ export interface PlanGround {
   /** 0..1 — how fully the surface replaces the land colour where it wins the dither */
   blend: number;
 }
-export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanProp | PlanGround;
+export type PlanItem = PlanBuilding | PlanPath | PlanPatch | PlanTree | PlanPerson | PlanProp | PlanGround | PlanInterior;
 
 export interface LocalPlanFacts {
   seed: number;
@@ -741,6 +765,13 @@ const Houses: LocalGenStep = {
     // dry, standable ground (the geography, not the plan, has the final word). Lots are laid
     // in a fixed order; the PARCEL gate (claim) keeps them from overlapping each other or the
     // civic buildings (design/24 §8.2), so back yards fall out of the spacing.
+    // ROTATION DISCIPLINE (design/32 §6): half the difference between one people's village and
+    // another's is rectilinearity, not ornament. A GRID people builds to the square — every
+    // house squares to the compass, and the jitter that gives an organic town its charm is
+    // exactly what stops a planned one reading as planned. An organic people keeps its wander.
+    const disciplined = form.pattern === 'grid';
+    const snap90 = (a: number) => Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
+    const jitter = disciplined ? 0 : 0.04;
     const lots: { x: number; y: number; rot: number; t: number }[] = [];
     for (const st of ctx.streets) {
       for (let t = spacing; t <= Math.min(st.reach, ctx.townRadius + 0.3); t += spacing) {
@@ -753,12 +784,19 @@ const Houses: LocalGenStep = {
         const fx = si - i0;
         const px = p0.x + (p1.x - p0.x) * fx;
         const py = p0.y + (p1.y - p0.y) * fx;
-        const tangent = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        const rawTangent = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        // the house squares to the street's DOMINANT run, not to every wobble in it
+        const tangent = disciplined ? snap90(rawTangent) : rawTangent;
         for (const side of [-1, 1]) {
-          const off = baseOff + rng.next() * 0.08;
+          // ALWAYS draw, then choose how to use it. Skipping a draw when disciplined would
+          // shift the whole rng stream for grid towns — and everything downstream of Houses
+          // (piers, boathouses, the drying racks beside them) would silently move with it.
+          // A layout knob must change the layout, not the stream.
+          const vary = rng.next();
+          const off = baseOff + (disciplined ? 0.04 : vary * 0.08); // a planned people holds one set-back
           const lx = px + Math.cos(tangent + Math.PI / 2) * off * side;
           const ly = py + Math.sin(tangent + Math.PI / 2) * off * side;
-          lots.push({ x: lx + (rng.next() - 0.5) * 0.04, y: ly + (rng.next() - 0.5) * 0.04, rot: tangent, t });
+          lots.push({ x: lx + (rng.next() - 0.5) * jitter, y: ly + (rng.next() - 0.5) * jitter, rot: tangent, t });
         }
       }
     }
@@ -920,13 +958,25 @@ const Livelihood: LocalGenStep = {
             // to the SHORE, not the boathouse: a cramped waterfront often has no room for a
             // boathouse, but a fishing town still dries its catch, so the cue must not vanish
             // with it. A rack is small and takes no parcel — it just needs dry, clear ground.
+            // Search a small fan of spots rather than testing two and giving up: the waterfront
+            // is the most contested ground in the town, and whether one exact point is free is
+            // an accident of how the houses happened to fall. (It is: a layout change upstream
+            // put a roof on the old spot and the racks silently vanished.)
             const rackA = wa + Math.PI / 2;
-            for (const side of [1, -1]) {
-              const rx = bx + Math.cos(rackA) * 0.13 * side, ry = by + Math.sin(rackA) * 0.13 * side;
-              if (buildable(geo, rx, ry) && !occupied(ctx, rx, ry, 0.03)) {
-                plan.items.push({ kind: 'prop', x: rx, y: ry, rot: wa, propKind: 'rack', label: 'drying racks — the catch hung out to cure' });
-                break;
+            let racked = false;
+            for (const back of [0, 0.06, 0.12]) { // step landward, away from the crowded shore
+              for (const side of [1, -1]) {
+                for (const out of [0.13, 0.18, 0.09]) {
+                  const rx = bx + Math.cos(rackA) * out * side - Math.cos(wa) * back;
+                  const ry = by + Math.sin(rackA) * out * side - Math.sin(wa) * back;
+                  if (!buildable(geo, rx, ry) || occupied(ctx, rx, ry, 0.03)) continue;
+                  plan.items.push({ kind: 'prop', x: rx, y: ry, rot: wa, propKind: 'rack', label: 'drying racks — the catch hung out to cure' });
+                  racked = true;
+                  break;
+                }
+                if (racked) break;
               }
+              if (racked) break;
             }
             // a BOAT moored at the pier's tip — the fleet at rest, not out on the water
             plan.items.push({ kind: 'prop', x: tip.x, y: tip.y, rot: wa + Math.PI / 2, propKind: 'boat', label: 'a boat moored at the pier' });
@@ -1387,6 +1437,251 @@ const Gatherings: LocalGenStep = {
   },
 };
 
+/** TERRACES (design/32 §6) — the `claim()` circle-parcel model produces detached scatter; a real
+ *  dense core reads as CLUSTERS. This is a fold over the plan, not a new placement pass: it finds
+ *  runs of `row` houses that already line the same lane at the same angle and pulls them into
+ *  contact, so they share walls instead of each keeping a polite gap. Every house stays its own
+ *  item — its household, its label, its lit window are untouched — which is why this is a nudge
+ *  and not a merge: merging the footprints would merge the families with them. */
+const Terraces: LocalGenStep = {
+  name: 'terraces',
+  run(facts, _rng, plan) {
+    if (facts.settlement.ruinedYear !== undefined) return;
+    const rows = plan.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house' && i.shape === 'row' && !i.derelict);
+    if (rows.length < 2) return;
+    // Group by the line they front: same heading, then same offset across it. The `across`
+    // grouping CLUSTERS BY TOLERANCE rather than rounding into fixed buckets — with buckets,
+    // two neighbours a hair apart can fall either side of an edge and never be compared, which
+    // is exactly the pair a terrace is made of.
+    const head = (b: PlanBuilding) => ((b.rot % Math.PI) + Math.PI) % Math.PI; // mod a half-turn
+    const byHead = new Map<number, PlanBuilding[]>();
+    for (const b of rows) {
+      const k = Math.round(head(b) / 0.15);
+      let g = byHead.get(k);
+      if (!g) byHead.set(k, (g = []));
+      g.push(b);
+    }
+    const runs: PlanBuilding[][] = [];
+    for (const group of byHead.values()) {
+      const a = head(group[0]);
+      const nx = Math.cos(a + Math.PI / 2), ny = Math.sin(a + Math.PI / 2);
+      const across = (b: PlanBuilding) => b.x * nx + b.y * ny;
+      group.sort((p, q) => across(p) - across(q));
+      let cur: PlanBuilding[] = [];
+      for (const b of group) {
+        if (cur.length && Math.abs(across(b) - across(cur[cur.length - 1])) > 0.07) { runs.push(cur); cur = []; }
+        cur.push(b);
+      }
+      if (cur.length) runs.push(cur);
+    }
+    for (const run of runs) {
+      if (run.length < 2) continue;
+      // one heading for the whole run — a house at rot π and one at rot 0 front the same line
+      const a = head(run[0]);
+      const ux = Math.cos(a), uy = Math.sin(a); // along the terrace
+      run.sort((p, q) => (p.x * ux + p.y * uy) - (q.x * ux + q.y * uy));
+      // walk the run, seating each house against its neighbour's wall
+      for (let i = 1; i < run.length; i++) {
+        const prev = run[i - 1], cur = run[i];
+        const along = (p: PlanBuilding) => p.x * ux + p.y * uy;
+        const want = along(prev) + prev.w * 0.5 + cur.w * 0.5; // touching, wall to wall
+        const gap = along(cur) - want;
+        // The tolerance has to match the gap the pipeline ACTUALLY leaves, which is ~0.16–0.20:
+        // `claim()`'s footprint radius is wider than half the lot spacing, so the parcel gate
+        // rejects every other lot along a street. That rejection is precisely the detached
+        // scatter this fold exists to undo — so the reach must clear it, while still refusing
+        // the half-unit gaps that mean two genuinely separate rows.
+        if (gap <= 0 || gap > 0.24) continue;
+        cur.x -= ux * gap;
+        cur.y -= uy * gap;
+      }
+    }
+  },
+};
+
+/** DISTRICT WALLS (design/32 §6) — the town already ZONES (a craft row, a burial ground beside
+ *  the shrine) without ENCLOSING, and enclosure is what makes a zone legible at a glance. A
+ *  shrine keeps its precinct; a lord's seat keeps its bailey. Low walls, drawn lighter than the
+ *  town's own palisade — a boundary, not a defence. */
+const Districts: LocalGenStep = {
+  name: 'districts',
+  run(facts, rng, plan) {
+    const s = facts.settlement;
+    if (s.ruinedYear !== undefined) return;
+    const ring = (b: PlanBuilding, r: number, label: string) => {
+      const pts: { x: number; y: number }[] = [];
+      const SEG = 22;
+      // the gate faces the town centre, so the precinct opens toward the people it serves
+      const toC = Math.atan2(facts.pos.y - b.y, facts.pos.x - b.x);
+      for (let k = 0; k <= SEG; k++) {
+        const a = (k / SEG) * Math.PI * 2;
+        const d = Math.abs(((a - toC + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (d < 0.42) { // the gateway gap
+          if (pts.length > 2) plan.items.push({ kind: 'precinct', pts: [...pts], width: 0.022, label });
+          pts.length = 0;
+          continue;
+        }
+        const px = b.x + Math.cos(a) * r * (1 + (rng.next() - 0.5) * 0.04);
+        const py = b.y + Math.sin(a) * r * (1 + (rng.next() - 0.5) * 0.04);
+        if (!buildable(facts.geo, px, py)) { // never wall out over the water
+          if (pts.length > 2) plan.items.push({ kind: 'precinct', pts: [...pts], width: 0.022, label });
+          pts.length = 0;
+          continue;
+        }
+        pts.push({ x: px, y: py });
+      }
+      if (pts.length > 2) plan.items.push({ kind: 'precinct', pts, width: 0.022, label });
+    };
+    const shrine = plan.items.find((i): i is PlanBuilding => i.kind === 'building' && i.role === 'shrine');
+    if (shrine) ring(shrine, Math.max(shrine.w, shrine.h) * 1.35, s.patronDeity ? `the precinct of ${s.patronDeity.name}` : 'the shrine precinct');
+    const seat = plan.items.find((i): i is PlanBuilding => i.kind === 'building' && i.role === 'seat' && i.tone !== 'ruin');
+    if (seat) ring(seat, Math.max(seat.w, seat.h) * 1.3, s.ruler ? `the bailey of ${s.leaderTitle} ${s.ruler}` : 'the bailey');
+  },
+};
+
+/** CLUTTER (design/32 §5) — the props that say *someone works here*. Every one is read off a
+ *  building the pipeline already placed plus the town's own livelihood: a woodpile and cart by
+ *  the homes of a farming people, a coal heap at the smith's workshop, cargo stacked on the
+ *  piers. (The livestock/boats/racks of design/28 §4.2 already cover the herder and fisher; this
+ *  fills the gap for everyone else.) Runs after Livelihood so the workshops and piers exist. */
+const Clutter: LocalGenStep = {
+  name: 'clutter',
+  run(facts, rng, plan) {
+    const ctx = ctxOf.get(plan)!;
+    const { geo, settlement } = facts;
+    if (settlement.ruinedYear !== undefined) return;
+    const spec = settlement.specialization.toLowerCase();
+    const farming = /farm|plant|grain|orchard|vine|rice|paddy/.test(spec);
+    const smithy = /smith|forge|iron|ore|mine/.test(spec);
+    const structures = plan.items.slice();
+    let put = 0;
+    const CAP = 30; // clutter is seasoning; a town buried in woodpiles reads as a junkyard
+    /** `onDeck` props ride a structure that is ITSELF over water (a pier's boards), so they are
+     *  exempt from the dry-ground gate every other prop passes. */
+    const add = (x: number, y: number, rot: number, propKind: PlanProp['propKind'], label: string, scale?: number, onDeck = false) => {
+      if (put >= CAP) return;
+      if (!onDeck && !buildable(geo, x, y)) return;
+      plan.items.push({ kind: 'prop', x, y, rot, propKind, label, scale });
+      put++;
+    };
+    // TWO PASSES, and the order is the point. The SIGNATURE clutter — cargo on the piers, coal
+    // at the works — is what tells you what this town does, and there is only ever a handful of
+    // it. The ambient house clutter is wallpaper and there are forty roofs of it. One shared cap
+    // walked in document order let the wallpaper eat the whole budget before the piers were
+    // reached (houses are laid before Livelihood), so a fishing town landed no cargo at all.
+    // Characterful first; filler takes what's left.
+    for (const it of structures) {
+      if (put >= CAP) break;
+      if (it.kind === 'building' && (it.role === 'workshop' || it.role === 'minehead') && smithy) {
+        // a smithing/mining people raises a MINEHEAD, not a craft workshop — the coal belongs
+        // wherever this town actually does its hot work.
+        const a = it.rot - Math.PI / 2;
+        add(it.x + Math.cos(a) * (it.h * 0.5 + 0.05), it.y + Math.sin(a) * (it.h * 0.5 + 0.05), a, 'coal', 'a coal heap — the smith’s fire', 0.7 + rng.next() * 0.4);
+      } else if (it.kind === 'pier' && it.pts.length >= 2) {
+        // cargo stacked ON the boards, near the landward end where a boat's load is put down.
+        // It rides the pier, so it is over water by design — hence `onDeck`.
+        const foot = it.pts[0], tip = it.pts[it.pts.length - 1];
+        const along = Math.atan2(tip.y - foot.y, tip.x - foot.x);
+        const perp = along + Math.PI / 2;
+        for (let k = 0; k < 2; k++) {
+          const t = 0.14 + k * 0.13;
+          const cx2 = foot.x + (tip.x - foot.x) * t + Math.cos(perp) * 0.03;
+          const cy2 = foot.y + (tip.y - foot.y) * t + Math.sin(perp) * 0.03;
+          add(cx2, cy2, along, 'cargo', 'cargo landed from the boats', 0.75 + rng.next() * 0.4, true);
+        }
+      }
+    }
+    if (farming) {
+      for (const it of structures) {
+        if (put >= CAP) break;
+        if (it.kind !== 'building' || it.role !== 'house' || it.derelict) continue;
+        // NOT every house: a woodpile at each of forty roofs is wallpaper, not detail
+        const side = it.rot + Math.PI / 2;
+        if (rng.next() < 0.34) {
+          add(it.x + Math.cos(it.rot) * (it.w * 0.5 + 0.03), it.y + Math.sin(it.rot) * (it.w * 0.5 + 0.03), it.rot, 'woodpile', 'a woodpile — the winter’s fuel', 0.7 + rng.next() * 0.5);
+        }
+        if (it.inhabited && rng.next() < 0.4) {
+          add(it.x + Math.cos(side) * (it.h * 0.5 + 0.07), it.y + Math.sin(side) * (it.h * 0.5 + 0.07), side, 'cart', 'a cart', 0.8 + rng.next() * 0.4);
+        }
+      }
+    }
+    // BOULDERS in the countryside where the land is steep — the reference maps get half their
+    // terrain character from stone, and ours varied only by tree. Never inside the town's lots.
+    const rocks = 34;
+    for (let i = 0; i < rocks; i++) {
+      const a = rng.next() * Math.PI * 2;
+      const d = ctx.townRadius * 0.85 + rng.next() * 3.2;
+      const bx = facts.pos.x + Math.cos(a) * d, by = facts.pos.y + Math.sin(a) * d;
+      if (!buildable(geo, bx, by)) continue;
+      if (hillinessAt(geo, bx, by) < HILL_HILLS) continue; // stone bares on steep ground, not lawns
+      if (occupied(ctx, bx, by, 0.06)) continue;
+      if (rng.next() > 0.55) continue;
+      plan.items.push({ kind: 'prop', x: bx, y: by, rot: rng.next() * Math.PI, propKind: 'boulder', scale: 0.6 + rng.next() * 1.0 });
+    }
+  },
+};
+
+/** INTERIORS (design/32 §5) — what is under each roof, revealed when the view zooms past it.
+ *  Every fitting is DERIVED from what the plan already knows: the beds are the household's own
+ *  members (L2), the anvil is the workshop's function, the altar the shrine's. A dwelling with
+ *  no known family gets a bare hearth — the LOD made visible, exactly as its dark roof already
+ *  says. Runs after every building exists; draws no rng that anything before it depends on. */
+const Interiors: LocalGenStep = {
+  name: 'interiors',
+  // rng-free on purpose: a fitting's place is fixed by its building and its household, so
+  // furnishing the town draws nothing from the stream and perturbs nothing after it.
+  run(facts, _rng, plan) {
+    if (facts.settlement.ruinedYear !== undefined) return; // a ruin has no hearth
+    const byHead = new Map<number, HouseholdView>();
+    for (const hh of facts.households ?? []) byHead.set(hh.members[0].id, hh);
+    let nextId = 0;
+    // local (along-wall, across-wall) → world, so the renderer never has to know the rotation
+    const place = (b: PlanBuilding, lx: number, lz: number): { x: number; y: number } => {
+      const c = Math.cos(b.rot), s = Math.sin(b.rot);
+      return { x: b.x + lx * c - lz * s, y: b.y + lx * s + lz * c };
+    };
+    for (const it of plan.items.slice()) {
+      if (it.kind !== 'building' || it.derelict) continue;
+      const fits: { fitting: PlanInterior['fitting']; lx: number; lz: number; label?: string }[] = [];
+      const hw = it.w * 0.5, hh = it.h * 0.5;
+      if (it.role === 'house') {
+        // the hearth sits against the back wall (the chimney end); the family's beds line the
+        // other. A household of five beds five — the roster IS the furniture.
+        fits.push({ fitting: 'hearth', lx: hw * 0.55, lz: -hh * 0.5, label: 'the hearth' });
+        const hh2 = it.ref?.kind === 'actor' ? byHead.get(it.ref.id) : undefined;
+        const beds = hh2 ? Math.min(4, hh2.members.length) : 0;
+        for (let k = 0; k < beds; k++) {
+          const m = hh2!.members[k];
+          fits.push({ fitting: 'bed', lx: -hw * 0.55 + (k % 2) * hw * 0.5, lz: -hh * 0.45 + Math.floor(k / 2) * hh * 0.7, label: `${m.name}'s bed` });
+        }
+        if (hh2) fits.push({ fitting: 'table', lx: 0, lz: hh * 0.4, label: 'the table' });
+      } else if (it.role === 'workshop' || it.role === 'minehead') {
+        fits.push({ fitting: 'anvil', lx: 0, lz: -hh * 0.3, label: 'a workbench' });
+        fits.push({ fitting: 'hearth', lx: hw * 0.5, lz: -hh * 0.45, label: 'the forge' });
+      } else if (it.role === 'tavern') {
+        fits.push({ fitting: 'hearth', lx: hw * 0.55, lz: -hh * 0.5, label: 'the tavern hearth' });
+        for (let k = 0; k < 3; k++) fits.push({ fitting: 'bench', lx: -hw * 0.5 + k * hw * 0.5, lz: hh * 0.3, label: 'a bench' });
+        fits.push({ fitting: 'cask', lx: -hw * 0.6, lz: -hh * 0.5, label: 'the casks' });
+      } else if (it.role === 'shrine') {
+        fits.push({ fitting: 'altar', lx: 0, lz: -hh * 0.45, label: facts.settlement.patronDeity ? `the altar of ${facts.settlement.patronDeity.name}` : 'the altar' });
+      } else if (it.role === 'seat') {
+        fits.push({ fitting: 'hearth', lx: hw * 0.6, lz: -hh * 0.5, label: 'the great hearth' });
+        fits.push({ fitting: 'table', lx: 0, lz: 0, label: 'the high table' });
+        for (let k = 0; k < 2; k++) fits.push({ fitting: 'bench', lx: -hw * 0.3 + k * hw * 0.6, lz: hh * 0.4, label: 'a bench' });
+      } else if (it.role === 'granary' || it.role === 'warehouse') {
+        for (let k = 0; k < 4; k++) fits.push({ fitting: 'sack', lx: -hw * 0.5 + (k % 2) * hw, lz: -hh * 0.4 + Math.floor(k / 2) * hh * 0.8, label: 'stores' });
+      } else continue;
+      if (fits.length === 0) continue;
+      const id = nextId++;
+      it.id = id;
+      for (const f of fits) {
+        const p = place(it, f.lx, f.lz);
+        plan.items.push({ kind: 'interior', x: p.x, y: p.y, rot: it.rot, fitting: f.fitting, ofBuilding: id, label: f.label });
+      }
+    }
+  },
+};
+
 /** The fantasy pack's pipeline, in order. A pack composes/replaces these (design/24 §3.3).
  *  HistoryMarks runs BEFORE Houses so fresh burn scars read as gaps, not overlays. */
 export const LOCAL_GEN_STEPS: LocalGenStep[] = [
@@ -1399,8 +1694,12 @@ export const LOCAL_GEN_STEPS: LocalGenStep[] = [
   Houses,
   Livelihood,
   Graveyard, // after the shrine + houses exist; claims a clear plot beside the shrine
+  Terraces, // a fold over the houses just laid — pulls the row cores into shared-wall runs
+  Districts, // …then encloses the shrine/seat, once nothing will move again
   Palisade,
   TreesAndRuin,
+  Clutter, // after every building/pier exists — its props hang off what the town actually has
+  Interiors, // …and after Clutter, so furnishing a roof perturbs no yard around it
   Inhabitants, // draws no plan RNG that anything before it depends on
   Gatherings, // last — a crowd drawn from this year's own gathering events
 ];

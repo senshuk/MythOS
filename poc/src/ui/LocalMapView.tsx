@@ -96,6 +96,10 @@ export function LocalMapView({
   // rather than magnifying a fixed blur — the world map's proven decoupled-repaint pattern.
   // `frame` is the base (s=1) rect; `view` is a screen-space transform over it.
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
+  // THE CUTAWAY (design/32 §5): past this zoom a furnished roof fades to its floor. A threshold,
+  // not a fade curve — the reveal should feel like a decision the view made, and one CSS class
+  // beats re-rendering 600 glyphs on every wheel tick.
+  const cutaway = view.s >= 3.2;
   const viewRef = useRef(view);
   viewRef.current = view;
   const paintedView = useRef<{ s: number; x: number; y: number } | null>(null);
@@ -188,6 +192,7 @@ export function LocalMapView({
     if (!plan) return null;
     const structures: { it: PlanItem; i: number }[] = [];
     const persons: { it: PlanItem; i: number }[] = [];
+    const interiors: { it: PlanItem; i: number }[] = [];
     const ground: GroundPatch[] = [];
     const groups = new Map<string, { form: TreeForm | 'round'; tone?: string; trees: PlanTree[] }>();
     plan.items.forEach((it, i) => {
@@ -199,9 +204,14 @@ export function LocalMapView({
         g.trees.push(it);
       } else if (it.kind === 'person') persons.push({ it, i });
       else if (it.kind === 'ground') ground.push(it);
+      else if (it.kind === 'interior') interiors.push({ it, i });
       else structures.push({ it, i });
     });
-    return { structures, persons, clusters: [...groups.values()], ground };
+    // which roofs have a floor to show — so a furnished building can fade and an unfurnished
+    // one (a shed, a grave marker) stays solid however far in you zoom
+    const furnished = new Set<number>();
+    for (const { it } of interiors) if (it.kind === 'interior') furnished.add(it.ofBuilding);
+    return { structures, persons, interiors, clusters: [...groups.values()], ground, furnished };
   }, [plan]);
   // the paint reads ground through a ref (like labels): the plan is re-derived every streamed
   // year, and its patches almost never change — routing them through paintClose's deps would
@@ -457,8 +467,14 @@ export function LocalMapView({
             </g>
           );
         })}
-        {overlay && overlay.structures.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
+        {overlay && overlay.structures.map(({ it, i }) => (
+          <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent}
+            cutaway={cutaway && it.kind === 'building' && it.id !== undefined && overlay.furnished.has(it.id)} />
+        ))}
         {overlay && overlay.clusters.map((cl, i) => <TreeCluster key={`t${i}`} form={cl.form} tone={cl.tone} trees={cl.trees} />)}
+        {/* INTERIORS (design/32 §5) — only past the cutaway zoom, so the town reads as roofs
+            until you lean in close enough for a floor to mean something */}
+        {overlay && cutaway && overlay.interiors.map(({ it, i }) => <PlanGlyph key={`in${i}`} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
         {overlay && overlay.persons.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
       </svg>
       </div>
@@ -564,14 +580,48 @@ const PlanGlyph = memo(function PlanGlyph({
   hide,
   onRef,
   onPickEvent,
+  cutaway,
 }: {
   it: PlanItem;
   show: (text: string) => (e: { clientX: number; clientY: number }) => void;
   hide: () => void;
   onRef: (ref: EventRef) => void;
   onPickEvent: (id: number) => void;
+  /** this roof has a floor to show and the view is close enough — fade it (design/32 §5) */
+  cutaway?: boolean;
 }) {
-  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall' || it.kind === 'barricade' || it.kind === 'packed' || it.kind === 'bridge') {
+  if (it.kind === 'interior') {
+    // a fitting under a lifted roof. Small, unclickable, hover-labelled: "the hearth",
+    // "Ony Vrihi's bed" — the household the plan already knew, made visible.
+    return (
+      <g
+        className={`plan-interior plan-fit-${it.fitting}`}
+        transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+        onMouseEnter={it.label ? show(it.label) : undefined}
+        onMouseLeave={it.label ? hide : undefined}
+      >
+        {it.fitting === 'hearth' ? (
+          <><circle r={0.018} className="plan-fit-fire" /><circle r={0.028} className="plan-fit-ring" /></>
+        ) : it.fitting === 'bed' ? (
+          <rect x={-0.022} y={-0.013} width={0.044} height={0.026} rx={0.005} />
+        ) : it.fitting === 'table' ? (
+          <rect x={-0.028} y={-0.014} width={0.056} height={0.028} rx={0.004} />
+        ) : it.fitting === 'bench' ? (
+          <rect x={-0.024} y={-0.006} width={0.048} height={0.012} rx={0.003} />
+        ) : it.fitting === 'cask' ? (
+          <><circle cx={-0.012} r={0.011} /><circle cx={0.012} r={0.011} /></>
+        ) : it.fitting === 'altar' ? (
+          <><rect x={-0.026} y={-0.012} width={0.052} height={0.024} rx={0.003} /><circle cy={-0.001} r={0.007} className="plan-fit-fire" /></>
+        ) : it.fitting === 'anvil' ? (
+          <path d="M -0.02 0.008 L -0.012 -0.008 L 0.012 -0.008 L 0.02 0.008 Z" />
+        ) : (
+          // sacks — stores heaped in a granary/warehouse
+          <><circle cx={-0.010} r={0.010} /><circle cx={0.010} cy={0.006} r={0.010} /></>
+        )}
+      </g>
+    );
+  }
+  if (it.kind === 'street' || it.kind === 'pier' || it.kind === 'wall' || it.kind === 'barricade' || it.kind === 'packed' || it.kind === 'bridge' || it.kind === 'precinct') {
     const d = it.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ');
     return (
       <path
@@ -593,7 +643,7 @@ const PlanGlyph = memo(function PlanGlyph({
     return (
       <g
         className={`plan-prop plan-prop-${it.propKind}`}
-        transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+        transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})${it.scale ? ` scale(${it.scale.toFixed(2)})` : ''}`}
         onMouseEnter={it.label ? show(it.label) : undefined}
         onMouseLeave={it.label ? hide : undefined}
       >
@@ -601,6 +651,19 @@ const PlanGlyph = memo(function PlanGlyph({
           <ellipse rx={0.014} ry={0.009} />
         ) : it.propKind === 'boat' ? (
           <path d="M -0.03 0 Q 0 -0.014 0.03 0 Q 0 0.014 -0.03 0 Z" />
+        ) : it.propKind === 'woodpile' ? (
+          // split logs seen end-on — a stack of rounds against a wall
+          <><circle cx={-0.011} r={0.006} /><circle r={0.006} /><circle cx={0.011} r={0.006} /><circle cx={-0.0055} cy={-0.010} r={0.006} /><circle cx={0.0055} cy={-0.010} r={0.006} /></>
+        ) : it.propKind === 'cart' ? (
+          // a flat bed on two wheels
+          <><rect x={-0.020} y={-0.009} width={0.040} height={0.018} rx={0.003} /><circle cx={-0.013} cy={0.013} r={0.006} className="plan-prop-wheel" /><circle cx={0.013} cy={0.013} r={0.006} className="plan-prop-wheel" /></>
+        ) : it.propKind === 'coal' ? (
+          <ellipse rx={0.016} ry={0.011} />
+        ) : it.propKind === 'cargo' ? (
+          // crates stacked on the boards
+          <><rect x={-0.016} y={-0.014} width={0.015} height={0.015} /><rect x={0.001} y={-0.014} width={0.015} height={0.015} /><rect x={-0.008} y={0.002} width={0.015} height={0.015} /></>
+        ) : it.propKind === 'boulder' ? (
+          <path d="M -0.020 0.010 Q -0.026 -0.008 -0.008 -0.014 Q 0.012 -0.020 0.021 -0.004 Q 0.026 0.008 0.010 0.013 Z" />
         ) : (
           // a drying rack: a crossbar on two posts
           <>
@@ -691,7 +754,7 @@ const PlanGlyph = memo(function PlanGlyph({
     );
   }
   if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
-  const cls = `plan-building tone-${it.tone} role-${it.role}${it.inhabited ? ' inhabited' : ''}${it.era ? ` era-${it.era}` : ''}${it.shape ? ` shape-${it.shape}` : ''}${it.derelict ? ' derelict' : ''}`;
+  const cls = `plan-building tone-${it.tone} role-${it.role}${it.inhabited ? ' inhabited' : ''}${it.era ? ` era-${it.era}` : ''}${it.shape ? ` shape-${it.shape}` : ''}${it.derelict ? ' derelict' : ''}${cutaway ? ' cutaway' : ''}`;
   // ARCHITECTURE (design/28 §3): the culture's style tints the roof and shapes its silhouette
   const st = it.arch ? ARCH_BY_ID[it.arch] : undefined;
   const roofFill = st ? `rgb(${Math.round(st.roof[0] * 255)}, ${Math.round(st.roof[1] * 255)}, ${Math.round(st.roof[2] * 255)})` : undefined;
