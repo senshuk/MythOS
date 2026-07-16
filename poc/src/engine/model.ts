@@ -867,9 +867,31 @@ export interface FactionSplit {
   axisMean: number;
 }
 
+/**
+ * RULES — what reality permits, as pack-configurable DATA (design/30 §4.6, invariant 17).
+ * Deliberately minimal: one field, gating the one Intent this slice proves the mechanism
+ * on (a peaceful bid for a seat, `pressClaim`). A pack grows this shape outward field by
+ * field as new Rules-gated content needs it — never the full Physical/Social/Economic/
+ * Supernatural taxonomy up front. Rules never change except through transitionAge
+ * (engine/age.ts) rewriting `world.rules` wholesale — an explicit, emitted epoch event,
+ * never a silent mutation.
+ */
+export interface Rules {
+  succession: {
+    /** Whether a peaceful bid for a seat (pressClaim) is a legitimate path to power in
+     *  this Age. An epoch-transition may turn this off — after which pressClaim is
+     *  ILLEGAL, not merely less likely: the Resolver rejects it before attempt. */
+    claimsEnabled: boolean;
+  };
+}
+
 /** The whole world state. Everything needed to reconstruct the sim lives here. */
 export interface World {
   seed: number;
+  /** The live Rules config — what this world's reality currently permits. Starts as the
+   *  pack's default and changes ONLY via transitionAge (engine/age.ts). Serialized (a
+   *  world past its first epoch-transition must reload with the changed rules intact). */
+  rules: Rules;
   /** the physical world (a `Substrate` — a 2D surface today, but the engine assumes
    *  nothing of the kind). Drives settlement placement, resources, economy & development.
    *  Deterministic from the seed (regenerated on load, never serialized). */

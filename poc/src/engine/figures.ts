@@ -236,6 +236,7 @@ export const CLAIM_RIPE_WINDOW = 6;
  * verb; there is no player branch. Randomness (the new reign's span) comes from the caller's stream.
  */
 export function pressClaim(world: World, claimant: EntityId, rng: Rng): void {
+  if (!world.rules.succession.claimsEnabled) return; // this Age no longer permits it — illegal, not weaker
   const h = world.homeSettlement.get(claimant);
   if (h === undefined) return;
   const s = world.settlements[h];

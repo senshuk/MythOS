@@ -7,7 +7,7 @@
  */
 import { Rng } from '../engine/rng';
 import { DAYS_PER_YEAR } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization, Rules } from '../engine/model';
 import { biomeOf } from './biomes';
 
 // ------------------------------------------------------------ identity -------
@@ -24,6 +24,13 @@ export const MODULES = {
   religion: true, // faith bonds & friction, conversion/apostasy, state precepts
   factions: true, // creed factionalism: splits, civil wars, exile & return
   travel: true, // vehicle transit (mobile locations move with duration)
+};
+
+/** This universe's starting Rules — what reality permits at world creation. A fresh
+ *  world's `world.rules` is seeded from this; it changes thereafter only via an Age's
+ *  epoch-transition (engine/age.ts), never by editing this constant mid-simulation. */
+export const RULES: Rules = {
+  succession: { claimsEnabled: true }, // the Age of Claimants: a peaceful bid for a seat is legitimate
 };
 
 /**

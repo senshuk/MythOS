@@ -14,13 +14,13 @@
  * The format is versioned; bump SAVE_VERSION and add a migration when the shape
  * changes. Backward compatibility matters (CLAUDE.md "Save Philosophy").
  */
-import { type World, type Identity, type Lifecycle, type Needs, type Thought, type SocialTies, type RelEdge, type Reputation, type Belief, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, DAYS_PER_YEAR } from './model';
+import { type World, type Identity, type Lifecycle, type Needs, type Thought, type SocialTies, type RelEdge, type Reputation, type Belief, type ExileRecord, type Location, type LocationId, type Organization, type OrgId, type OrgMember, type OrgIntent, type OperationalState, type OrgAction, type OrgAgreement, type OrgInteractionRecord, type Rules, DAYS_PER_YEAR } from './model';
 import { type Intent } from './intent';
 import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
-import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, setCulturesForSeed } from './pack';
+import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, RULES, setCulturesForSeed } from './pack';
 
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 27;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -48,6 +48,9 @@ export interface SaveFile {
   playerGoal: { kind: string; target?: number } | null;
   /** The player's committed ambition (steering state). Optional for saves predating v20. */
   playerAmbition?: { id: string; target?: number; chosenTick: number; completedTick?: number; outcome?: 'fulfilled' | 'thwarted' };
+  /** The live Rules config (design/30 §4.6) — what this world's reality currently permits.
+   *  Optional for saves predating v27, which fall back to the active pack's default. */
+  rules?: Rules;
 
   // plain arrays / objects (already JSON-safe)
   settlements: World['settlements'];
@@ -176,6 +179,7 @@ export function serializeWorld(world: World): SaveFile {
     playerId: world.playerId ?? null,
     playerGoal: world.playerGoal ?? null,
     playerAmbition: world.playerAmbition,
+    rules: world.rules,
 
     settlements: world.settlements,
     // store only the generic locations; settlements re-enter the registry by reference on load.
@@ -512,6 +516,9 @@ export function deserializeWorld(save: SaveFile): World {
     playerRngState: s.playerRngState,
     playerGoal: s.playerGoal ?? undefined,
     playerAmbition: s.playerAmbition ?? undefined,
+    // v26 → v27 (Rules/Age): older saves predate Rules entirely — fall back to the active
+    // pack's default rather than assume any one field's value.
+    rules: s.rules ?? { succession: { ...RULES.succession } },
     playerInputs: s.playerInputs,
   };
 }

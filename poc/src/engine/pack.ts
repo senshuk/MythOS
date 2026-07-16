@@ -29,6 +29,7 @@ import { generateCultures } from '../content/cultureGen';
 
 // type re-exports (compile-time only; a pack supplies matching shapes)
 export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec } from '../content/fixture';
+export type { Rules } from './model';
 export type { PlaceContext } from '../content/languages';
 export type { Biome } from '../content/biomes';
 export type { RenderFn, PlayerVoice } from '../content/narrative';
@@ -47,6 +48,7 @@ export const FANTASY_PACK: UniversePack = { ...fixture, ...languages, ...biomes,
 export let PACK_ID = FANTASY_PACK.PACK_ID;
 export let PACK_VERSION = FANTASY_PACK.PACK_VERSION;
 export let MODULES = FANTASY_PACK.MODULES;
+export let RULES = FANTASY_PACK.RULES;
 export let SPECIES = FANTASY_PACK.SPECIES;
 export let maturityOf = FANTASY_PACK.maturityOf;
 export let elderhoodOf = FANTASY_PACK.elderhoodOf;
@@ -198,6 +200,7 @@ export function setPack(p: UniversePack): void {
   PACK_ID = p.PACK_ID;
   PACK_VERSION = p.PACK_VERSION;
   MODULES = p.MODULES;
+  RULES = p.RULES;
   SPECIES = p.SPECIES;
   maturityOf = p.maturityOf;
   elderhoodOf = p.elderhoodOf;

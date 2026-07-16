@@ -311,16 +311,43 @@ Supernatural/Technological Rules category already includes exactly this kind of 
 states the missing mechanism verbatim: *"Rules cannot be changed during a running
 simulation. Rule changes require a world reset or **an explicit epoch-transition event**."*
 
-**Mechanism (revised).** An `Age` is a world-scale epoch-transition Event (invariant 17's
-own mechanism, not a new one) whose effect is to **replace the active Supernatural/
-Technological Rules**, not multiply a ceiling: magic goes from `enabled, rarity: common` to
-`enabled, rarity: forbidden` to `disabled`; resurrection goes from `possible` to `disabled`.
-Because Rules are enforced in the Intent Resolver (§Rule Enforcement) *before* an intent is
-even attempted, a post-decline Actor doesn't attempt weaker magic and fail more — a
-magic-shaped Intent is no longer legal at all, exactly the "what reality permits" framing
-the review asked for. **No new Construct, no modifier table** — this is invariant 17 used
-for the purpose it was already written for, applied at world scale via the pack's own Age
-sequence (still pack data: era names, and which Rule fields each epoch-transition rewrites).
+**Status (v1.5): the minimal Rules surface and the Age mechanism are now BUILT** — see the
+v1.5 revision note. `engine/model.ts` carries a one-field `Rules` shape, `engine/pack.ts`
+live-binds it as `RULES`, and `engine/age.ts`'s `transitionAge()` is the only writer, via an
+emitted `age_transition` event. The proof is wired through `pressClaim`: across an Age
+boundary that Intent becomes illegal (rejected before attempt), not merely weaker. The
+correction below is preserved as the record of what was found and why the scope was cut
+this narrowly; the four-category taxonomy it warns against remains unbuilt, deliberately.
+
+**Correction (v1.3, found by codebase check before spawning this as a task): the Rules
+tier does not exist in code.** `13-simulation-rules.md`'s Physical/Social/Economic/
+Supernatural Rules categories, its `rules: { magic: {...} }` config shape, its Intent
+Resolver rule-checking hooks, and invariants 16-17 are all **design-doc-only** — grepping
+`poc/src/engine` for a rules object, a rule-checking call in `resolve.ts`/`intent.ts`, or
+any `magic.enabled`-shaped config finds nothing. §4.6/§4.7 as originally written assumed
+this was existing infrastructure to plug one field into; it is not. This does not change
+the *design* — Ages/epoch-transitions are still the right shape, and invariant 17 is still
+the right law to build toward — but it changes the *cost estimate*: this item is not
+"cheapest once correctly placed," it requires standing up a minimal Rules mechanism first.
+Scope the first slice narrowly (see the mechanism below) rather than building the full
+four-category taxonomy `13` describes; that can grow later, the same way every other
+primitive in this engine started minimal and grew outward.
+
+**Mechanism (revised, scoped to what must actually be built).** A small, new pack-config
+surface — a `rules` object on the `UniversePack` shape (`poc/src/engine/pack.ts`), sibling
+to the existing `MODULES` flags — carrying only the fields an Age needs to gate (start with
+`magic: { enabled: boolean; rarity: 'common'|'uncommon'|'rare'|'forbidden' }` and whatever
+else the first pack actually uses; do not pre-build the Social/Economic categories `13`
+describes until something needs them). An `Age` is a world-scale epoch-transition Event
+that rewrites this config live-bound the same way `setPack` already reassigns pack exports
+(`pack.ts`'s live-binding pattern). Whatever currently resolves magic-shaped Intents (check
+`content/decisions.ts`/`content/actions.ts` for how magic, if any exists in the fantasy
+pack today, is currently gated — likely nothing yet, in which case this is the first
+consumer) must read the live `rules.magic` config before resolving, so a post-decline Actor
+finds the Intent illegal rather than merely weaker. **This is real new engine surface, not
+"one field on an existing mechanism"** — correctly scoped, it is still small (a config
+object + one resolver check + one epoch Event), but it should be estimated and reviewed as
+new infrastructure, not a one-line addition.
 
 **Wonder (new in v1.1) — the Director-facing half of Decline.** The review's separate point
 about "the frequency of impossible events" is the Director's side of the same coin: bucket
@@ -356,9 +383,12 @@ can already write with zero engine change. The review's rebuttal is sharper: a c
 paradigm isn't a story, it's **which Rules are load-bearing** — if reality was *sung* into
 being, music should have genuine causal weight somewhere a pack can plug into; if it was
 *dreamed*, dreams should be able to produce real Evidence. That is not lore, and it turns
-out the engine already has exactly the tier this belongs in: `13-simulation-rules.md`'s
+out the tier this belongs in is the right one conceptually — `13-simulation-rules.md`'s
 **Supernatural/Technological Rules** category, sitting right beside `magic`, `warpTravel`,
-and `resurrection`. **Promoted mechanism:** add `creationParadigm` as a pack-selected Rules
+and `resurrection` — **but per the correction in §4.6, that category is design-doc-only
+today; the same minimal `rules` config surface would need to exist first, and this field
+would be one more entry in it, not a plug into something already built.** **Promoted
+mechanism:** add `creationParadigm` as a pack-selected Rules
 value (an open enum — `sung`, `forged`, `dreamed`, `mathematical`, `sacrificial`, or a
 pack's own), which other Rules and systems may key off exactly as they already key off
 `magic.enabled`:
@@ -765,3 +795,5 @@ that loop produces.
 | 1.1 | 2026-07-12 | Second-pass review response. Core critique: several v1.0 items modeled *mythology as information* where Tolkien's mythology often acts as *a force in history*. Revised §4.2 to give artifacts narrow, bounded Agency (the dual-role Actor+Object seam already in `11`), not just a reputational tag. Revised §4.5 to generalize Corruption from a one-time Species-derivation fact into an ongoing contagion, reusing Disease's propagation graph generalized to be entity/component-agnostic. Revised §4.6 to replace the rejected "modifier table" framing with Rules-tier change via invariant 17's epoch-transition mechanism (Decline changes *what reality permits*, not a multiplier), and added **Wonder** as the Director's tier-gated incident-selection half of the same idea. Promoted **Creation Paradigm** (§4.7) from dismissed lore to a Supernatural/Technological Rules field, while keeping Providence rejected and sharpening why (selection-bias vs. outcome-bias) against the new §4.11. Broadened Oath/Binding carriers (§4.3) beyond a single Actor to bloodlines, Organizations, and Locations, each via that entity type's existing inheritance/succession/occupancy rule. Added **Sacred Geography** (§4.8, Location's unstated significance threshold), **Language as Archaeology** (§4.9, closes Epistemics' deferred `inference` producer), the **Mythic Feedback Loop** (§4.10, the review's central point — legendary Beliefs as a new input to `worldviewOf`, Ambition selection, and Organization founding, so myths reshape cultures and institutions, not just what individuals believe), and **Director Myth-Awareness** (§4.11, subject-selection weighting only, explicitly not outcome bias). Revised sequencing (§6) to reflect that several "hard" items turned out to be one Rules field once correctly placed. |
 | 1.2 | 2026-07-12 | Third-pass review: universality check with Tolkien deliberately set aside, testing §4.1–§4.11 against ASOIAF, Star Trek, Dune, 40K, Foundation, Mass Effect, and RimWorld (§5, new) — every item held up, several validated by near-exact matches already present in a shipped universe (Dune's Butlerian Jihad for Rules-based Decline; Mass Effect's Reaper cycles suggesting cyclic, not only linear, Age graphs; 40K's Ecclesiarchy and Dune's Bene Gesserit validating the Mythic Feedback Loop for both organic and *engineered* myth-seeding; §4.4 reframed as "exceptional-capability Actors" generally, not only deities). Addressed the "Historical Attractor" question (The Ring, the Iron Throne, the Golden Path, the Federation, Chaos, the Reapers, psychohistory, the Archotech) by tracing each example through existing mechanisms rather than arguing in the abstract: concluded it is an emergent steady-state of the Mythic Feedback Loop, not a missing primitive, and proposed an **Attractor Strength** reducer (§6, new) as the missing *legibility* piece — a pure read, no new Construct. Addressed mythic inflation by adding **the Law of Mythic Scarcity** (§7, new): legendary/sacred/attractor status must always be a reducer over a decaying Mark stack, never a stored flag — identified that `11 §Object`'s "historically significant" flag currently reads as exactly the stored-flag anti-pattern this law forbids, and sequenced its retrofit first (§9) since it protects everything minted after it. Renumbered former §5/§6 to §8/§9. |
 | 1.3 | 2026-07-12 | Fourth-pass review response, prompted by the reviewer's observation that the Law of Mythic Scarcity (§7) reads like a general engine principle rather than a mythology-local one. Promoted it to `18-prime-movers.md` §"Significance is derived, never stored", canonical there now; §7 rewritten to point to it rather than restate it. Promoting the law prompted an actual codebase audit rather than continued document review, which corrected v1.2's claim: `11 §Object`'s "historically significant" flag is NOT a live bug (Object isn't implemented in the PoC yet, so the wording was tightened pre-emptively instead), but the audit found a real one in its place — `House.prestige` (`engine/model.ts`/`figures.ts`) is a plain stored, only-incrementing number with no decay path, exactly the "dynastic prestige" example the reviewer predicted. Not patched inline (it changes game balance, a product decision); spawned as a separate follow-up task instead. §9's sequencing item 1 updated to match. |
+| 1.5 | 2026-07-16 | **§4.6's Rules/Age infrastructure SHIPPED**, scoped exactly as v1.4's correction demanded — the config surface, the epoch-transition mechanism, and one end-to-end proof, nothing more. Built: a minimal `Rules` shape (`engine/model.ts`) carrying the single field the proof needs (`succession.claimsEnabled`), live-bound through the pack boundary as `RULES` exactly as `MODULES` already is (`engine/pack.ts`, `content/fixture.ts`); `world.rules` as serialized world state (save v27, with a pack-default fallback for older saves) and part of the determinism hash; and `engine/age.ts`'s `transitionAge()` — the ONE function permitted to rewrite `world.rules`, emitting an `age_transition` event so a Rule change is never a silent flag flip. Wired end-to-end into `pressClaim` (`engine/figures.ts`): past an Age boundary the Resolver **rejects the Intent before attempt** rather than diminishing it, and `canSeekRule` (`engine/social.ts`) withdraws the offer in the same breath so the affordance never lies about what the Resolver allows. Tests in `engine/age.test.ts`; full suite (422 tests) and determinism suite green — the two `sim.determinism.packdata.test.ts` philology failures observed during verification were confirmed **pre-existing on clean HEAD** (`d119125`), unrelated to this work, and are left for their own task. Deferred as planned and still unbuilt: the four-category Rules taxonomy from `13`, §4.7's `creationParadigm` (now genuinely a small follow-up — the `rules` surface it needed is real), and §4.6's Director "Wonder" tier-gating. |
+| 1.4 | 2026-07-13 | Correction found while scoping §4.6/§4.7 as a follow-up task: `13-simulation-rules.md`'s Rules tier (Physical/Social/Economic/Supernatural, its `rules:` config shape, Intent Resolver enforcement, invariants 16-17) is **design-doc-only** — confirmed by grep across `poc/src/engine` (no rules object, no rule-checking hook in `resolve.ts`/`intent.ts`). §4.6 and §4.7 both assumed this was existing infrastructure to plug one field into; it is not. Design intent unchanged (Ages-as-epoch-transition and Rules-gated Creation Paradigm remain correct), but both sections now say plainly that a minimal `rules` config surface must be built first, scoped narrowly (start with just what an Age needs to gate, not the full four-category taxonomy `13` describes) — this is real new engine surface, not a one-line addition, and should be estimated/reviewed as such. Caught before implementation started, not after. By the same practice as every other review in this document: verify against the actual code before committing an estimate to it, including this one's own past estimates. |

@@ -61,7 +61,7 @@ import { renderEvent, renderEventParts } from './render';
 
 export { setStoryteller } from './director';
 import { speciesById, maturityOf, governmentById, leaderTitleOf, cultureById, deityById, patronDeityOf, ethicsTaboos, creedOf, natureOf, ambitionOf, RESOURCES, SUBSISTENCE_RESOURCE, worldviewReading, worldviewFromValues, CULTURES, type ValueAxis, intentLabel, intentById, NEEDS, NEED_FEELS, NEED_FEELS_GENERIC, NEED_BEAT_LOW, NEED_BEAT_HIGH } from './pack';
-import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, featureName, setPack, setCulturesForSeed, PACK_ID, type UniversePack } from './pack';
+import { peopleName, voiceOf, kinOf, lexeme, LEXICON_SAMPLE, MODULES, RULES, featureName, setPack, setCulturesForSeed, PACK_ID, type UniversePack } from './pack';
 import { personalityOf } from './social';
 import { eventInterest, renderBackstory, PLAYER_VOICE } from './pack';
 import { backstoryFacts } from './backstory';
@@ -105,6 +105,9 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
   if (PACK_ID === 'fantasy') setCulturesForSeed(seed);
   const world: World = {
     seed,
+    // own copy, not an alias to the pack's module-level default — an Age must be free to
+    // rewrite ONE world's rules without perturbing the pack singleton other worlds share.
+    rules: { succession: { ...RULES.succession } },
     substrate: createSubstrate(seed),
     tick: 0,
     rng: new Rng(mixSeed(seed, 0xf0c)), // neutral stream until a settlement is focused
@@ -2005,6 +2008,7 @@ export function canonicalize(world: World): string {
   parts.push(`player=${world.playerId ?? -1}.prng${world.playerRngState}.inputs${world.playerInputs.length}`);
   parts.push(`figrng=${world.figureRngState}`);
   parts.push(`pgoal=${world.playerGoal ? `${world.playerGoal.kind}.${world.playerGoal.target ?? -1}` : '-'}`);
+  parts.push(`rules=claims${world.rules.succession.claimsEnabled ? 1 : 0}`);
   return parts.join('\n');
 }
 
