@@ -17,12 +17,21 @@ export const RES = 200; // terrain vertices per side
  * 26, and measured against the world it renders that made the MEDIAN acre of land a 24° slope
  * (p90 50°, p99 67°) on ground the simulation itself calls flat or rolling. 93% of land is
  * flat/rolling and every settlement sits on it; the world was never mountainous, it was drawn
- * that way. At 8 the same terrain reads median 8°, p90 20°, p99 36° — gentle farmland, real
- * hills, the occasional crag. (Reference: farmland is <5%, rolling ~8%, hilly 10–15%.)
+ * that way.
+ *
+ * Measured over land-to-land grades (seed 123456; coastal drops to the sea floor excluded):
+ *
+ *   VSCALE   median    p90     p99      reads as
+ *     26      24°      50°     67°      alpine — the bug
+ *     12      11°      29°     47°      rolling country with real hills   <- here
+ *      8       8°      20°     36°      gentle farmland
+ *
+ * 12 keeps the drama that made the exaggeration worth having while leaving a settled valley
+ * settleable. (Reference: real farmland is <5% grade, rolling ~8%, hilly 10–15%.)
  *
  * Presentation only: VSCALE exists nowhere but this file, so no seed, save, or sim hash moves.
  */
-export const VSCALE = 8;
+export const VSCALE = 12;
 
 export interface Accum { pos: number[]; nrm: number[]; col: number[]; idx: number[]; n: number; sea?: number[]; uv: number[]; mat: number[] }
 const newAccum = (): Accum => ({ pos: [], nrm: [], col: [], idx: [], n: 0, uv: [], mat: [] });
