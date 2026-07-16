@@ -7,12 +7,12 @@
  * (content/localmap.ts) drawn as an SVG overlay that rides the same transform.
  * Pure presentation: nothing here is stored, and the sim never sees it.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import type { RegionMapView, SettlementView, EventRef, EventView, HouseholdView } from '../engine/model';
 import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
-import { buildLocalPlan, type LocalPlanFacts, type PlanItem } from '../content/localmap';
+import { buildLocalPlan, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
 import { ARCH_BY_ID } from '../content/architecture';
 import { paintTerrain, paintTerrainOverlay, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields } from './terrain';
 import type { TerrainPaintResponse } from './terrainWorker';
@@ -170,6 +170,27 @@ export function LocalMapView({
     return buildLocalPlan(facts);
   }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households, venues]);
 
+  // the overlay's DRAW LIST: the non-interactive scatter (trees, reeds — no hover, no click)
+  // BATCHES into one <path> per (form, tone) group, so ~200 DOM nodes become a dozen; every
+  // interactive item stays its own glyph, and persons keep drawing over the canopy.
+  const overlay = useMemo(() => {
+    if (!plan) return null;
+    const structures: { it: PlanItem; i: number }[] = [];
+    const persons: { it: PlanItem; i: number }[] = [];
+    const groups = new Map<string, { form: TreeForm | 'round'; tone?: string; trees: PlanTree[] }>();
+    plan.items.forEach((it, i) => {
+      if (it.kind === 'tree') {
+        const form = it.form ?? 'round';
+        const k = `${form}|${it.tone ?? ''}`;
+        let g = groups.get(k);
+        if (!g) groups.set(k, (g = { form, tone: it.tone, trees: [] }));
+        g.trees.push(it);
+      } else if (it.kind === 'person') persons.push({ it, i });
+      else structures.push({ it, i });
+    });
+    return { structures, persons, clusters: [...groups.values()] };
+  }, [plan]);
+
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
     () => (sub instanceof SurfaceSubstrate ? buildRoads(sub.geography, map.nodes, map.edges) : []),
@@ -228,15 +249,15 @@ export function LocalMapView({
         size: g.size, elevation: g.elevation, moisture: g.moisture, temperature: g.temperature,
         fertility: g.fertility, water: g.water, hilliness: g.hilliness, seaLevel: g.seaLevel,
       };
-      worker.postMessage({ id, geo, vb, theme: SURF_THEME, W, H });
+      worker.postMessage({ id, geo, vb, theme: SURF_THEME, W, H, key: seed });
     } else {
       c.width = W;
       c.height = H;
-      paintTerrain(c, g, vb, SURF_THEME, labels);
+      paintTerrain(c, g, vb, SURF_THEME, labels, seed);
       paintedView.current = { ...v };
       c.style.transform = '';
     }
-  }, [sub, frame, labels]);
+  }, [sub, frame, labels, seed]);
 
   useEffect(() => {
     if (!(sub instanceof SurfaceSubstrate)) return;
@@ -338,6 +359,10 @@ export function LocalMapView({
     if (ptrs.current.size < 2) pinchDist.current = 0;
   };
 
+  // stable handlers, so the memoized glyphs skip re-render when only the tooltip state moves
+  const show = useCallback((text: string) => (e: { clientX: number; clientY: number }) => setTip({ text, cx: e.clientX, cy: e.clientY }), []);
+  const hide = useCallback(() => setTip(null), []);
+
   if (!node || !(sub instanceof SurfaceSubstrate)) {
     // a world without a walkable surface (a starfield) has no close view — pack's call
     return (
@@ -349,9 +374,6 @@ export function LocalMapView({
       </div>
     );
   }
-
-  const show = (text: string) => (e: { clientX: number; clientY: number }) => setTip({ text, cx: e.clientX, cy: e.clientY });
-  const hide = () => setTip(null);
 
   return (
     <div
@@ -394,7 +416,9 @@ export function LocalMapView({
             </g>
           );
         })}
-        {plan && plan.items.map((it, i) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
+        {overlay && overlay.structures.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
+        {overlay && overlay.clusters.map((cl, i) => <TreeCluster key={`t${i}`} form={cl.form} tone={cl.tone} trees={cl.trees} />)}
+        {overlay && overlay.persons.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
       </svg>
       </div>
 
@@ -447,8 +471,53 @@ export function LocalMapView({
   );
 }
 
-/** One plan item as SVG — colours/styling live in CSS classes (Atlas language). */
-function PlanGlyph({
+/** One (form, tone) group of trees/reeds as a SINGLE merged path — the countryside's
+ *  scatter is non-interactive, so a few hundred nodes collapse into a handful. The
+ *  silhouettes are the same biome forms PlanGlyph drew per-tree (design/28 §5). */
+const TreeCluster = memo(function TreeCluster({ form, tone, trees }: { form: TreeForm | 'round'; tone?: string; trees: PlanTree[] }) {
+  // a circle/ellipse as a closed pair of arcs, so many can share one path
+  const discs = (rxf: number, ryf: number) =>
+    trees.map((t) => {
+      const rx = t.r * rxf, ry = t.r * ryf;
+      return `M ${(t.x - rx).toFixed(4)} ${t.y.toFixed(4)} a ${rx.toFixed(4)} ${ry.toFixed(4)} 0 1 0 ${(rx * 2).toFixed(4)} 0 a ${rx.toFixed(4)} ${ry.toFixed(4)} 0 1 0 ${(-rx * 2).toFixed(4)} 0`;
+    }).join(' ');
+  if (form === 'conifer') {
+    const d = trees.map((t) => `M ${t.x} ${t.y - t.r * 1.5} L ${t.x - t.r} ${t.y + t.r * 0.7} L ${t.x + t.r} ${t.y + t.r * 0.7} Z`).join(' ');
+    return <path className="plan-tree" d={d} style={tone ? { fill: tone } : undefined} />;
+  }
+  if (form === 'palm') {
+    const fronds = trees.map((t) =>
+      [0, 1, 2, 3, 4].map((k) => {
+        const a = -Math.PI / 2 + (k - 2) * 0.7;
+        return `M ${t.x} ${t.y} L ${t.x + Math.cos(a) * t.r * 1.6} ${t.y + Math.sin(a) * t.r * 1.6}`;
+      }).join(' '),
+    ).join(' ');
+    const crowns = trees.map((t) => {
+      const r = t.r * 0.45;
+      return `M ${(t.x - r).toFixed(4)} ${t.y.toFixed(4)} a ${r.toFixed(4)} ${r.toFixed(4)} 0 1 0 ${(r * 2).toFixed(4)} 0 a ${r.toFixed(4)} ${r.toFixed(4)} 0 1 0 ${(-r * 2).toFixed(4)} 0`;
+    }).join(' ');
+    return (
+      <g className="plan-tree-palm">
+        <path d={fronds} style={tone ? { stroke: tone } : undefined} />
+        <path d={crowns} style={{ fill: tone ?? 'rgba(58, 84, 50, 0.85)', stroke: 'none' }} />
+      </g>
+    );
+  }
+  if (form === 'scrub') return <path className="plan-tree" d={discs(1, 0.6)} style={tone ? { fill: tone } : undefined} />;
+  if (form === 'reed') {
+    const blades = trees.map((t) =>
+      [-0.4, 0, 0.4].map((o) => `M ${t.x + o * t.r} ${t.y + t.r} L ${t.x + o * t.r * 1.6} ${t.y - t.r * 1.8}`).join(' '),
+    ).join(' ');
+    return <path className="plan-reed" d={blades} style={tone ? { stroke: tone } : undefined} />;
+  }
+  // broadleaf / orchard / untyped — round canopies
+  return <path className="plan-tree" d={discs(1, 1)} style={tone ? { fill: tone } : undefined} />;
+});
+
+/** One plan item as SVG — colours/styling live in CSS classes (Atlas language).
+ *  Memoized: the plan's item objects are stable between renders, so a tooltip state
+ *  change re-renders the tooltip div, not six hundred glyphs. */
+const PlanGlyph = memo(function PlanGlyph({
   it,
   show,
   hide,
@@ -476,36 +545,7 @@ function PlanGlyph({
       />
     );
   }
-  if (it.kind === 'tree') {
-    const r = it.r, fill = it.tone;
-    // biome-appropriate silhouette (design/28 §5) — pointed conifer, round broadleaf,
-    // fronded palm, low scrub, a tuft of reeds. Orchard trees read like tidy broadleaf.
-    if (it.form === 'conifer') {
-      const d = `M ${it.x} ${it.y - r * 1.5} L ${it.x - r} ${it.y + r * 0.7} L ${it.x + r} ${it.y + r * 0.7} Z`;
-      return <path className="plan-tree" d={d} style={fill ? { fill } : undefined} />;
-    }
-    if (it.form === 'palm') {
-      // a small crown with a few radiating fronds
-      const fronds = [0, 1, 2, 3, 4].map((k) => {
-        const a = -Math.PI / 2 + (k - 2) * 0.7;
-        return `M ${it.x} ${it.y} L ${it.x + Math.cos(a) * r * 1.6} ${it.y + Math.sin(a) * r * 1.6}`;
-      }).join(' ');
-      return (
-        <g className="plan-tree-palm">
-          <path d={fronds} style={fill ? { stroke: fill } : undefined} />
-          <circle cx={it.x} cy={it.y} r={r * 0.45} style={fill ? { fill } : undefined} />
-        </g>
-      );
-    }
-    if (it.form === 'scrub') {
-      return <ellipse className="plan-tree" cx={it.x} cy={it.y} rx={r} ry={r * 0.6} style={fill ? { fill } : undefined} />;
-    }
-    if (it.form === 'reed') {
-      const blades = [-0.4, 0, 0.4].map((o) => `M ${it.x + o * r} ${it.y + r} L ${it.x + o * r * 1.6} ${it.y - r * 1.8}`).join(' ');
-      return <path className="plan-reed" d={blades} style={fill ? { stroke: fill } : undefined} />;
-    }
-    return <circle className="plan-tree" cx={it.x} cy={it.y} r={r} style={fill ? { fill } : undefined} />;
-  }
+  if (it.kind === 'tree') return null; // trees batch into TreeCluster paths, never per-glyph
   if (it.kind === 'person') {
     // a tiny figure — a head over a cloaked body — so the town reads as peopled (design/27 §3).
     // Size varies by role and a per-figure hash (no two folk exactly alike); the body faces
@@ -683,4 +723,4 @@ function PlanGlyph({
       )}
     </g>
   );
-}
+});

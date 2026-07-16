@@ -419,7 +419,72 @@ export type GeoFields = Pick<Geography, 'size' | 'elevation' | 'moisture' | 'tem
  *  Web Worker (see terrainWorker.ts). At the close view it evaluates dozens of noise octaves per
  *  pixel over millions of pixels (~2s), which would freeze the UI if run inline. Returns a W*H*4
  *  RGBA buffer; the caller does the cheap putImageData + vignette + labels via `paintTerrainOverlay`. */
-export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceTheme, W: number, H: number): Uint8ClampedArray {
+/** The per-GEOGRAPHY derived tables — view-independent, so they are computed once per world
+ *  and reused by every repaint (zoom, pan, resize — and the world map and close view share
+ *  them when both look at the same world).
+ *
+ *  - LAND COLOUR per cell: the biome tint (+ snow) for EVERY cell, even submerged ones.
+ *    Water is NOT baked in: it is decided per-pixel in the paint loop so the coastline stays
+ *    crisp at any zoom, and the bilinear land blend near a shore interpolates land↔land
+ *    (never land↔water), so a beach never bleeds a muddy ramp of sea-colour up the shore.
+ *  - CHANNEL stamp: a shallow valley around every river cell (design/24 §8), bilinear-sampled
+ *    per pixel like elevation; the paint scales it by its zoom gate (`CHANNEL_DEPTH`).
+ *
+ *  Keyed by the caller's `cacheKey` (the world seed) — the worker's structured-cloned geo
+ *  arrays are new objects per request, so identity can't key this. Uncached when no key is
+ *  given. Pure derivation of the geography: caching cannot affect determinism. */
+interface GeoTables { landR: Float32Array; landG: Float32Array; landB: Float32Array; chan: Float32Array }
+const geoTablesCache = new Map<number, GeoTables>();
+function geoTablesFor(geo: GeoFields, cacheKey?: number): GeoTables {
+  if (cacheKey !== undefined) {
+    const hit = geoTablesCache.get(cacheKey);
+    if (hit) return hit;
+  }
+  const N = geo.size;
+  const E = geo.elevation;
+  const M = geo.moisture;
+  const T = geo.temperature;
+  const WTR = geo.water;
+  const NN = N * N;
+  const landR = new Float32Array(NN);
+  const landG = new Float32Array(NN);
+  const landB = new Float32Array(NN);
+  for (let ci = 0; ci < NN; ci++) {
+    const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
+    let c: RGB = [col[0], col[1], col[2]];
+    const e = E[ci];
+    const temp = T[ci];
+    if (e > 0.72 && temp < 0.4) {
+      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
+      const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
+      c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
+    }
+    landR[ci] = c[0];
+    landG[ci] = c[1];
+    landB[ci] = c[2];
+  }
+  const chan = new Float32Array(NN);
+  for (let ci = 0; ci < NN; ci++) {
+    if (WTR[ci] !== WATER_RIVER) continue;
+    const cx0 = ci % N, cy0 = (ci / N) | 0;
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+      const x = cx0 + di, y = cy0 + dj;
+      if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      const f = Math.max(0, 1 - Math.hypot(di, dj) / 2.0);
+      const k = y * N + x;
+      if (f > chan[k]) chan[k] = f;
+    }
+  }
+  const tables: GeoTables = { landR, landG, landB, chan };
+  if (cacheKey !== undefined) {
+    geoTablesCache.set(cacheKey, tables);
+    // keep the couple most recent worlds (reforging with a new seed drops the old)
+    if (geoTablesCache.size > 2) geoTablesCache.delete(geoTablesCache.keys().next().value!);
+  }
+  return tables;
+}
+
+export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceTheme, W: number, H: number, cacheKey?: number): Uint8ClampedArray {
   const N = geo.size;
   const E = geo.elevation;
   const M = geo.moisture;
@@ -457,49 +522,10 @@ export function computeTerrainImage(geo: GeoFields, vb: ViewBox, theme: SurfaceT
   // the close view — there the crisp SVG river RIBBON (LocalMapView) carries the water instead.
   const riverTintK = Math.max(0, Math.min(1, (vb.w - 18) / 30)); // 0 at close view, 1 on the world map
 
-  // 1) LAND COLOUR per cell — the biome tint (+ snow) for EVERY cell, even submerged ones.
-  //    Water is NOT baked in here: it is decided per-pixel in the loop (see below) so the
-  //    coastline stays crisp at any zoom. Computing a land colour for water cells too means
-  //    the bilinear land blend near a shore interpolates land↔land (never land↔water), so a
-  //    beach never bleeds a muddy ramp of sea-colour up the shore.
-  const NN = N * N;
-  const landR = new Float32Array(NN);
-  const landG = new Float32Array(NN);
-  const landB = new Float32Array(NN);
-  for (let ci = 0; ci < NN; ci++) {
-    const col = biomeOf({ temperature: T[ci], moisture: M[ci], elevation: E[ci] }).color;
-    let c: RGB = [col[0], col[1], col[2]];
-    const e = E[ci];
-    const temp = T[ci];
-    if (e > 0.72 && temp < 0.4) {
-      // SNOW on cold high ground — white-capped peaks near the poles and on tall ranges.
-      const snow = Math.min(1, (e - 0.72) / 0.16) * Math.min(1, (0.4 - temp) / 0.4);
-      c = [lerp(c[0], 236, snow), lerp(c[1], 240, snow), lerp(c[2], 245, snow)];
-    }
-    landR[ci] = c[0];
-    landG[ci] = c[1];
-    landB[ci] = c[2];
-  }
-
-  // 1b) CHANNEL DEPTH per cell — a shallow valley stamped around every river cell, so the
-  //     close-view relief carries the watercourse as a carved trench (design/24 §8). Sparse
-  //     (only river cells stamp), then bilinear-sampled per pixel like elevation. Faded with
-  //     the same zoom gate as the river tint so it never disturbs the world map.
-  const chan = new Float32Array(NN);
+  // 1) the per-GEOGRAPHY derived tables (land-colour LUT + channel stamp) — cached by
+  //    world seed, so a zoom/pan repaint skips ~N² biomeOf calls (see geoTablesFor).
+  const { landR, landG, landB, chan } = geoTablesFor(geo, cacheKey);
   const CHANNEL_DEPTH = 0.02 * Math.max(0, Math.min(1, 1 - (vb.w - 6) / 18)); // strongest zoomed-in, gone by world scale
-  if (CHANNEL_DEPTH > 0) {
-    for (let ci = 0; ci < NN; ci++) {
-      if (WTR[ci] !== WATER_RIVER) continue;
-      const cx0 = ci % N, cy0 = (ci / N) | 0;
-      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
-        const x = cx0 + di, y = cy0 + dj;
-        if (x < 0 || y < 0 || x >= N || y >= N) continue;
-        const f = Math.max(0, 1 - Math.hypot(di, dj) / 2.0);
-        const k = y * N + x;
-        if (f > chan[k]) chan[k] = f;
-      }
-    }
-  }
   const chanDepth = (gx: number, gy: number) => bilinear(chan, N, gx, gy) * CHANNEL_DEPTH;
 
   // 2) pixel loop. The land/water boundary is resolved PER PIXEL from the (bilinearly
@@ -747,12 +773,12 @@ export function paintTerrainOverlay(ctx: CanvasRenderingContext2D, buf: Uint8Cla
 /** Synchronous terrain paint — computes the pixels inline then finishes. Used by the world map
  *  (cheap at world zoom, where the per-pixel synth relief is disabled) and as a worker fallback.
  *  The CLOSE view offloads `computeTerrainImage` to a Web Worker instead (see LocalMapView). */
-export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[]): void {
+export function paintTerrain(canvas: HTMLCanvasElement, geo: Geography, vb: ViewBox, theme: SurfaceTheme, labels?: TerrainLabel[], cacheKey?: number): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const W = canvas.width;
   const H = canvas.height;
-  const buf = computeTerrainImage(geo, vb, theme, W, H);
+  const buf = computeTerrainImage(geo, vb, theme, W, H, cacheKey);
   paintTerrainOverlay(ctx, buf, vb, theme, W, H, labels);
 }
 

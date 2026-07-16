@@ -17,6 +17,9 @@ export interface TerrainPaintRequest {
   theme: SurfaceTheme;
   W: number;
   H: number;
+  /** the world seed — keys the worker-side cache of per-geography tables (the cloned geo
+   *  arrays are new objects each request, so identity can't). */
+  key?: number;
 }
 export interface TerrainPaintResponse {
   id: number;
@@ -26,8 +29,8 @@ export interface TerrainPaintResponse {
 }
 
 self.onmessage = (e: MessageEvent<TerrainPaintRequest>) => {
-  const { id, geo, vb, theme, W, H } = e.data;
-  const buf = computeTerrainImage(geo, vb, theme, W, H);
+  const { id, geo, vb, theme, W, H, key } = e.data;
+  const buf = computeTerrainImage(geo, vb, theme, W, H, key);
   // transfer the pixel buffer (zero-copy) back to the main thread
   (self as unknown as Worker).postMessage({ id, buf, W, H } satisfies TerrainPaintResponse, [buf.buffer]);
 };
