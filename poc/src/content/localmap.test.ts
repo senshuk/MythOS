@@ -4,7 +4,7 @@
  * shape the town; its chronicle leaves clickable marks.
  */
 import { describe, it, expect } from 'vitest';
-import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree } from './localmap';
+import { buildLocalPlan, type LocalPlanFacts, type PlanBuilding, type PlanPatch, type PlanItem, type PlanTree, type PlanProp, type PlanPerson } from './localmap';
 import { archStyleFor } from './architecture';
 import { createWorld } from '../engine/sim';
 import { SurfaceSubstrate } from '../engine/substrate';
@@ -221,6 +221,81 @@ describe('environment fidelity (design/28 #4)', () => {
         expect(geo.elevation[c]).toBeLessThan(geo.seaLevel + 0.15); // low
       }
     }
+  });
+});
+
+describe('ambient life (design/28 #3)', () => {
+  it('a fishing town moors boats at its piers and dries its catch ashore', () => {
+    const plan = buildLocalPlan(worldFacts({ specialization: 'fishing & trade', population: 420 }));
+    const props = plan.items.filter((i): i is PlanProp => i.kind === 'prop');
+    expect(plan.items.some((i) => i.kind === 'pier')).toBe(true);
+    expect(props.some((p) => p.propKind === 'boat')).toBe(true);
+    expect(props.some((p) => p.propKind === 'rack')).toBe(true);
+  });
+
+  it('a herding town grazes livestock beyond its houses — a farming one does not', () => {
+    const stock = (spec: string) =>
+      buildLocalPlan(worldFacts({ specialization: spec, population: 300 }))
+        .items.filter((i): i is PlanProp => i.kind === 'prop' && i.propKind === 'livestock');
+    expect(stock('herding & pasture').length).toBeGreaterThan(0);
+    expect(stock('grain farming').length).toBe(0); // the cue is specialization-derived, not universal
+  });
+
+  it('a ruin keeps no working life — no boats, no stock, no smoke', () => {
+    const plan = buildLocalPlan(worldFacts({ specialization: 'fishing & trade', ruinedYear: 150 }));
+    expect(plan.items.some((i) => i.kind === 'prop')).toBe(false);
+  });
+
+  it("only a LIVED-IN roof smokes: the hearth cue rides `inhabited`, which needs a household", () => {
+    // the renderer draws smoke for (arch chimney && inhabited) — so the plan-side contract is
+    // that a known household lights a roof, and an anonymous one leaves it dark.
+    const facts = worldFacts({ detailed: true, cultureId: 'free' });
+    facts.households = [{ family: 'Vrihi', members: [{ id: 11, name: 'Sisvrer Vrihi', role: 'head', ageYears: 52, profession: 'trader' }] }];
+    const houses = buildLocalPlan(facts).items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    expect(houses.filter((h) => h.inhabited && h.arch).length).toBe(1);
+    expect(houses.some((h) => !h.inhabited)).toBe(true);
+  });
+
+  it('a FUNERAL held this year gathers mourners at the venue it was actually held', () => {
+    const facts = worldFacts();
+    facts.venues = [{ id: 7, name: 'the market square', type: 'square' }];
+    facts.gatherings = [{ kind: 'funeral', venueId: 7, year: 180 }];
+    const plan = buildLocalPlan(facts);
+    const mourners = plan.items.filter((i): i is PlanPerson => i.kind === 'person' && i.tone === 'mourner');
+    expect(mourners.length).toBeGreaterThan(0);
+    const square = plan.items.find((i): i is PlanPatch => i.kind === 'square')!;
+    // the crowd stands AT the square, not scattered across the town
+    for (const m of mourners) expect(Math.hypot(m.x - square.x, m.y - square.y)).toBeLessThan(square.w);
+  });
+
+  it('a WEDDING gathers revellers, not mourners — the crowd reads the occasion', () => {
+    const facts = worldFacts();
+    facts.venues = [{ id: 7, name: 'the market square', type: 'square' }];
+    facts.gatherings = [{ kind: 'wedding', venueId: 7, year: 180 }];
+    const tones = buildLocalPlan(facts).items.filter((i): i is PlanPerson => i.kind === 'person').map((p) => p.tone);
+    expect(tones).toContain('reveller');
+    expect(tones).not.toContain('mourner');
+  });
+
+  it('no gathering ⇒ no crowd (an ordinary year draws none)', () => {
+    const facts = worldFacts();
+    facts.venues = [{ id: 7, name: 'the market square', type: 'square' }];
+    const tones = buildLocalPlan(facts).items.filter((i): i is PlanPerson => i.kind === 'person').map((p) => p.tone);
+    expect(tones).not.toContain('mourner');
+    expect(tones).not.toContain('reveller');
+  });
+
+  it('the gathering crowd is presentation-only: it perturbs nothing before it in the plan', () => {
+    // Gatherings runs LAST and draws its own rng after every other step — so adding a crowd
+    // must leave the town it stands in byte-identical (design/28: rendering, not simulation).
+    const bare = worldFacts();
+    bare.venues = [{ id: 7, name: 'the market square', type: 'square' }];
+    const withCrowd = worldFacts();
+    withCrowd.venues = [{ id: 7, name: 'the market square', type: 'square' }];
+    withCrowd.gatherings = [{ kind: 'funeral', venueId: 7, year: 180 }];
+    const strip = (p: ReturnType<typeof buildLocalPlan>) =>
+      JSON.stringify(p.items.filter((i) => !(i.kind === 'person' && (i.tone === 'mourner' || i.tone === 'reveller'))));
+    expect(strip(buildLocalPlan(withCrowd))).toBe(strip(buildLocalPlan(bare)));
   });
 });
 

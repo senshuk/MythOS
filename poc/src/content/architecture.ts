@@ -13,6 +13,12 @@
 /** the ROOF a people raises — a pitched gable, a flat clay roof, or a conical thatch. */
 export type RoofShape = 'gable' | 'flat' | 'conical';
 
+/** The SURFACE a face is built of — pattern and relief, named in this pack's materials. The 3D
+ *  renderer keeps one texture per name and tints it by the style's colour, so `thatch` serves
+ *  every people that thatches: theirs is the hue, the weave is shared. `plain` is untextured
+ *  (foliage, folk), and is what anything without a stated material falls back to. */
+export type SurfaceMat = 'plain' | 'plank' | 'masonry' | 'adobe' | 'thatch' | 'slate' | 'clay';
+
 export interface ArchStyle {
   id: string;
   /** a legible name, in the pack's voice — surfaced on hover ("built in timber and thatch"). */
@@ -22,14 +28,19 @@ export interface ArchStyle {
   roofShape: RoofShape;
   /** does this people raise chimneys? (a hearth cue; flat/conical roofs often vent otherwise) */
   chimney: boolean;
+  /** what its walls and roof are MADE of — the 3D surface, distinct from the colour. Two peoples
+   *  may share a material and differ in hue (timber and shingle both plank), or share a hue and
+   *  differ in material — which is the point: a roofline reads by touch as well as tint. */
+  wallMat: SurfaceMat;
+  roofMat: SurfaceMat;
 }
 
 export const ARCH_STYLES: ArchStyle[] = [
-  { id: 'timber', name: 'timber and thatch', wall: [0.58, 0.46, 0.32], roof: [0.60, 0.47, 0.26], roofShape: 'gable', chimney: true },
-  { id: 'stone', name: 'stone and slate', wall: [0.60, 0.59, 0.55], roof: [0.34, 0.37, 0.42], roofShape: 'gable', chimney: true },
-  { id: 'adobe', name: 'adobe with flat clay roofs', wall: [0.77, 0.64, 0.47], roof: [0.70, 0.58, 0.42], roofShape: 'flat', chimney: false },
-  { id: 'conical', name: 'wattle under conical thatch', wall: [0.68, 0.60, 0.46], roof: [0.56, 0.43, 0.24], roofShape: 'conical', chimney: false },
-  { id: 'shingle', name: 'dark timber and shingle', wall: [0.44, 0.37, 0.30], roof: [0.43, 0.43, 0.41], roofShape: 'gable', chimney: true },
+  { id: 'timber', name: 'timber and thatch', wall: [0.58, 0.46, 0.32], roof: [0.60, 0.47, 0.26], roofShape: 'gable', chimney: true, wallMat: 'plank', roofMat: 'thatch' },
+  { id: 'stone', name: 'stone and slate', wall: [0.60, 0.59, 0.55], roof: [0.34, 0.37, 0.42], roofShape: 'gable', chimney: true, wallMat: 'masonry', roofMat: 'slate' },
+  { id: 'adobe', name: 'adobe with flat clay roofs', wall: [0.77, 0.64, 0.47], roof: [0.70, 0.58, 0.42], roofShape: 'flat', chimney: false, wallMat: 'adobe', roofMat: 'clay' },
+  { id: 'conical', name: 'wattle under conical thatch', wall: [0.68, 0.60, 0.46], roof: [0.56, 0.43, 0.24], roofShape: 'conical', chimney: false, wallMat: 'adobe', roofMat: 'thatch' },
+  { id: 'shingle', name: 'dark timber and shingle', wall: [0.44, 0.37, 0.30], roof: [0.43, 0.43, 0.41], roofShape: 'gable', chimney: true, wallMat: 'plank', roofMat: 'slate' },
 ];
 
 export const ARCH_BY_ID: Record<string, ArchStyle> = Object.fromEntries(ARCH_STYLES.map((s) => [s.id, s]));

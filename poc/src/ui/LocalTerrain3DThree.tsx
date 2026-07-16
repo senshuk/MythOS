@@ -159,52 +159,186 @@ export function LocalTerrain3DThree({ geo, plan, cx, cy, span, seed, onExit }: {
     const tex = (url: string, srgb: boolean) => { const t = texLoader.load(url); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; return t; };
     const grassA = tex('/textures/grass_albedo.png', true), rockA = tex('/textures/rock_albedo.png', true), snowA = tex('/textures/snow_albedo.png', true);
     const sandA = tex('/textures/sand_albedo.png', true), mudA = tex('/textures/mud_albedo.png', true), gravelA = tex('/textures/gravel_albedo.png', true);
-    const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, normalMap: tex('/textures/grass_normal.png', false), normalScale: new THREE.Vector2(0.5, 0.5) });
+    // …and a NORMAL map per splat material. Without these every surface wore grass's bumpiness,
+    // so a cliff read as rock-COLOURED grass: right hue, wrong relief. The splat below blends the
+    // six by the same weights as the albedo, so each ground type carries its own surface.
+    const grassN = tex('/textures/grass_normal.png', false), rockN = tex('/textures/rock_normal.png', false), snowN = tex('/textures/snow_normal.png', false);
+    const sandN = tex('/textures/sand_normal.png', false), mudN = tex('/textures/mud_normal.png', false), gravelN = tex('/textures/gravel_normal.png', false);
+    // `normalMap` stays bound (it's what defines USE_NORMALMAP_TANGENTSPACE and builds the `tbn`
+    // frame our replacement reuses); the chunk override samples the six uniforms instead of it.
+    const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, normalMap: grassN, normalScale: new THREE.Vector2(0.5, 0.5) });
     terrainMat.onBeforeCompile = (shader) => {
       shader.uniforms.tGrass = { value: grassA }; shader.uniforms.tRock = { value: rockA }; shader.uniforms.tSnow = { value: snowA };
       shader.uniforms.tSand = { value: sandA }; shader.uniforms.tMud = { value: mudA }; shader.uniforms.tGravel = { value: gravelA }; shader.uniforms.uTexScale = { value: 1.4 };
+      shader.uniforms.nGrass = { value: grassN }; shader.uniforms.nRock = { value: rockN }; shader.uniforms.nSnow = { value: snowN };
+      shader.uniforms.nSand = { value: sandN }; shader.uniforms.nMud = { value: mudN }; shader.uniforms.nGravel = { value: gravelN };
+      shader.uniforms.uNrm = { value: 0.5 }; // matches the normalScale the tangent-space path used
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nattribute vec4 aMat;\nvarying vec4 vMat;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n  vMat = aMat;')
         .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vWNrm = normalize(mat3(modelMatrix) * objectNormal);');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec4 vMat;\nvarying vec3 vWPos;\nvarying vec3 vWNrm;\nuniform sampler2D tGrass;\nuniform sampler2D tRock;\nuniform sampler2D tSnow;\nuniform sampler2D tSand;\nuniform sampler2D tMud;\nuniform sampler2D tGravel;\nuniform float uTexScale;')
+        // the six splat weights + shared uv are GLOBALS: <color_fragment> computes them for the
+        // albedo, and <normal_fragment_maps> (which runs later) reuses them for the normal blend,
+        // so colour and relief always agree — one partition, sampled twice.
+        .replace('#include <common>', `#include <common>
+        varying vec4 vMat; varying vec3 vWPos; varying vec3 vWNrm;
+        uniform sampler2D tGrass; uniform sampler2D tRock; uniform sampler2D tSnow; uniform sampler2D tSand; uniform sampler2D tMud; uniform sampler2D tGravel;
+        uniform sampler2D nGrass; uniform sampler2D nRock; uniform sampler2D nSnow; uniform sampler2D nSand; uniform sampler2D nMud; uniform sampler2D nGravel;
+        uniform float uTexScale;
+        uniform float uNrm; // global relief depth. Our own, not three's \`normalScale\`: that is
+                            // declared in <normalmap_pars_fragment>, which comes AFTER <common>,
+                            // so the helpers below could not legally reference it.
+        float wGrass, wRock, wSnow, wSand, wMud, wGravel;
+        vec3 wp;  // world position, scaled — the triplanar sample point
+        vec3 bw;  // how much each of the three planes counts here
+
+        // TRIPLANAR (design/28): the ground used to be projected straight down (uv = world.xz),
+        // which is exact on the flat and degenerate on a cliff — a vertical face barely moves in
+        // xz, so its texture smeared into vertical streaks. And rock is the slope-gated material,
+        // so the worst projection landed on the only surface that shows it. Sampling all three
+        // world planes and blending by the normal removes the stretch at its source.
+        vec3 tpA(sampler2D t) {
+          return texture2D(t, wp.zy).rgb * bw.x + texture2D(t, wp.xz).rgb * bw.y + texture2D(t, wp.xy).rgb * bw.z;
+        }
+        // The normal needs the same treatment, and can't reuse three's \`tbn\`: that frame is built
+        // from the xz-projected uv, so on a cliff it is exactly as degenerate as the projection
+        // was. Instead each plane's tangent normal is folded onto the geometric normal (the
+        // standard "whiteout" blend) to give a WORLD normal directly, which we hand to the
+        // lighting in view space. Fixes cliff relief, not just cliff colour.
+        vec3 tpN(sampler2D t, float s) {
+          vec3 nx = texture2D(t, wp.zy).xyz * 2.0 - 1.0;
+          vec3 ny = texture2D(t, wp.xz).xyz * 2.0 - 1.0;
+          vec3 nz = texture2D(t, wp.xy).xyz * 2.0 - 1.0;
+          float k = s * uNrm;
+          nx.xy *= k; ny.xy *= k; nz.xy *= k;
+          vec3 g = vWNrm;
+          nx = vec3(nx.xy + g.zy, abs(nx.z) * g.x);
+          ny = vec3(ny.xy + g.xz, abs(ny.z) * g.y);
+          nz = vec3(nz.xy + g.xy, abs(nz.z) * g.z);
+          return nx.zyx * bw.x + ny.xzy * bw.y + nz.xyz * bw.z;
+        }
+        // MACRO VARIATION — one texture at one scale repeats visibly over open ground. A cheap
+        // low-frequency wobble over the whole splat breaks the grid up at distance. Procedural on
+        // purpose: it costs arithmetic, not another 18 texture fetches.
+        float h21(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+        float vnz(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+        float macro(vec2 p) { return vnz(p) * 0.62 + vnz(p * 2.7 + 3.1) * 0.38; }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
         {
           float slope = 1.0 - clamp(vWNrm.y, 0.0, 1.0);
-          float wRock = smoothstep(0.32, 0.62, slope);
+          wRock = smoothstep(0.32, 0.62, slope);
           // snow comes from ALTITUDE or from a cold biome (tundra), whichever is greater
-          float wSnow = max(smoothstep(3.2, 6.5, vWPos.y), vMat.z) * (1.0 - wRock);
+          wSnow = max(smoothstep(3.2, 6.5, vWPos.y), vMat.z) * (1.0 - wRock);
           float avail = max(0.0, 1.0 - wRock - wSnow);
           float scree = smoothstep(0.30, 0.52, slope);                       // loose stone on the steep apron below the cliffs
           float gravel = clamp(max(vMat.w, scree), 0.0, 1.0);                 // + a river's shingle banks
           float sand = clamp(vMat.x, 0.0, 1.0), mud = clamp(vMat.y, 0.0, 1.0);
           // partition the non-rock/snow ground: sand, then mud, then gravel, then grass
-          float wSand = avail * sand;
+          wSand = avail * sand;
           float r1 = avail - wSand;
-          float wMud = r1 * mud;
+          wMud = r1 * mud;
           float r2 = r1 - wMud;
-          float wGravel = r2 * gravel;
-          float wGrass = max(0.0, r2 - wGravel);
-          vec2 uvt = vWPos.xz * uTexScale;
+          wGravel = r2 * gravel;
+          wGrass = max(0.0, r2 - wGravel);
+          // the triplanar sample point and its per-plane weights, shared with the normal pass.
+          // The exponent sharpens the transition so flat ground is almost purely the xz plane
+          // (i.e. exactly what it used to be) and only genuinely steep faces pay for the blend.
+          wp = vWPos * uTexScale;
+          bw = pow(abs(vWNrm), vec3(4.0));
+          bw /= max(1e-4, bw.x + bw.y + bw.z);
           vec3 base = diffuseColor.rgb;
-          vec3 grassCol = base * (texture2D(tGrass, uvt).rgb * 1.55);  // biome hue × grass detail (matched to the flatter 2D biome tint)
+          vec3 grassCol = base * (tpA(tGrass) * 1.55);  // biome hue × grass detail (matched to the flatter 2D biome tint)
           grassCol = mix(vec3(dot(grassCol, vec3(0.299, 0.587, 0.114))), grassCol, 0.72); // mute the verdancy toward the 2D palette
           grassCol *= vec3(1.06, 1.0, 0.90);                           // a touch warmer/yellower, like the 2D biome green
-          vec3 rockCol = mix(texture2D(tRock, uvt).rgb * 1.12, base, 0.18);   // earthy stone, biome-tinted (not stark grey)
-          vec3 snowCol = texture2D(tSnow, uvt).rgb * 1.05;             // its own white snow
-          vec3 sandCol = texture2D(tSand, uvt).rgb * 1.08;             // warm sand, matched to the 2D beach tone
-          vec3 mudCol  = texture2D(tMud, uvt).rgb * 1.12;              // its own wet mud
-          vec3 gravelCol = mix(texture2D(tGravel, uvt).rgb * 1.08, base, 0.16); // loose stone, faintly biome-tinted
+          vec3 rockCol = mix(tpA(tRock) * 1.12, base, 0.18);           // earthy stone, biome-tinted (not stark grey)
+          vec3 snowCol = tpA(tSnow) * 1.05;                            // its own white snow
+          vec3 sandCol = tpA(tSand) * 1.08;                            // warm sand, matched to the 2D beach tone
+          vec3 mudCol  = tpA(tMud) * 1.12;                             // its own wet mud
+          vec3 gravelCol = mix(tpA(tGravel) * 1.08, base, 0.16);       // loose stone, faintly biome-tinted
           diffuseColor.rgb = grassCol * wGrass + rockCol * wRock + snowCol * wSnow + sandCol * wSand + mudCol * wMud + gravelCol * wGravel;
-        }`);
+          diffuseColor.rgb *= mix(0.86, 1.14, macro(vWPos.xz * 0.07)); // break up the tile at range
+        }`)
+        // RELIEF per material, triplanar and in WORLD space. The weights partition to exactly 1,
+        // so a straight weighted sum is a valid blend. Per-material strengths carry the character
+        // the albedo can't: rock and gravel bite hard, snow is smooth drift, grass keeps its 1.0
+        // so open ground reads as it always did. `viewMatrix` (not normalMatrix, which three does
+        // not declare in the fragment stage) takes the world normal to view space — exact here,
+        // since the terrain mesh carries no scale.
+        .replace('#include <normal_fragment_maps>', `
+        #ifdef USE_NORMALMAP_TANGENTSPACE
+          vec3 wn = normalize(
+              tpN(nGrass,  1.0) * wGrass
+            + tpN(nRock,   2.4) * wRock
+            + tpN(nSnow,   0.5) * wSnow
+            + tpN(nSand,   1.1) * wSand
+            + tpN(nMud,    1.4) * wMud
+            + tpN(nGravel, 2.0) * wGravel
+          );
+          normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
+        #endif`);
     };
     const terrain = new THREE.Mesh(tGeo, terrainMat);
     terrain.castShadow = true; terrain.receiveShadow = true;
     scene.add(terrain);
     if (plan) {
+      // STRUCTURES (design/28 §3) — the town's fabric. Every face carries a material id
+      // (`aSurf`) chosen by what it IS — its people's boards, a hall's masonry, a roof's straw —
+      // and the shader picks that texture and tints it by the face's own colour. One mesh, one
+      // draw call: the same aMat/splat idiom the terrain uses, selecting instead of blending.
       const A: Accum = buildStructures(plan, geo, cx, cy, span, seed);
-      const sMesh = new THREE.Mesh(toGeometry({ pos: A.pos, nrm: A.nrm, col: A.col, idx: A.idx }), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide }));
+      const sGeo = toGeometry({ pos: A.pos, nrm: A.nrm, col: A.col, idx: A.idx });
+      sGeo.setAttribute('uv', new THREE.Float32BufferAttribute(A.uv, 2));
+      sGeo.setAttribute('aSurf', new THREE.Float32BufferAttribute(A.mat, 1));
+      const archA = (n: string) => tex(`/textures/${n}_albedo.png`, true);
+      const archN = (n: string) => tex(`/textures/${n}_normal.png`, false);
+      const aPlank = archA('plank'), aMasonry = archA('masonry'), aAdobe = archA('adobe'), aThatch = archA('thatch'), aSlate = archA('slate'), aClay = archA('clay');
+      const nPlank = archN('plank'), nMasonry = archN('masonry'), nAdobe = archN('adobe'), nThatch = archN('thatch'), nSlate = archN('slate'), nClay = archN('clay');
+      const structMat = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide,
+        normalMap: nPlank, normalScale: new THREE.Vector2(0.7, 0.7), // binds the tangent-space path; the override picks the real map
+      });
+      structMat.onBeforeCompile = (shader) => {
+        for (const [k, v] of Object.entries({ sPlank: aPlank, sMasonry: aMasonry, sAdobe: aAdobe, sThatch: aThatch, sSlate: aSlate, sClay: aClay,
+          mPlank: nPlank, mMasonry: nMasonry, mAdobe: nAdobe, mThatch: nThatch, mSlate: nSlate, mClay: nClay })) shader.uniforms[k] = { value: v };
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nattribute float aSurf;\nvarying float vSurf;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vSurf = aSurf;');
+        // `sel` is 1 only for the face's own material — a select, not a blend, so a wall is all
+        // boards and never half straw. Branch-free on purpose: sampling every map keeps the
+        // texture derivatives well-defined, which a divergent `if` around texture2D would not.
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', `#include <common>
+          varying float vSurf;
+          uniform sampler2D sPlank; uniform sampler2D sMasonry; uniform sampler2D sAdobe; uniform sampler2D sThatch; uniform sampler2D sSlate; uniform sampler2D sClay;
+          uniform sampler2D mPlank; uniform sampler2D mMasonry; uniform sampler2D mAdobe; uniform sampler2D mThatch; uniform sampler2D mSlate; uniform sampler2D mClay;
+          float sel(float id) { return step(abs(vSurf - id), 0.5); }`)
+          .replace('#include <color_fragment>', `#include <color_fragment>
+          {
+            vec2 uvA = vNormalMapUv; // the only uv varying three declares here — we bind normalMap, not map
+            vec3 t = texture2D(sPlank, uvA).rgb * sel(1.0) + texture2D(sMasonry, uvA).rgb * sel(2.0)
+                   + texture2D(sAdobe, uvA).rgb * sel(3.0) + texture2D(sThatch, uvA).rgb * sel(4.0)
+                   + texture2D(sSlate, uvA).rgb * sel(5.0) + texture2D(sClay, uvA).rgb * sel(6.0);
+            // mat 0 (foliage, folk, glazing) keeps its flat colour; the rest are tinted by theirs.
+            // The 1.5 lifts the near-grey maps back to the colour the flat build already had.
+            float textured = 1.0 - sel(0.0);
+            diffuseColor.rgb *= mix(vec3(1.0), t * 1.5, textured);
+          }`)
+          .replace('#include <normal_fragment_maps>', `
+          #ifdef USE_NORMALMAP_TANGENTSPACE
+            if (vSurf > 0.5) {
+              vec2 uvN = vNormalMapUv;
+              vec3 mapN = texture2D(mPlank, uvN).xyz * sel(1.0) + texture2D(mMasonry, uvN).xyz * sel(2.0)
+                        + texture2D(mAdobe, uvN).xyz * sel(3.0) + texture2D(mThatch, uvN).xyz * sel(4.0)
+                        + texture2D(mSlate, uvN).xyz * sel(5.0) + texture2D(mClay, uvN).xyz * sel(6.0);
+              mapN = mapN * 2.0 - 1.0;
+              mapN.xy *= normalScale;
+              normal = normalize(tbn * mapN);
+            }
+          #endif`);
+      };
+      const sMesh = new THREE.Mesh(sGeo, structMat);
       sMesh.castShadow = true; sMesh.receiveShadow = true;
       scene.add(sMesh);
 

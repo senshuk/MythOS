@@ -32,6 +32,7 @@ export function LocalMapView({
   chronicle,
   households,
   venues,
+  gatherings,
   onExit,
   onRef,
   onPickEvent,
@@ -46,6 +47,8 @@ export function LocalMapView({
   households?: HouseholdView[];
   /** the settlement's public venues (L4) — the drawn buildings link to them. */
   venues?: { id: number; name: string; meaning?: string; type: string }[];
+  /** communal gatherings still fresh this year (design/27 §4) — draws the crowd (design/28 §4.3). */
+  gatherings?: { kind: string; venueId?: number; year: number }[];
   onExit: () => void;
   onRef: (ref: EventRef) => void;
   /** a history mark traces the event it remembers (the burned quarter answers "why?"). */
@@ -166,9 +169,10 @@ export function LocalMapView({
       chronicle,
       households,
       venues,
+      gatherings,
     };
     return buildLocalPlan(facts);
-  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households, venues]);
+  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households, venues, gatherings]);
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -506,6 +510,30 @@ function PlanGlyph({
     }
     return <circle className="plan-tree" cx={it.x} cy={it.y} r={r} style={fill ? { fill } : undefined} />;
   }
+  if (it.kind === 'prop') {
+    // a small working-life cue (design/28 §4.2) — no click target, just ambient texture
+    return (
+      <g
+        className={`plan-prop plan-prop-${it.propKind}`}
+        transform={`translate(${it.x} ${it.y}) rotate(${(it.rot * 180) / Math.PI})`}
+        onMouseEnter={it.label ? show(it.label) : undefined}
+        onMouseLeave={it.label ? hide : undefined}
+      >
+        {it.propKind === 'livestock' ? (
+          <ellipse rx={0.014} ry={0.009} />
+        ) : it.propKind === 'boat' ? (
+          <path d="M -0.03 0 Q 0 -0.014 0.03 0 Q 0 0.014 -0.03 0 Z" />
+        ) : (
+          // a drying rack: a crossbar on two posts
+          <>
+            <line x1={-0.02} y1={0.018} x2={-0.02} y2={-0.018} />
+            <line x1={0.02} y1={0.018} x2={0.02} y2={-0.018} />
+            <line x1={-0.02} y1={-0.012} x2={0.02} y2={-0.012} />
+          </>
+        )}
+      </g>
+    );
+  }
   if (it.kind === 'person') {
     // a tiny figure — a head over a cloaked body — so the town reads as peopled (design/27 §3).
     // Size varies by role and a per-figure hash (no two folk exactly alike); the body faces
@@ -678,6 +706,14 @@ function PlanGlyph({
           {st?.chimney && (
             // a hearth's chimney — a small stack near the eave
             <rect className="plan-chimney" x={hw * 0.35} y={-hh * 0.7} width={Math.max(0.012, it.w * 0.14)} height={Math.max(0.012, it.w * 0.14)} />
+          )}
+          {st?.chimney && it.inhabited && (
+            // a lived-in hearth's smoke — the cheapest "someone's home" cue (design/28 §4.1)
+            <path
+              className="plan-smoke"
+              d={`M ${hw * 0.35 + Math.max(0.012, it.w * 0.14) / 2} ${-hh * 0.7} q -0.01 -0.03 0.008 -0.05 q 0.018 -0.02 0.002 -0.048`}
+              fill="none"
+            />
           )}
         </>
       )}

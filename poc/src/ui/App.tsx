@@ -320,6 +320,7 @@ export default function App() {
                     chronicle={closeFacts?.id === closeSettlement.id ? closeFacts.events : undefined}
                     households={closeFacts?.id === closeSettlement.id ? closeFacts.households : undefined}
                     venues={closeFacts?.id === closeSettlement.id ? closeFacts.venues : undefined}
+                    gatherings={closeFacts?.id === closeSettlement.id ? closeFacts.gatherings : undefined}
                     onExit={() => setCloseViewId(null)}
                     onRef={inspectRef}
                     onPickEvent={inspectEvent}

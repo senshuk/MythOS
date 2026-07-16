@@ -9,13 +9,43 @@
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_RIVER, REF_N, GREAT_RIVER_FLUX, temperatureAt, moistureAt, hillinessAt } from '../engine/geography';
 import { biomeOf } from '../content/biomes';
 import type { LocalPlan } from '../content/localmap';
-import { ARCH_BY_ID, type ArchStyle } from '../content/architecture';
+import { ARCH_BY_ID, type ArchStyle, type SurfaceMat } from '../content/architecture';
 
 export const RES = 200; // terrain vertices per side
 export const VSCALE = 26; // vertical exaggeration (real relief is subtle over a few km)
 
-export interface Accum { pos: number[]; nrm: number[]; col: number[]; idx: number[]; n: number; sea?: number[] }
-const newAccum = (): Accum => ({ pos: [], nrm: [], col: [], idx: [], n: 0 });
+export interface Accum { pos: number[]; nrm: number[]; col: number[]; idx: number[]; n: number; sea?: number[]; uv: number[]; mat: number[] }
+const newAccum = (): Accum => ({ pos: [], nrm: [], col: [], idx: [], n: 0, uv: [], mat: [] });
+
+/** the structures material's texture slots — index matches the sampler order in the renderer's
+ *  shader. `PLAIN` (0) is untextured: vertex colour only, for foliage and folk. */
+export const SURF: Record<SurfaceMat, number> = { plain: 0, plank: 1, masonry: 2, adobe: 3, thatch: 4, slate: 5, clay: 6 };
+/** world units per texture repeat. A cottage wall is ~0.2 units, so this shows ~6 boards or
+ *  ~3 courses across it — dense enough to read as built, coarse enough not to shimmer. */
+const ARCH_TEX = 0.4;
+
+/**
+ * UVs are derived from the FACE'S OWN basis rather than authored per call site, which keeps
+ * texel density identical on every building and needs no unwrapping:
+ *  - a WALL (near-vertical face): u runs level along the wall, v straight up — so planks stand
+ *    upright and masonry courses lie flat, whatever way the house is turned.
+ *  - a PITCHED ROOF: u runs level along the ridge, v up the slope — so slate courses lap
+ *    downhill the way real ones do.
+ * Projecting WORLD position (not a local corner) means neighbours don't all share one phase.
+ */
+function faceBasis(n: number[]): [number[], number[]] {
+  const ay = Math.abs(n[1]);
+  const nrm3 = (v: number[]) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  if (ay < 0.7) return [nrm3(cross([0, 1, 0], n)), [0, 1, 0]]; // wall
+  if (ay > 0.985) return [[1, 0, 0], [0, 0, 1]]; // level: flat roof, ground
+  const t = nrm3(cross(n, [0, 1, 0])); // pitched roof: along the ridge…
+  return [t, nrm3(cross(n, t))]; // …then up the slope
+}
+function pushUV(A: Accum, p: number[], t: number[], b: number[], m: number) {
+  A.uv.push((p[0] * t[0] + p[1] * t[1] + p[2] * t[2]) / ARCH_TEX, (p[0] * b[0] + p[1] * b[1] + p[2] * b[2]) / ARCH_TEX);
+  A.mat.push(m);
+}
 
 // --- coherent sub-grid noise (continues the terrain below the 450² grid) ---
 function hash2(ix: number, iy: number, seed: number): number {
@@ -175,7 +205,7 @@ export function buildTerrain(geo: Geography, cx: number, cy: number, span: numbe
 }
 
 // --- structure primitives (flat-shaded, normals from winding) ---
-function pushBox(A: Accum, x: number, by: number, z: number, sx: number, sy: number, sz: number, rot: number, r: number, g: number, b: number) {
+function pushBox(A: Accum, x: number, by: number, z: number, sx: number, sy: number, sz: number, rot: number, r: number, g: number, b: number, m = 0) {
   const c = Math.cos(rot), s = Math.sin(rot), hx = sx / 2, hz = sz / 2;
   const P: number[][] = [];
   for (const dy of [0, sy]) for (const dz of [-hz, hz]) for (const dx of [-hx, hx]) P.push([x + dx * c - dz * s, by + dy, z + dx * s + dz * c]);
@@ -184,16 +214,19 @@ function pushBox(A: Accum, x: number, by: number, z: number, sx: number, sy: num
     const a = P[f[0]], b2 = P[f[1]], cc = P[f[2]], d = P[f[3]];
     const ux = b2[0] - a[0], uy = b2[1] - a[1], uz = b2[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    const [tt, bb] = faceBasis([nx, ny, nz]);
     const base = A.n;
-    for (const q of [a, b2, cc, d]) { A.pos.push(q[0], q[1], q[2]); A.nrm.push(nx, ny, nz); A.col.push(r, g, b); A.n++; }
+    for (const q of [a, b2, cc, d]) { A.pos.push(q[0], q[1], q[2]); A.nrm.push(nx, ny, nz); A.col.push(r, g, b); pushUV(A, q, tt, bb, m); A.n++; }
     A.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 }
 function pushCone(A: Accum, x: number, by: number, z: number, rad: number, ht: number, r: number, g: number, b: number) {
   const SEG = 6, apex = A.n;
-  A.pos.push(x, by + ht, z); A.nrm.push(0, 1, 0); A.col.push(r, g, b); A.n++;
+  // foliage stays PLAIN (mat 0): vertex colour only. The uv is still pushed — every attribute
+  // array must stay index-aligned with `pos`, whether or not the shader reads it.
+  A.pos.push(x, by + ht, z); A.nrm.push(0, 1, 0); A.col.push(r, g, b); A.uv.push(0, 0); A.mat.push(0); A.n++;
   const ring = A.n;
-  for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2; const px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; A.pos.push(px, by, pz); A.nrm.push(Math.cos(a), 0.5, Math.sin(a)); A.col.push(r, g, b); A.n++; }
+  for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2; const px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; A.pos.push(px, by, pz); A.nrm.push(Math.cos(a), 0.5, Math.sin(a)); A.col.push(r, g, b); A.uv.push(0, 0); A.mat.push(0); A.n++; }
   // outer faces FRONT-facing so a double-sided material lights them from outside (not flipped inward → black)
   for (let i = 0; i < SEG; i++) A.idx.push(apex, ring + ((i + 1) % SEG), ring + i);
 }
@@ -201,10 +234,10 @@ function pushCone(A: Accum, x: number, by: number, z: number, rad: number, ht: n
  *  broadleaf/bush puff; normals point outward so a double-sided material lights it right. */
 function pushBlob(A: Accum, x: number, by: number, z: number, rad: number, ht: number, r: number, g: number, b: number) {
   const SEG = 6, top = A.n;
-  A.pos.push(x, by + ht, z); A.nrm.push(0, 1, 0); A.col.push(r, g, b); A.n++;
-  const bot = A.n; A.pos.push(x, by, z); A.nrm.push(0, -1, 0); A.col.push(r, g, b); A.n++;
+  A.pos.push(x, by + ht, z); A.nrm.push(0, 1, 0); A.col.push(r, g, b); A.uv.push(0, 0); A.mat.push(0); A.n++;
+  const bot = A.n; A.pos.push(x, by, z); A.nrm.push(0, -1, 0); A.col.push(r, g, b); A.uv.push(0, 0); A.mat.push(0); A.n++;
   const ring = A.n, midY = by + ht * 0.55;
-  for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); A.pos.push(x + c * rad, midY, z + s * rad); A.nrm.push(c, 0.2, s); A.col.push(r, g, b); A.n++; }
+  for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); A.pos.push(x + c * rad, midY, z + s * rad); A.nrm.push(c, 0.2, s); A.col.push(r, g, b); A.uv.push(0, 0); A.mat.push(0); A.n++; }
   for (let i = 0; i < SEG; i++) A.idx.push(top, ring + ((i + 1) % SEG), ring + i); // upper faces (front-facing out)
   for (let i = 0; i < SEG; i++) A.idx.push(bot, ring + i, ring + ((i + 1) % SEG)); // lower faces
 }
@@ -221,35 +254,36 @@ function faceNormal(a: number[], b: number[], c: number[]): [number, number, num
   let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1;
   return [nx / l, ny / l, nz / l];
 }
-function tri(A: Accum, p0: number[], p1: number[], p2: number[], r: number, g: number, b: number) {
-  const n = faceNormal(p0, p1, p2), base = A.n;
-  for (const p of [p0, p1, p2]) { A.pos.push(p[0], p[1], p[2]); A.nrm.push(n[0], n[1], n[2]); A.col.push(r, g, b); A.n++; }
+function tri(A: Accum, p0: number[], p1: number[], p2: number[], r: number, g: number, b: number, m = 0) {
+  const n = faceNormal(p0, p1, p2), [tt, bb] = faceBasis(n), base = A.n;
+  for (const p of [p0, p1, p2]) { A.pos.push(p[0], p[1], p[2]); A.nrm.push(n[0], n[1], n[2]); A.col.push(r, g, b); pushUV(A, p, tt, bb, m); A.n++; }
   A.idx.push(base, base + 1, base + 2);
 }
-function quad(A: Accum, p0: number[], p1: number[], p2: number[], p3: number[], r: number, g: number, b: number) {
-  const n = faceNormal(p0, p1, p2), base = A.n;
-  for (const p of [p0, p1, p2, p3]) { A.pos.push(p[0], p[1], p[2]); A.nrm.push(n[0], n[1], n[2]); A.col.push(r, g, b); A.n++; }
+function quad(A: Accum, p0: number[], p1: number[], p2: number[], p3: number[], r: number, g: number, b: number, m = 0) {
+  const n = faceNormal(p0, p1, p2), [tt, bb] = faceBasis(n), base = A.n;
+  for (const p of [p0, p1, p2, p3]) { A.pos.push(p[0], p[1], p[2]); A.nrm.push(n[0], n[1], n[2]); A.col.push(r, g, b); pushUV(A, p, tt, bb, m); A.n++; }
   A.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
-function pushRoof(A: Accum, x: number, by: number, z: number, w: number, d: number, roofH: number, rot: number, r: number, g: number, b: number) {
+function pushRoof(A: Accum, x: number, by: number, z: number, w: number, d: number, roofH: number, rot: number, r: number, g: number, b: number, m = 0) {
   const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
   const tr = (lx: number, lz: number, ly: number) => [x + lx * c - lz * s, by + ly, z + lx * s + lz * c];
   if (w >= d) {
     const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(-hw, 0, roofH), R1 = tr(hw, 0, roofH);
-    quad(A, A0, B0, R1, R0, r, g, b); quad(A, D0, R0, R1, C0, r, g, b); tri(A, A0, R0, D0, r, g, b); tri(A, B0, C0, R1, r, g, b);
+    quad(A, A0, B0, R1, R0, r, g, b, m); quad(A, D0, R0, R1, C0, r, g, b, m); tri(A, A0, R0, D0, r, g, b, m); tri(A, B0, C0, R1, r, g, b, m);
   } else {
     const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(0, -hd, roofH), R1 = tr(0, hd, roofH);
-    quad(A, A0, R0, R1, D0, r, g, b); quad(A, B0, C0, R1, R0, r, g, b); tri(A, A0, B0, R0, r, g, b); tri(A, D0, R1, C0, r, g, b);
+    quad(A, A0, R0, R1, D0, r, g, b, m); quad(A, B0, C0, R1, R0, r, g, b, m); tri(A, A0, B0, R0, r, g, b, m); tri(A, D0, R1, C0, r, g, b, m);
   }
 }
 /** a 4-sided pyramid roof (apex over the centre) — a conical people's silhouette on a square base. */
-function pushPyramid(A: Accum, x: number, by: number, z: number, w: number, d: number, ht: number, rot: number, r: number, g: number, b: number) {
+function pushPyramid(A: Accum, x: number, by: number, z: number, w: number, d: number, ht: number, rot: number, r: number, g: number, b: number, m = 0) {
   const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
   const tr = (lx: number, lz: number, ly: number): number[] => [x + lx * c - lz * s, by + ly, z + lx * s + lz * c];
   const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), AP = tr(0, 0, ht);
-  tri(A, A0, B0, AP, r, g, b); tri(A, B0, C0, AP, r, g, b); tri(A, C0, D0, AP, r, g, b); tri(A, D0, A0, AP, r, g, b);
+  tri(A, A0, B0, AP, r, g, b, m); tri(A, B0, C0, AP, r, g, b, m); tri(A, C0, D0, AP, r, g, b, m); tri(A, D0, A0, AP, r, g, b, m);
 }
-/** a small rect on a box's FRONT (+z local) face, sat just proud of the wall — a door or window. */
+/** a small rect on a box's FRONT (+z local) face, sat just proud of the wall — a door or window.
+ *  Left PLAIN: a lit window is its own flat colour, and must not wear the wall's boards. */
 function pushFront(A: Accum, cx: number, by: number, cz: number, d: number, rot: number, lx0: number, lx1: number, y0: number, y1: number, r: number, g: number, b: number) {
   const c = Math.cos(rot), s = Math.sin(rot), hd = d / 2 + 0.006;
   const tr = (lx: number, ly: number): number[] => [cx + lx * c - hd * s, by + ly, cz + lx * s + hd * c];
@@ -260,44 +294,49 @@ function pushFront(A: Accum, cx: number, by: number, cz: number, d: number, rot:
  *  Wealth (`grand`) raises a taller, richer roof. */
 function pushHouse(A: Accum, lx: number, by: number, lz: number, w: number, d: number, rot: number, style: ArchStyle, grand: boolean, inhabited: boolean) {
   const wallH = 0.16 * (grand ? 1.15 : 1);
-  pushBox(A, lx, by, lz, w, wallH, d, rot, style.wall[0], style.wall[1], style.wall[2]);
+  // the style names its own materials (design/28 §3) — its boards, its stones, its straw
+  const wm = SURF[style.wallMat], rm = SURF[style.roofMat];
+  pushBox(A, lx, by, lz, w, wallH, d, rot, style.wall[0], style.wall[1], style.wall[2], wm);
   const k = grand ? 0.9 : 1, rr = style.roof[0] * k, rg = style.roof[1] * k, rb = style.roof[2] * k, top = by + wallH;
-  if (style.roofShape === 'flat') pushBox(A, lx, top, lz, w * 1.03, 0.03, d * 1.03, rot, rr, rg, rb); // a thin clay slab, slight eave
-  else if (style.roofShape === 'conical') pushPyramid(A, lx, top, lz, w * 1.05, d * 1.05, 0.2 * (grand ? 1.2 : 1), rot, rr, rg, rb);
-  else pushRoof(A, lx, top, lz, w, d, 0.13 * (grand ? 1.2 : 1), rot, rr, rg, rb);
+  if (style.roofShape === 'flat') pushBox(A, lx, top, lz, w * 1.03, 0.03, d * 1.03, rot, rr, rg, rb, rm); // a thin clay slab, slight eave
+  else if (style.roofShape === 'conical') pushPyramid(A, lx, top, lz, w * 1.05, d * 1.05, 0.2 * (grand ? 1.2 : 1), rot, rr, rg, rb, rm);
+  else pushRoof(A, lx, top, lz, w, d, 0.13 * (grand ? 1.2 : 1), rot, rr, rg, rb, rm);
   if (style.chimney) {
     const c = Math.cos(rot), s = Math.sin(rot), ox = w * 0.3, oz = d * 0.12;
-    pushBox(A, lx + ox * c - oz * s, top, lz + ox * s + oz * c, 0.024, 0.16, 0.024, rot, 0.3, 0.27, 0.24);
+    pushBox(A, lx + ox * c - oz * s, top, lz + ox * s + oz * c, 0.024, 0.16, 0.024, rot, 0.3, 0.27, 0.24, SURF.masonry); // a stack is stone whatever the walls are
   }
   const win: [number, number, number] = inhabited ? [0.95, 0.78, 0.42] : [0.2, 0.22, 0.26]; // lit if a known family lives here
   pushFront(A, lx, by, lz, d, rot, -w * 0.09, w * 0.09, 0, wallH * 0.6, 0.14, 0.11, 0.09); // door
   pushFront(A, lx, by, lz, d, rot, -w * 0.4, -w * 0.22, wallH * 0.4, wallH * 0.78, win[0], win[1], win[2]); // window L
   pushFront(A, lx, by, lz, d, rot, w * 0.22, w * 0.4, wallH * 0.4, wallH * 0.78, win[0], win[1], win[2]); // window R
 }
-type RoofSpec = { wallH: number; roofH: number; wall: [number, number, number]; roof: [number, number, number] };
-type BoxSpec = { h: number; col: [number, number, number] };
+// A civic building answers to its FUNCTION, not to the local culture's dwellings: a lord's hall
+// and a shrine are raised in stone under slate wherever they stand, a workshop in boards under
+// straw. (Only houses wear the people's own style — that's what makes a town read as theirs.)
+type RoofSpec = { wallH: number; roofH: number; wall: [number, number, number]; roof: [number, number, number]; wm: SurfaceMat; rm: SurfaceMat };
+type BoxSpec = { h: number; col: [number, number, number]; m: SurfaceMat };
 const ROOFED: Record<string, RoofSpec> = {
-  house: { wallH: 0.16, roofH: 0.13, wall: [0.60, 0.50, 0.40], roof: [0.36, 0.22, 0.18] },
-  seat: { wallH: 0.34, roofH: 0.26, wall: [0.62, 0.54, 0.36], roof: [0.30, 0.24, 0.30] },
-  shrine: { wallH: 0.24, roofH: 0.34, wall: [0.56, 0.52, 0.60], roof: [0.34, 0.28, 0.42] },
-  tavern: { wallH: 0.20, roofH: 0.15, wall: [0.60, 0.48, 0.36], roof: [0.34, 0.22, 0.18] },
-  workshop: { wallH: 0.16, roofH: 0.12, wall: [0.55, 0.47, 0.40], roof: [0.32, 0.24, 0.20] },
-  warehouse: { wallH: 0.20, roofH: 0.12, wall: [0.56, 0.48, 0.42], roof: [0.33, 0.25, 0.22] },
-  boathouse: { wallH: 0.15, roofH: 0.11, wall: [0.55, 0.48, 0.42], roof: [0.32, 0.26, 0.22] },
-  minehead: { wallH: 0.20, roofH: 0.14, wall: [0.50, 0.46, 0.42], roof: [0.30, 0.27, 0.25] },
-  mill: { wallH: 0.30, roofH: 0.22, wall: [0.60, 0.50, 0.40], roof: [0.34, 0.24, 0.20] },
-  granary: { wallH: 0.30, roofH: 0.20, wall: [0.60, 0.52, 0.36], roof: [0.35, 0.26, 0.18] }, // a tall storehouse
-  stall: { wallH: 0.08, roofH: 0.06, wall: [0.52, 0.42, 0.28], roof: [0.60, 0.36, 0.22] }, // a low awninged counter
-  watchtower: { wallH: 0.55, roofH: 0.16, wall: [0.36, 0.34, 0.29], roof: [0.24, 0.22, 0.20] }, // a tall keep (war, design/28)
+  house: { wallH: 0.16, roofH: 0.13, wall: [0.60, 0.50, 0.40], roof: [0.36, 0.22, 0.18], wm: 'plank', rm: 'thatch' },
+  seat: { wallH: 0.34, roofH: 0.26, wall: [0.62, 0.54, 0.36], roof: [0.30, 0.24, 0.30], wm: 'masonry', rm: 'slate' },
+  shrine: { wallH: 0.24, roofH: 0.34, wall: [0.56, 0.52, 0.60], roof: [0.34, 0.28, 0.42], wm: 'masonry', rm: 'slate' },
+  tavern: { wallH: 0.20, roofH: 0.15, wall: [0.60, 0.48, 0.36], roof: [0.34, 0.22, 0.18], wm: 'plank', rm: 'thatch' },
+  workshop: { wallH: 0.16, roofH: 0.12, wall: [0.55, 0.47, 0.40], roof: [0.32, 0.24, 0.20], wm: 'plank', rm: 'thatch' },
+  warehouse: { wallH: 0.20, roofH: 0.12, wall: [0.56, 0.48, 0.42], roof: [0.33, 0.25, 0.22], wm: 'plank', rm: 'thatch' },
+  boathouse: { wallH: 0.15, roofH: 0.11, wall: [0.55, 0.48, 0.42], roof: [0.32, 0.26, 0.22], wm: 'plank', rm: 'thatch' },
+  minehead: { wallH: 0.20, roofH: 0.14, wall: [0.50, 0.46, 0.42], roof: [0.30, 0.27, 0.25], wm: 'plank', rm: 'plank' },
+  mill: { wallH: 0.30, roofH: 0.22, wall: [0.60, 0.50, 0.40], roof: [0.34, 0.24, 0.20], wm: 'masonry', rm: 'slate' },
+  granary: { wallH: 0.30, roofH: 0.20, wall: [0.60, 0.52, 0.36], roof: [0.35, 0.26, 0.18], wm: 'plank', rm: 'thatch' }, // a tall storehouse
+  stall: { wallH: 0.08, roofH: 0.06, wall: [0.52, 0.42, 0.28], roof: [0.60, 0.36, 0.22], wm: 'plank', rm: 'plain' }, // a low awninged counter (the awning is cloth)
+  watchtower: { wallH: 0.55, roofH: 0.16, wall: [0.36, 0.34, 0.29], roof: [0.24, 0.22, 0.20], wm: 'masonry', rm: 'slate' }, // a tall keep (war, design/28)
 };
 const BOXED: Record<string, BoxSpec> = {
-  monument: { h: 0.9, col: [0.62, 0.58, 0.46] },
-  tomb: { h: 0.24, col: [0.46, 0.46, 0.48] },
-  stone: { h: 0.34, col: [0.52, 0.52, 0.54] },
-  shell: { h: 0.14, col: [0.22, 0.20, 0.18] },
-  well: { h: 0.12, col: [0.44, 0.42, 0.38] }, // a low stone ring
-  grave: { h: 0.08, col: [0.50, 0.49, 0.46] }, // a headstone (design/28)
-  scaffold: { h: 0.18, col: [0.54, 0.44, 0.28] }, // a rising frame (design/28)
+  monument: { h: 0.9, col: [0.62, 0.58, 0.46], m: 'masonry' },
+  tomb: { h: 0.24, col: [0.46, 0.46, 0.48], m: 'masonry' },
+  stone: { h: 0.34, col: [0.52, 0.52, 0.54], m: 'masonry' },
+  shell: { h: 0.14, col: [0.22, 0.20, 0.18], m: 'masonry' }, // a burned-out stone shell
+  well: { h: 0.12, col: [0.44, 0.42, 0.38], m: 'masonry' }, // a low stone ring
+  grave: { h: 0.08, col: [0.50, 0.49, 0.46], m: 'masonry' }, // a headstone (design/28)
+  scaffold: { h: 0.18, col: [0.54, 0.44, 0.28], m: 'plank' }, // a rising frame (design/28)
 };
 const FS = 1.15; // footprint scale — a touch above real so buildings read, but not chunky/merging
 
@@ -315,26 +354,30 @@ export function buildStructures(plan: LocalPlan, geo: Geography, cx: number, cy:
       const w = Math.max(0.1, it.w * FS), d = Math.max(0.1, it.h * FS), by = surfY(it.x, it.y), lx = it.x - cx, lz = it.y - cy;
       const rf = ROOFED[it.role];
       if (it.derelict) {
-        // a DERELICT house (design/28): roofless, weathered walls — a hollow shell, no roof
-        pushBox(A, lx, by, lz, w, (rf?.wallH ?? 0.14) * 0.75, d, it.rot, 0.34, 0.33, 0.27);
+        // a DERELICT house (design/28): roofless, weathered walls — a hollow shell, no roof.
+        // Still its people's walling: an abandoned house is one THEY built, only left to rot.
+        const dm = it.arch && ARCH_BY_ID[it.arch] ? SURF[ARCH_BY_ID[it.arch].wallMat] : SURF.plank;
+        pushBox(A, lx, by, lz, w, (rf?.wallH ?? 0.14) * 0.75, d, it.rot, 0.34, 0.33, 0.27, dm);
       } else if (it.role === 'house' && it.arch && ARCH_BY_ID[it.arch]) {
         // a DWELLING in its culture's architecture (design/28 §3)
         pushHouse(A, lx, by, lz, w, d, it.rot, ARCH_BY_ID[it.arch], it.shape === 'compound' || it.tone === 'grand', !!it.inhabited);
       } else if (rf) {
-        pushBox(A, lx, by, lz, w, rf.wallH, d, it.rot, rf.wall[0], rf.wall[1], rf.wall[2]);
-        pushRoof(A, lx, by + rf.wallH, lz, w, d, rf.roofH, it.rot, rf.roof[0], rf.roof[1], rf.roof[2]);
+        pushBox(A, lx, by, lz, w, rf.wallH, d, it.rot, rf.wall[0], rf.wall[1], rf.wall[2], SURF[rf.wm]);
+        pushRoof(A, lx, by + rf.wallH, lz, w, d, rf.roofH, it.rot, rf.roof[0], rf.roof[1], rf.roof[2], SURF[rf.rm]);
       } else {
-        const bx = BOXED[it.role] ?? { h: 0.3, col: [0.4, 0.35, 0.3] as [number, number, number] };
-        pushBox(A, lx, by, lz, w, bx.h, d, it.rot, bx.col[0], bx.col[1], bx.col[2]);
+        const bx = BOXED[it.role] ?? { h: 0.3, col: [0.4, 0.35, 0.3] as [number, number, number], m: 'masonry' as SurfaceMat };
+        pushBox(A, lx, by, lz, w, bx.h, d, it.rot, bx.col[0], bx.col[1], bx.col[2], SURF[bx.m]);
       }
     } else if (it.kind === 'wall' || it.kind === 'barricade' || it.kind === 'bridge') {
+      // a town wall is coursed stone; a bridge and a hasty barricade are timber
+      const wm = it.kind === 'wall' ? SURF.masonry : SURF.plank;
       const wcol: [number, number, number] = it.kind === 'bridge' ? [0.30, 0.24, 0.17] : [0.42, 0.38, 0.33];
       const wh = it.kind === 'bridge' ? 0.1 : 0.42;
       for (let i = 0; i + 1 < it.pts.length; i++) {
         const p0 = it.pts[i], p1 = it.pts[i + 1], mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
         if (!inFrame(mx, my)) continue;
         const len = Math.hypot(p1.x - p0.x, p1.y - p0.y), ang = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-        pushBox(A, mx - cx, surfY(mx, my), my - cy, len, wh, Math.max(0.05, it.width * 1.6), ang, wcol[0], wcol[1], wcol[2]);
+        pushBox(A, mx - cx, surfY(mx, my), my - cy, len, wh, Math.max(0.05, it.width * 1.6), ang, wcol[0], wcol[1], wcol[2], wm);
       }
     } else if (it.kind === 'tree') {
       if (!inFrame(it.x, it.y)) continue;
@@ -388,7 +431,7 @@ export function buildRiverMesh(geo: Geography, cx: number, cy: number, span: num
   A.sea = []; // per-vertex 0 (freshwater) … 1 (sea) so the ribbon fades into the sea shader at the mouth
   const chains = riverChains(geo, cx, cy, span);
   const inFrame = (x: number, y: number) => Math.abs(x - cx) <= half + 0.6 && Math.abs(y - cy) <= half + 0.6;
-  const push = (q: number[], s: number) => { A.pos.push(q[0], q[1], q[2]); A.nrm.push(0, 1, 0); A.col.push(0.2, 0.4, 0.49); A.sea!.push(s); A.n++; };
+  const push = (q: number[], s: number) => { A.pos.push(q[0], q[1], q[2]); A.nrm.push(0, 1, 0); A.col.push(0.2, 0.4, 0.49); A.sea!.push(s); A.uv.push(0, 0); A.mat.push(0); A.n++; };
   for (const chain of chains) {
     const pts = chain.pts;
     if (pts.length < 2) continue;
