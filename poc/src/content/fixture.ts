@@ -1623,6 +1623,52 @@ export function reputeSpec(kind: string): ReputeSpec {
   return REPUTE_SPECS[kind] ?? NEUTRAL_REPUTE;
 }
 
+// --------------------------------------------------------- legend drift ------
+// How a story CHANGES in the telling (design/30 §4.1). PACK DATA, like THOUGHT_SPECS and
+// REPUTE_SPECS: the engine knows only "a retelling may distort past a threshold" — WHICH
+// propositions can drift, and what they drift INTO, is this universe's vocabulary. A world
+// whose people are meticulous record-keepers sets DRIFT_CHANCE to 0 and ships no table; a
+// world of oral myth sets it high. Assertions absent from DRIFT_SPECS never drift at all.
+
+/** One version a story can turn into: `id` keys the drifted assertion (`dead#slain`),
+ *  `label` is how that version is TOLD (it reads after the subject's name). */
+export interface DriftSpec {
+  id: string;
+  label: string;
+}
+
+/** Retellings-from-the-original at which a story MAY start to change (a firsthand witness is
+ *  0 hops; the person they tell holds it at 1). Below this a telling only attenuates trust —
+ *  the assertion itself is safe while the event is still close at hand. */
+export const DRIFT_HOPS = 3;
+/** …OR this many years since the original event, however short the chain: time alone loosens
+ *  a story, so a tale told once but carried for a generation can also drift. */
+export const DRIFT_YEARS = 25;
+/** How often an eligible retelling actually changes the story. Most retellings are faithful;
+ *  this is what keeps drift a slow curdle rather than noise. Drawn by pure hash, never RNG. */
+export const DRIFT_CHANCE = 0.35;
+
+/** What each drift-prone proposition can become. Keyed by the BASE assertion, so a story that
+ *  has already drifted (`dead#cursed`) draws from the same table and can keep changing. */
+export const DRIFT_SPECS: Record<string, DriftSpec[]> = {
+  // "the king is dead" is the one belief-worthy proposition the fantasy pack forms today
+  // (engine/perception.ts BELIEF_WORTHY) — and the archetypal thing folk embellish. A plain
+  // death becomes a death that MEANS something; that is exactly how legends are born.
+  dead: [
+    { id: 'slain', label: 'was slain in battle' },
+    { id: 'taken-by-the-sea', label: 'was taken by the sea' },
+    { id: 'cursed', label: 'was struck down by a curse' },
+    { id: 'betrayed', label: 'was betrayed by their own kin' },
+    { id: 'vanished', label: 'vanished, and was never found at all' },
+  ],
+};
+
+/** The versions `base` can drift into — empty (never drifts) for propositions this universe
+ *  tells straight. The engine asks; the pack answers. */
+export function driftSpecsFor(base: string): DriftSpec[] {
+  return DRIFT_SPECS[base] ?? [];
+}
+
 /** Deed labels this culture especially abhors (precept weight ≥ 1.5) — used by the
  *  view layer to surface what a settlement's people hold as sacred/forbidden. Preserves
  *  the precept declaration order, so the output matches the pre-precept behaviour. */

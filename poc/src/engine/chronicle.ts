@@ -6,13 +6,14 @@
  * still tell of how…"). History becomes content. (The RimWorld Tale idea, kept
  * deterministic — interest is a pure function of the event, no RNG.)
  */
-import { type World, type WorldEvent, type Tale, DAYS_PER_YEAR } from './model';
+import { type World, type WorldEvent, type Tale, type EntityId, DAYS_PER_YEAR } from './model';
 import { fullName, emit } from './world';
 import { endHouseAt } from './figures';
 import { renderEvent } from './render';
 import { Rng, mixSeed } from './rng';
 import { expand } from './grammar';
-import { eventInterest, LANDMARK_TYPES, LEGEND_GRAMMAR, ERA_GRAMMAR, ERA_SYMBOL } from './pack';
+import { eventInterest, LANDMARK_TYPES, LEGEND_GRAMMAR, ERA_GRAMMAR, ERA_SYMBOL, driftSpecsFor } from './pack';
+import { baseAssertion, computeBelief, driftVariant } from './belief';
 
 const MIN_INTEREST = 15; // below this an event isn't worth remembering
 const CHRONICLE_LIMIT = 60; // how many tales the world keeps
@@ -98,6 +99,76 @@ export function renderLegend(world: World, ev: WorldEvent): string {
   const rng = new Rng(mixSeed(world.seed, ev.id, 0x1ee));
   const event = stripPeriod(renderEvent(world, ev));
   return expand(LEGEND_GRAMMAR, 'legend', rng, { event });
+}
+
+// ------------------------------------------- a culture's own history (design/30 §4.1) ---
+
+/** The version of an event a people currently tell: which assertion they hold, about whom, and
+ *  how collectively sure they are of it. */
+export interface CultureLegend {
+  assertion: string;
+  subject: EntityId;
+  confidence: number;
+}
+
+/**
+ * How the people of `cultureId` currently tell `ev` — the belief THEY hold about it, which past
+ * Legend Drift need not be what actually happened.
+ *
+ * DERIVED, never stored, and reduced from the culture's living members exactly as `orgBeliefOf`
+ * reduces an institution's belief from its own: subjectivity exists only where agency exists, so
+ * a culture with no simulated actors tells no version at all (undefined) and the objective record
+ * stands. Of the versions its people hold, the one they most collectively affirm wins — a legend
+ * is what a folk generally say, not what any one of them says.
+ *
+ * Pure read: touches no world state, gives the culture no evidence stack of its own.
+ */
+export function cultureLegendOf(world: World, cultureId: string, ev: WorldEvent): CultureLegend | undefined {
+  const held = new Map<string, { subject: EntityId; sum: number }>();
+  let people = 0;
+  for (const id of world.entities) {
+    const sid = world.homeSettlement.get(id);
+    if (sid === undefined || world.settlements[sid]?.cultureId !== cultureId) continue;
+    if (!world.personality.get(id)) continue; // a simulated resident — a subject that can know
+    people++;
+    for (const b of world.beliefs.get(id) ?? []) {
+      // this people's beliefs that trace back to THIS event, however far they have drifted
+      if (!b.evidence.some((e) => e.cause === ev.id)) continue;
+      const state = computeBelief(b, world.tick);
+      if (state.stance !== 'true') continue; // only what they affirm is something they'd tell
+      const row = held.get(b.assertion) ?? { subject: b.subject, sum: 0 };
+      row.sum += state.confidence;
+      held.set(b.assertion, row);
+    }
+  }
+  if (people === 0) return undefined; // no subjects → no subjectivity → no folk version
+
+  let best: CultureLegend | undefined;
+  for (const [assertion, row] of held) {
+    const confidence = row.sum / people;
+    if (!best || confidence > best.confidence) best = { assertion, subject: row.subject, confidence };
+  }
+  return best;
+}
+
+/**
+ * Re-narrate a tale as the people of `cultureId` tell it. Where they hold a DRIFTED version, that
+ * is what gets told — so two cultures' oral histories of the same war genuinely diverge, and the
+ * annals stop being a single omniscient record. Where they hold nothing (or the plain truth), this
+ * is exactly `renderLegend`.
+ *
+ * The grammar draw is seeded identically to `renderLegend`, so a culture's telling differs from
+ * its neighbours' in WHAT IS CLAIMED, not in incidental phrasing — the divergence you read is the
+ * drift, not the dice.
+ */
+export function renderLegendFor(world: World, ev: WorldEvent, cultureId: string): string {
+  const legend = cultureLegendOf(world, cultureId, ev);
+  const variant = legend && driftVariant(legend.assertion);
+  if (!legend || variant === undefined) return renderLegend(world, ev);
+  const spec = driftSpecsFor(baseAssertion(legend.assertion)).find((s) => s.id === variant);
+  if (!spec) return renderLegend(world, ev); // a version this pack no longer defines — tell it straight
+  const rng = new Rng(mixSeed(world.seed, ev.id, 0x1ee));
+  return expand(LEGEND_GRAMMAR, 'legend', rng, { event: `${fullName(world, legend.subject)} ${spec.label}` });
 }
 
 /** Give a year its defining name from its single most interesting event. */

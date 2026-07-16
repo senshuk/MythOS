@@ -153,6 +153,23 @@ export interface Evidence extends Mark {
   polarity: 1 | -1; // supports (+1) or contradicts (-1) the belief's assertion
   observationConfidence: number; // [0,1] how direct/clear the sensing (a witness ≈ 1.0)
   sourceTrust: number; // [0,1] how far the holder trusts the source (self = 1.0)
+  /** how many retellings separate this evidence from the original witnessing (absent/0 =
+   *  firsthand). Legend Drift (design/30 §4.1) reads this to decide when a story has travelled
+   *  far enough to distort. Absent on pre-drift saves: a story already in flight when such a save
+   *  was written reads as firsthand and starts its count over. That under-counts, never
+   *  over-counts — an old save drifts a little late rather than inventing a legend it never had —
+   *  and it corrects itself as the world runs on. Additive and optional, so no migration. */
+  hops?: number;
+  /** the version this one replaced, when the belief it backs is a DRIFTED one: the assertion that
+   *  was told before the tale turned. Set at the retelling that changed the story, and carried
+   *  forward by every faithful retelling after it — so a legend stays traceable back to the exact
+   *  hop where it changed no matter how far it has since spread, rather than that record living
+   *  only in the mind of whoever happened to change it. A subjective state never loses its why
+   *  (design/17 §8). Absent ⇒ this evidence carries the story as it happened. */
+  driftedFrom?: string;
+  /** the hop at which `driftedFrom` became the version now held — the retelling the legend was
+   *  born at, which is NOT this evidence's own `hops` once the tale has travelled on. */
+  driftedAt?: number;
 }
 
 /** What an actor holds true about ONE proposition: an evidence stack, reduced on demand.

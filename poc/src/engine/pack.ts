@@ -28,7 +28,7 @@ import * as venues from '../content/venues';
 import { generateCultures } from '../content/cultureGen';
 
 // type re-exports (compile-time only; a pack supplies matching shapes)
-export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec } from '../content/fixture';
+export type { ReproductionMode, Reproduction, Species, Profession, Trait, SuccessionMode, Government, ValueAxis, TemperamentAxis, Personality, Deity, Precept, ActorLifeState, StatePrecept, Culture, WorldviewAxisId, BreakSpec, DriftSpec } from '../content/fixture';
 export type { Rules } from './model';
 export type { PlaceContext } from '../content/languages';
 export type { Biome } from '../content/biomes';
@@ -143,6 +143,11 @@ export let GIFT_WEALTH_FLOOR = FANTASY_PACK.GIFT_WEALTH_FLOOR;
 export let giveInclination = FANTASY_PACK.giveInclination;
 export let REPUTE_SPECS = FANTASY_PACK.REPUTE_SPECS;
 export let reputeSpec = FANTASY_PACK.reputeSpec;
+export let DRIFT_SPECS = FANTASY_PACK.DRIFT_SPECS;
+export let driftSpecsFor = FANTASY_PACK.driftSpecsFor;
+export let DRIFT_HOPS = FANTASY_PACK.DRIFT_HOPS;
+export let DRIFT_YEARS = FANTASY_PACK.DRIFT_YEARS;
+export let DRIFT_CHANCE = FANTASY_PACK.DRIFT_CHANCE;
 export let ethicsTaboos = FANTASY_PACK.ethicsTaboos;
 export let creedOf = FANTASY_PACK.creedOf;
 export let REPUTATION_EFFECTS = FANTASY_PACK.REPUTATION_EFFECTS;
@@ -294,6 +299,11 @@ export function setPack(p: UniversePack): void {
   giveInclination = p.giveInclination;
   REPUTE_SPECS = p.REPUTE_SPECS;
   reputeSpec = p.reputeSpec;
+  DRIFT_SPECS = p.DRIFT_SPECS;
+  driftSpecsFor = p.driftSpecsFor;
+  DRIFT_HOPS = p.DRIFT_HOPS;
+  DRIFT_YEARS = p.DRIFT_YEARS;
+  DRIFT_CHANCE = p.DRIFT_CHANCE;
   ethicsTaboos = p.ethicsTaboos;
   creedOf = p.creedOf;
   REPUTATION_EFFECTS = p.REPUTATION_EFFECTS;
