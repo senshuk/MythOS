@@ -44,6 +44,33 @@ export interface PlanBuilding {
   /** set only on buildings the Interiors step furnished (design/32 §5) — the handle its
    *  `PlanInterior` fittings point back at, so the renderer knows which roof to fade. */
   id?: number;
+  /** a 0..1 VARIETY seed (a stream-free position hash, stamped by buildLocalPlan) — both
+   *  renderers derive the same subtle per-building tint/height/pitch jitter from it, so
+   *  no two same-type dwellings are clones yet a building matches itself in 2D and 3D. */
+  vary?: number;
+}
+
+/**
+ * What a building's `vary` seed MEANS — decorrelated phases for colour and shape jitter,
+ * defined here in the pack (beside the stamp) so the 2D plan glyph and the 3D extrusion
+ * derive the SAME weathering, chimney end, ridge lean and lean-to from one number. All
+ * subtle by design: variety within a culture's style, never a new style. Any future
+ * per-building variation should be a new phase here, not a stream draw or a material.
+ */
+export function varyPhases(vary: number | undefined): {
+  wallT: number; roofT: number; hJit: number; warm: number; flip: boolean; ridge: number; annex: boolean;
+} {
+  const v = vary ?? 0.5;
+  const fract = (x: number) => x - Math.floor(x);
+  return {
+    wallT: 0.94 + v * 0.12, // ±6% wall value — sun-bleached daub beside fresh daub
+    roofT: 0.92 + fract(v * 7.31) * 0.16, // ±8% roof value — thatch ages roof by roof
+    hJit: 0.92 + fract(v * 3.77 + 0.17) * 0.16, // ±8% wall height & roof pitch
+    warm: fract(v * 11.17 + 0.31) * 2 - 1, // −1..1 warm/cool hue nudge (clay-red ↔ grey-blue)
+    flip: fract(v * 5.23 + 0.07) < 0.5, // which gable end carries the chimney (and any annex)
+    ridge: (fract(v * 2.93 + 0.41) - 0.5) * 0.5, // ±0.25 ridgeline offset — a saltbox lean
+    annex: fract(v * 9.02 + 0.63) < 0.22, // roughly a fifth of detached homes grew a lean-to
+  };
 }
 export interface PlanPath {
   /** `precinct` is a district boundary (design/32 §6) — a shrine's enclosure, a seat's bailey.
@@ -1867,5 +1894,16 @@ export function buildLocalPlan(facts: LocalPlanFacts): LocalPlan {
   const plan: LocalPlan = { items: [], radius: 1 };
   const rng = new Rng(mixSeed(facts.seed, facts.settlement.id, 0x70c1));
   for (const step of LOCAL_GEN_STEPS) step.run(facts, rng, plan);
+  // VARIETY SEED, stamped last: every building gets a 0..1 hash of where it stands, so
+  // two cots of the same people never render as clones — the renderers derive subtle
+  // per-building tint/height/pitch jitter from this ONE number, and both derive the
+  // SAME jitter (a house matches itself across the 2D plan and the 3D fly-in). A pure
+  // POSITION hash, not an rng draw (the person-figure precedent): minting it is
+  // stream-free, so plans stay byte-identical draw-for-draw with variety off or on.
+  for (const it of plan.items) {
+    if (it.kind !== 'building') continue;
+    const h = Math.abs(Math.sin(it.x * 73.13 + it.y * 19.71) * 43758.5);
+    it.vary = h - Math.floor(h);
+  }
   return plan;
 }

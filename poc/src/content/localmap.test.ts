@@ -141,6 +141,17 @@ describe('the town plan (L1)', () => {
     expect(city.items.length).toBeLessThan(3000);
   });
 
+  it('every building carries a stable 0..1 variety seed (same facts ⇒ same variety)', () => {
+    const a = buildLocalPlan(worldFacts());
+    const b = buildLocalPlan(worldFacts());
+    const va = a.items.filter((i): i is PlanBuilding => i.kind === 'building').map((x) => x.vary);
+    const vb = b.items.filter((i): i is PlanBuilding => i.kind === 'building').map((x) => x.vary);
+    expect(va.length).toBeGreaterThan(10);
+    expect(va.every((v) => typeof v === 'number' && v >= 0 && v <= 1)).toBe(true);
+    expect(va).toEqual(vb); // a position hash, not a draw — deterministic by construction
+    expect(new Set(va.map((v) => Math.round((v ?? 0) * 100))).size).toBeGreaterThan(5); // …and it actually varies
+  });
+
   it('village plans are byte-identical to before the urban tier (urbanity 0 changes nothing)', () => {
     // any settlement under the urban floor draws the exact same plan twice — and the knobs
     // (spacing, radius, lanes, crowd) all collapse to their old values at urbanity 0

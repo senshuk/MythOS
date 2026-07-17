@@ -8,7 +8,7 @@
  */
 import { type Geography, GEO_MIN, GEO_SPAN, WATER_RIVER, REF_N, GREAT_RIVER_FLUX, temperatureAt, moistureAt, hillinessAt } from '../engine/geography';
 import { biomeOf } from '../content/biomes';
-import type { LocalPlan } from '../content/localmap';
+import { varyPhases, type LocalPlan } from '../content/localmap';
 import { ARCH_BY_ID, type ArchStyle, type SurfaceMat } from '../content/architecture';
 
 export const RES = 200; // terrain vertices per side
@@ -283,14 +283,19 @@ function quad(A: Accum, p0: number[], p1: number[], p2: number[], p3: number[], 
   for (const p of [p0, p1, p2, p3]) { A.pos.push(p[0], p[1], p[2]); A.nrm.push(n[0], n[1], n[2]); A.col.push(r, g, b); pushUV(A, p, tt, bb, m); A.n++; }
   A.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
-function pushRoof(A: Accum, x: number, by: number, z: number, w: number, d: number, roofH: number, rot: number, r: number, g: number, b: number, m = 0) {
+/** a gabled roof. `ridge` (−1..1, fraction of the cross half-span) slides the ridgeline off
+ *  centre — an asymmetric "saltbox" pitch, the cheapest real silhouette variety a cottage
+ *  can have. 0 is the classic symmetric gable (every civic building keeps it). */
+function pushRoof(A: Accum, x: number, by: number, z: number, w: number, d: number, roofH: number, rot: number, r: number, g: number, b: number, m = 0, ridge = 0) {
   const c = Math.cos(rot), s = Math.sin(rot), hw = w / 2, hd = d / 2;
   const tr = (lx: number, lz: number, ly: number) => [x + lx * c - lz * s, by + ly, z + lx * s + lz * c];
   if (w >= d) {
-    const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(-hw, 0, roofH), R1 = tr(hw, 0, roofH);
+    const rz = ridge * hd;
+    const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(-hw, rz, roofH), R1 = tr(hw, rz, roofH);
     quad(A, A0, B0, R1, R0, r, g, b, m); quad(A, D0, R0, R1, C0, r, g, b, m); tri(A, A0, R0, D0, r, g, b, m); tri(A, B0, C0, R1, r, g, b, m);
   } else {
-    const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(0, -hd, roofH), R1 = tr(0, hd, roofH);
+    const rx = ridge * hw;
+    const A0 = tr(-hw, -hd, 0), B0 = tr(hw, -hd, 0), C0 = tr(hw, hd, 0), D0 = tr(-hw, hd, 0), R0 = tr(rx, -hd, roofH), R1 = tr(rx, hd, roofH);
     quad(A, A0, R0, R1, D0, r, g, b, m); quad(A, B0, C0, R1, R0, r, g, b, m); tri(A, A0, B0, R0, r, g, b, m); tri(A, D0, R1, C0, r, g, b, m);
   }
 }
@@ -308,21 +313,43 @@ function pushFront(A: Accum, cx: number, by: number, cz: number, d: number, rot:
   const tr = (lx: number, ly: number): number[] => [cx + lx * c - hd * s, by + ly, cz + lx * s + hd * c];
   quad(A, tr(lx0, y0), tr(lx1, y0), tr(lx1, y1), tr(lx0, y1), r, g, b);
 }
+/** value-tint + warm/cool hue nudge on a base colour — subtle enough that the material
+ *  stays legible (this is weathering within a style, never a new style). */
+function varyRGB(r: number, g: number, b: number, t: number, warm: number): [number, number, number] {
+  return [Math.min(1, r * t * (1 + warm * 0.05)), Math.min(1, g * t), Math.min(1, b * t * (1 - warm * 0.04))];
+}
+
 /** a DWELLING in its culture's style (design/28 §3): coloured walls + roof, a gable/flat/conical
  *  roofline, an optional chimney, and a door + windows so it reads as a home (warm-lit if lived in).
- *  Wealth (`grand`) raises a taller, richer roof. */
-function pushHouse(A: Accum, lx: number, by: number, lz: number, w: number, d: number, rot: number, style: ArchStyle, grand: boolean, inhabited: boolean) {
-  const wallH = 0.16 * (grand ? 1.15 : 1);
+ *  Wealth (`grand`) raises a taller, richer roof; `vary` keeps neighbours from being clones —
+ *  tint and hue drift, a saltbox ridge lean, the chimney's end, and (for a DETACHED cot,
+ *  `annexOk`) sometimes a lean-to annex against the gable wall. */
+function pushHouse(A: Accum, lx: number, by: number, lz: number, w: number, d: number, rot: number, style: ArchStyle, grand: boolean, inhabited: boolean, vary?: number, annexOk = true) {
+  const { wallT, roofT, hJit, warm, flip, ridge, annex } = varyPhases(vary);
+  const wallH = 0.16 * (grand ? 1.15 : 1) * hJit;
   // the style names its own materials (design/28 §3) — its boards, its stones, its straw
   const wm = SURF[style.wallMat], rm = SURF[style.roofMat];
-  pushBox(A, lx, by, lz, w, wallH, d, rot, style.wall[0], style.wall[1], style.wall[2], wm);
-  const k = grand ? 0.9 : 1, rr = style.roof[0] * k, rg = style.roof[1] * k, rb = style.roof[2] * k, top = by + wallH;
+  const [wr, wg, wb] = varyRGB(style.wall[0], style.wall[1], style.wall[2], wallT, warm);
+  pushBox(A, lx, by, lz, w, wallH, d, rot, wr, wg, wb, wm);
+  const [rr, rg, rb] = varyRGB(style.roof[0], style.roof[1], style.roof[2], (grand ? 0.9 : 1) * roofT, warm);
+  const top = by + wallH;
   if (style.roofShape === 'flat') pushBox(A, lx, top, lz, w * 1.03, 0.03, d * 1.03, rot, rr, rg, rb, rm); // a thin clay slab, slight eave
-  else if (style.roofShape === 'conical') pushPyramid(A, lx, top, lz, w * 1.05, d * 1.05, 0.2 * (grand ? 1.2 : 1), rot, rr, rg, rb, rm);
-  else pushRoof(A, lx, top, lz, w, d, 0.13 * (grand ? 1.2 : 1), rot, rr, rg, rb, rm);
+  else if (style.roofShape === 'conical') pushPyramid(A, lx, top, lz, w * 1.05, d * 1.05, 0.2 * (grand ? 1.2 : 1) * hJit, rot, rr, rg, rb, rm);
+  else pushRoof(A, lx, top, lz, w, d, 0.13 * (grand ? 1.2 : 1) * hJit, rot, rr, rg, rb, rm, ridge);
+  const side = flip ? -1 : 1;
   if (style.chimney) {
-    const c = Math.cos(rot), s = Math.sin(rot), ox = w * 0.3, oz = d * 0.12;
+    const c = Math.cos(rot), s = Math.sin(rot), ox = w * 0.3 * side, oz = d * 0.12;
     pushBox(A, lx + ox * c - oz * s, top, lz + ox * s + oz * c, 0.024, 0.16, 0.024, rot, 0.3, 0.27, 0.24, SURF.masonry); // a stack is stone whatever the walls are
+  }
+  if (annex && annexOk && !grand) {
+    // a LEAN-TO grown against the gable wall opposite the chimney — a shed of the same
+    // boards under a low flat slab. One box + one slab per ~fifth cottage: shape variety
+    // that still lives inside the single merged mesh.
+    const aw = w * 0.42, ad = d * 0.62, ah = wallH * 0.6;
+    const c = Math.cos(rot), s = Math.sin(rot), ox = -(w / 2 + aw / 2) * 0.96 * side;
+    const ax = lx + ox * c, az = lz + ox * s;
+    pushBox(A, ax, by, az, aw, ah, ad, rot, wr * 0.92, wg * 0.92, wb * 0.92, wm);
+    pushBox(A, ax, by + ah, az, aw * 1.06, 0.018, ad * 1.06, rot, rr * 0.9, rg * 0.9, rb * 0.9, rm);
   }
   const win: [number, number, number] = inhabited ? [0.95, 0.78, 0.42] : [0.2, 0.22, 0.26]; // lit if a known family lives here
   pushFront(A, lx, by, lz, d, rot, -w * 0.09, w * 0.09, 0, wallH * 0.6, 0.14, 0.11, 0.09); // door
@@ -372,20 +399,22 @@ export function buildStructures(plan: LocalPlan, geo: Geography, cx: number, cy:
       if (!inFrame(it.x, it.y)) continue;
       const w = Math.max(0.1, it.w * FS), d = Math.max(0.1, it.h * FS), by = surfY(it.x, it.y), lx = it.x - cx, lz = it.y - cy;
       const rf = ROOFED[it.role];
+      const { wallT, roofT, hJit } = varyPhases(it.vary); // per-building, baked into the one mesh
       if (it.derelict) {
         // a DERELICT house (design/28): roofless, weathered walls — a hollow shell, no roof.
         // Still its people's walling: an abandoned house is one THEY built, only left to rot.
         const dm = it.arch && ARCH_BY_ID[it.arch] ? SURF[ARCH_BY_ID[it.arch].wallMat] : SURF.plank;
-        pushBox(A, lx, by, lz, w, (rf?.wallH ?? 0.14) * 0.75, d, it.rot, 0.34, 0.33, 0.27, dm);
+        pushBox(A, lx, by, lz, w, (rf?.wallH ?? 0.14) * 0.75 * hJit, d, it.rot, 0.34 * wallT, 0.33 * wallT, 0.27 * wallT, dm);
       } else if (it.role === 'house' && it.arch && ARCH_BY_ID[it.arch]) {
-        // a DWELLING in its culture's architecture (design/28 §3)
-        pushHouse(A, lx, by, lz, w, d, it.rot, ARCH_BY_ID[it.arch], it.shape === 'compound' || it.tone === 'grand', !!it.inhabited);
+        // a DWELLING in its culture's architecture (design/28 §3). A ROW house is attached —
+        // no annex can grow into the neighbour it shares a wall with.
+        pushHouse(A, lx, by, lz, w, d, it.rot, ARCH_BY_ID[it.arch], it.shape === 'compound' || it.tone === 'grand', !!it.inhabited, it.vary, it.shape !== 'row');
       } else if (rf) {
-        pushBox(A, lx, by, lz, w, rf.wallH, d, it.rot, rf.wall[0], rf.wall[1], rf.wall[2], SURF[rf.wm]);
-        pushRoof(A, lx, by + rf.wallH, lz, w, d, rf.roofH, it.rot, rf.roof[0], rf.roof[1], rf.roof[2], SURF[rf.rm]);
+        pushBox(A, lx, by, lz, w, rf.wallH * hJit, d, it.rot, rf.wall[0] * wallT, rf.wall[1] * wallT, rf.wall[2] * wallT, SURF[rf.wm]);
+        pushRoof(A, lx, by + rf.wallH * hJit, lz, w, d, rf.roofH * hJit, it.rot, rf.roof[0] * roofT, rf.roof[1] * roofT, rf.roof[2] * roofT, SURF[rf.rm]);
       } else {
         const bx = BOXED[it.role] ?? { h: 0.3, col: [0.4, 0.35, 0.3] as [number, number, number], m: 'masonry' as SurfaceMat };
-        pushBox(A, lx, by, lz, w, bx.h, d, it.rot, bx.col[0], bx.col[1], bx.col[2], SURF[bx.m]);
+        pushBox(A, lx, by, lz, w, bx.h, d, it.rot, bx.col[0] * wallT, bx.col[1] * wallT, bx.col[2] * wallT, SURF[bx.m]);
       }
     } else if (it.kind === 'wall' || it.kind === 'barricade' || it.kind === 'bridge') {
       // a town wall is coursed stone; a bridge and a hasty barricade are timber

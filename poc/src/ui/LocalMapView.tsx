@@ -12,7 +12,7 @@ import type { RegionMapView, SettlementView, EventRef, EventView, HouseholdView 
 import { SurfaceSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
-import { buildLocalPlan, LOCAL_FRAME, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
+import { buildLocalPlan, varyPhases, LOCAL_FRAME, type LocalPlanFacts, type PlanItem, type PlanTree, type TreeForm } from '../content/localmap';
 import { ARCH_BY_ID } from '../content/architecture';
 import { paintTerrain, paintTerrainOverlay, finishTerrain, buildRoads, buildLocalRivers, type TerrainLabel, type LocalRiver, type ViewBox, type GeoFields, type GroundPatch } from './terrain';
 import { createTerrainGpu, type TerrainGpu } from './terrainGpu';
@@ -823,9 +823,16 @@ const PlanGlyph = memo(function PlanGlyph({
   }
   if (it.kind !== 'building') return null; // exhaustiveness guard — narrows for TS too
   const cls = `plan-building tone-${it.tone} role-${it.role}${it.inhabited ? ' inhabited' : ''}${it.era ? ` era-${it.era}` : ''}${it.shape ? ` shape-${it.shape}` : ''}${it.derelict ? ' derelict' : ''}${cutaway ? ' cutaway' : ''}`;
-  // ARCHITECTURE (design/28 §3): the culture's style tints the roof and shapes its silhouette
+  // ARCHITECTURE (design/28 §3): the culture's style tints the roof and shapes its silhouette.
+  // The plan's per-building `vary` seed drives the SAME phases the 3D view derives (varyPhases,
+  // defined beside the stamp in content/localmap): weathered value, a warm/cool hue nudge, the
+  // chimney's end, a saltbox ridge lean, and the occasional lean-to — as fill strings and a
+  // couple of coordinates, never an SVG filter (a filter per roof would cost real paint).
   const st = it.arch ? ARCH_BY_ID[it.arch] : undefined;
-  const roofFill = st ? `rgb(${Math.round(st.roof[0] * 255)}, ${Math.round(st.roof[1] * 255)}, ${Math.round(st.roof[2] * 255)})` : undefined;
+  const { roofT, warm, flip, ridge, annex } = varyPhases(it.vary);
+  const rc = (x: number, hue: number) => Math.min(255, Math.round(x * 255 * roofT * hue));
+  const roofFill = st ? `rgb(${rc(st.roof[0], 1 + warm * 0.05)}, ${rc(st.roof[1], 1)}, ${rc(st.roof[2], 1 - warm * 0.04)})` : undefined;
+  const side = flip ? -1 : 1;
   const hw = it.w / 2, hh = it.h / 2;
   // a history mark traces its event; a civic building inspects its subject
   const act = it.eventId !== undefined ? () => onPickEvent(it.eventId!) : it.ref ? () => onRef(it.ref!) : undefined;
@@ -895,9 +902,22 @@ const PlanGlyph = memo(function PlanGlyph({
           {/* a ROW house in the dense core has square corners (attached); a cot is softer.
               The fill is the culture's ROOF colour; the roofline cue is its silhouette. */}
           <rect x={-hw} y={-hh} width={it.w} height={it.h} rx={it.shape === 'row' ? 0 : 0.012} style={roofFill ? { fill: roofFill } : undefined} />
+          {annex && it.role === 'house' && it.shape !== 'row' && !it.derelict && (
+            // the lean-to the 3D view raises on this same cottage — a shed off the gable end
+            <rect
+              x={side < 0 ? hw * 0.96 : -hw * 0.96 - it.w * 0.42}
+              y={-it.h * 0.31}
+              width={it.w * 0.42}
+              height={it.h * 0.62}
+              rx={0.008}
+              className="plan-annex"
+              style={roofFill ? { fill: roofFill, opacity: 0.82 } : undefined}
+            />
+          )}
           {(!st || st.roofShape === 'gable') && (
-            // a pitched gable — the ridge that makes a rectangle read as a building
-            <line x1={-hw + 0.015} y1={0} x2={hw - 0.015} y2={0} className="plan-ridge" />
+            // a pitched gable — the ridge that makes a rectangle read as a building; the
+            // per-building ridge lean matches the 3D saltbox silhouette
+            <line x1={-hw + 0.015} y1={ridge * hh} x2={hw - 0.015} y2={ridge * hh} className="plan-ridge" />
           )}
           {st?.roofShape === 'flat' && (
             // a flat clay roof — a parapet outline, no ridge
@@ -913,14 +933,15 @@ const PlanGlyph = memo(function PlanGlyph({
             </>
           )}
           {st?.chimney && (
-            // a hearth's chimney — a small stack near the eave
-            <rect className="plan-chimney" x={hw * 0.35} y={-hh * 0.7} width={Math.max(0.012, it.w * 0.14)} height={Math.max(0.012, it.w * 0.14)} />
+            // a hearth's chimney — a small stack near the eave, at whichever gable end
+            // this house's vary phase chose (the same end the 3D stack stands on)
+            <rect className="plan-chimney" x={side > 0 ? hw * 0.35 : -hw * 0.35 - Math.max(0.012, it.w * 0.14)} y={-hh * 0.7} width={Math.max(0.012, it.w * 0.14)} height={Math.max(0.012, it.w * 0.14)} />
           )}
           {st?.chimney && it.inhabited && (
             // a lived-in hearth's smoke — the cheapest "someone's home" cue (design/28 §4.1)
             <path
               className="plan-smoke"
-              d={`M ${hw * 0.35 + Math.max(0.012, it.w * 0.14) / 2} ${-hh * 0.7} q -0.01 -0.03 0.008 -0.05 q 0.018 -0.02 0.002 -0.048`}
+              d={`M ${(side > 0 ? hw * 0.35 : -hw * 0.35 - Math.max(0.012, it.w * 0.14)) + Math.max(0.012, it.w * 0.14) / 2} ${-hh * 0.7} q -0.01 -0.03 0.008 -0.05 q 0.018 -0.02 0.002 -0.048`}
               fill="none"
             />
           )}
