@@ -45,15 +45,46 @@ new Events`. The input to all three consumers is one shared reducer:
    event's cause chain runs through the founder's own evidence back to the original
    event — "why does this order exist?" resolves completely.
 
-## 3. Scope fence (v1 excludes, deliberately)
+## 3. Orders that ACT + Attractor Strength (v1.1, same increment cycle)
+
+The two items v1's fence deferred, now shipped through the existing pipelines:
+
+- **Category-scoped intent vocabularies** — `IntentDef.orgCategories`: the six polity
+  intents are scoped `['political']`; devotional orders weigh their own pair. One
+  pipeline, each org considering only its own kind of life.
+- **`commemorate` → `hold_rite`** — the order retells its founding tale to residents who
+  lack it (a `retell` OrgEffect through the existing belief machinery). This is the
+  institution keeping its own myth alive against decay: the loop sustaining itself.
+- **`seek_relic` → `search_for_relic`** — when the order's legend subject is a LOST
+  object (`relic_lost`, a bounded perception fact: an order knows the state of the one
+  thing it exists for), it seeks. The search is an ARC, not a die roll: expeditions
+  harden the order (readiness) until it is equal to the finding, each attempt history
+  ("scoured the land… and returned empty-handed"), and the recovery
+  (`recover_object` effect) passes the relic into the seat's ruling house's keeping and
+  stamps the object's own history — renown carries the finding. Found → it commemorates.
+- **Attractor Strength** (`30` §6) — `attractorStrength(world, subject)`: believers
+  world-wide + sworn orders weighted by how long they have stood + a living emulator +
+  the object's own decaying renown, each part labelled. Pure; decays by construction
+  (every input decays or dissolves — mythic scarcity holds). Surfaced on figure/object
+  peek cards: "an attractor of ambition — 12 souls hold its legend · the Seekers of
+  Voskarn, sworn 31 years."
+- **Scarcity guards on founding** (`30` §7, tuned against live play, which showed a
+  lively town founding four orders in nine years — inflation that cheapens every one):
+  the holder threshold is the pack floor OR a real SHARE of the community (5%),
+  whichever is greater; eligibility is judged per SUBJECT across all drift variants (a
+  town gripped by three tellings of one tale is still gripped by one tale — the order
+  swears to the dominant telling); one founding per settlement per YEAR at most; and
+  one per GENERATION (20y) — a founding is a rare turning of the communal soul. All
+  derived from records the world already keeps; no new state.
+
+## 3b. Scope fence (still deliberately excluded)
 
 - Emulation matching against the legendary figure's *recorded personality* (freed at
-  demote; v1 matches the legend's theme to the emulator's values instead).
-- Orders that ACT (they exist, enroll, and are inspectable; devotional intents and
-  order-driven behavior are the natural next increment via the existing org pipeline).
-- The Attractor Strength reducer (`30` §6) — sequenced next, reading what this produces.
+  demote; the legend's theme matched to the emulator's values instead).
 - Cross-settlement legend aggregation (legends live where believers live; news/travel
   already carries beliefs between towns).
+- Attractor Strength as a simulation INPUT (it is a legibility read, per `30` §6's own
+  argument; the moment a consumer wants it, that is a new producer decision).
 
 ## 4. Decision-filter check
 

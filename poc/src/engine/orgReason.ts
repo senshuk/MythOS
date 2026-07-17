@@ -40,6 +40,7 @@ import {
 import { getOrganization } from './organization';
 import { getEvent, clamp } from './world';
 import { legendValueNudge } from './legend';
+import { objectById } from './objects';
 
 /** A player's polity mandate (P4) lapses after this long unrenewed — so a ruler must keep
  *  steering, and a released/dead player's old steer fades rather than binding forever. */
@@ -210,6 +211,17 @@ export function perceive(world: World, orgId: OrgId): PerceptionFact[] {
     facts.push({ id: 'succession_settled', value: settled, confidence: 1, source: 'seat' });
   }
 
+  // --- a DEVOTIONAL order's own purpose (design/34, orders that act): whether the relic
+  // it is sworn to is lost or held. High confidence and legitimately bounded — an order
+  // knows the state of the one thing it exists for; it reads nothing else global. ---
+  const org2 = getOrganization(world, orgId);
+  if (org2?.legendSubjectId !== undefined) {
+    const relic = objectById(world, org2.legendSubjectId);
+    if (relic && relic.destroyedYear === undefined) {
+      facts.push({ id: 'relic_lost', value: relic.holderHouseId === undefined ? 100 : 0, confidence: 1, source: 'seat' });
+    }
+  }
+
   // --- immediate neighbours via the region graph (lower confidence: only what's visible) ---
   let hostilitySum = 0;
   let hostileCount = 0;
@@ -262,6 +274,9 @@ export function evaluateIntent(world: World, orgId: OrgId): OrgIntent {
   let best: { kind: string; score: number; factors: OrgIntent['factors'] } | undefined;
   const alternatives: { kind: string; score: number }[] = [];
   for (const def of INTENTS) {
+    // category-scoped vocabularies (design/34): a kingdom never weighs a relic-quest,
+    // an order never weighs annexation — same pipeline, each considers only its own kind
+    if (def.orgCategories && !def.orgCategories.includes(org.category)) continue;
     const factors = def.score(perception, worldview, org);
     const score = factors.reduce((sum, f) => sum + f.value, 0);
     alternatives.push({ kind: def.id, score });

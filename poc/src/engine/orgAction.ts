@@ -27,6 +27,10 @@ import { INTENT_TO_ACTION, actionById, baselineOperational } from './pack';
 import { emit, clamp } from './world';
 import { recordDeed } from './reputation';
 import { adjustTreasury } from './organization';
+import { livingLegendsAt } from './legend';
+import { retell } from './belief';
+import { objectById } from './objects';
+import { getFigure } from './figures';
 
 /** Years an org waits between actions, so polities don't act (and chronicle) every year. */
 const ACTION_COOLDOWN_YEARS = 4;
@@ -89,6 +93,35 @@ export function applyEffects(world: World, org: Organization, effects: OrgEffect
         // the org's deed is witnessed by its seat's people — scales how widely it is known
         recordDeed(world, org.id, e.kind, { witnesses: seat ? Math.max(1, settlementPopulation(world, seat)) : 1 });
         break;
+      case 'retell': {
+        // a devotional order's rite (design/34): the leader retells the order's founding
+        // legend to residents who lack it — inert belief formation through the existing
+        // retell machinery, which is how the institution keeps its myth alive against
+        // decay. Deterministic: the most-held version, told to the first eligible souls.
+        if (org.legendSubjectId === undefined || org.seatId === undefined) break;
+        const legends = livingLegendsAt(world, org.seatId).filter((l) => l.subject === org.legendSubjectId);
+        if (!legends.length) break; // a legend no one still holds cannot be retold from
+        const lg = legends.sort((a, b) => b.holders.length - a.holders.length || a.assertion.localeCompare(b.assertion))[0];
+        const teller = org.leaderId !== undefined && lg.holders.includes(org.leaderId) ? org.leaderId : lg.holders[0];
+        let told = 0;
+        for (const id of world.entities) {
+          if (told >= e.count) break;
+          if (id === teller || world.homeSettlement.get(id) !== org.seatId) continue;
+          if ((world.beliefs.get(id) ?? []).some((b) => b.subject === lg.subject && b.assertion === lg.assertion)) continue;
+          retell(world, teller, id, lg.subject, lg.assertion, 0.6);
+          told++;
+        }
+        break;
+      }
+      case 'recover_object': {
+        // the Seekers find what they sought: the LOST relic passes to the seat's ruling
+        // house. (The executor stamps the recovery into the object's history with the
+        // emitted event's id, so its renown carries the finding.)
+        const relic = objectById(world, e.objectId);
+        const ruler = seat ? getFigure(world, seat.currentRulerId) : undefined;
+        if (relic && relic.holderHouseId === undefined && ruler?.houseId !== undefined) relic.holderHouseId = ruler.houseId;
+        break;
+      }
     }
   }
 }
@@ -123,7 +156,15 @@ export function orgActionYearly(world: World): void {
         id: action.id, intentKind: intent.kind, outcome: 'success',
         effects: outcome.effects, summary: outcome.summary, sinceTick: world.tick,
       });
-      emit(world, outcome.eventType, [org.id], outcome.eventData, [], org.seatId !== undefined ? [org.seatId] : []);
+      const evId = emit(world, outcome.eventType, [org.id], outcome.eventData, [], org.seatId !== undefined ? [org.seatId] : []);
+      // a recovered relic remembers its own finding (design/33: the biography lives in the
+      // Events; renown is recomputed from this index) — stamped here because only the
+      // executor knows the emitted event's id.
+      for (const eff of outcome.effects) {
+        if (eff.target === 'recover_object') {
+          objectById(world, eff.objectId)?.history.push({ eventId: evId, year: Math.floor(world.tick / DAYS_PER_YEAR), kind: 'recovered' });
+        }
+      }
     } else {
       // a feasible attempt defeated by reality is still history; 2D's bounded actions never
       // reach here (feasible ⇒ success), but heavy actions (war/colonisation, later) will,

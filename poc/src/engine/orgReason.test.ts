@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { createWorld, runYears, hashWorld } from './sim';
 import { serializeWorld, deserializeWorld } from './persistence';
 import { perceive, worldviewOf, evaluateIntent, orgIntentYearly } from './orgReason';
+import { getOrganization } from './organization';
 import { INTENTS, EVALUATOR_VERSION, VALUES, worldviewFromValues, type ValueAxis } from '../content/fixture';
 import type { World } from './model';
 
@@ -78,8 +79,11 @@ describe('Every intent is a complete, valid justification (intent validator)', (
 
     // factors sum to the reported score
     expect(d.factors.reduce((s, f) => s + f.value, 0)).toBe(d.score);
-    // alternatives cover EVERY candidate intent, exactly
-    expect(new Set(d.alternatives.map((a) => a.kind))).toEqual(new Set(INTENTS.map((i) => i.id)));
+    // alternatives cover EVERY candidate intent OF THIS ORG'S CATEGORY, exactly — a
+    // polity weighs the political vocabulary and never a devotional order's (design/34)
+    const org = getOrganization(w, orgId)!;
+    const mine = INTENTS.filter((i) => !i.orgCategories || i.orgCategories.includes(org.category));
+    expect(new Set(d.alternatives.map((a) => a.kind))).toEqual(new Set(mine.map((i) => i.id)));
     // the chosen kind is the argmax (no alternative scores higher)
     for (const a of d.alternatives) expect(d.score).toBeGreaterThanOrEqual(a.score);
     expect(d.alternatives.find((a) => a.kind === d.kind)!.score).toBe(d.score);

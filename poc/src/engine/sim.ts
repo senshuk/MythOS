@@ -72,7 +72,7 @@ import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { objectById, objectRenownTier } from './objects';
-import { legendOrdersYearly } from './legend';
+import { legendOrdersYearly, attractorStrength } from './legend';
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
@@ -735,12 +735,16 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
       const fig = world.figuresById.get(ref.id);
       if (!fig) return undefined;
       const house = houseById(world, fig.houseId);
+      // ATTRACTOR STRENGTH (design/30 §6): when the world's ambition orbits this figure,
+      // say so — and say WHY, in the reducer's own labelled parts
+      const att = attractorStrength(world, ref.id);
       return {
         kind: 'figure',
         name: fig.name,
         lines: [
           `${fig.role} of ${world.settlements[fig.settlementId]?.name ?? '?'}`,
           `b.y${fig.bornYear}${fig.deathYear !== undefined ? `–y${fig.deathYear}` : ''} · ${fig.deathYear !== undefined ? `r.y${fig.reignStart}–y${fig.reignEnd ?? fig.deathYear}` : `reigning since y${fig.reignStart}`}`,
+          ...(att.strength >= 12 ? [`an attractor of ambition — ${att.parts.map((p) => p.label).slice(0, 2).join(' · ')}`] : []),
         ],
         houseId: fig.houseId,
         houseName: house?.name,
@@ -832,6 +836,7 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
       if (!obj) return undefined;
       const holder = obj.holderHouseId !== undefined ? world.houses.find((h) => h.id === obj.holderHouseId) : undefined;
       const tier = objectRenownTier(world, obj);
+      const att = attractorStrength(world, ref.id); // design/30 §6 — why this thing matters
       return {
         kind: 'object',
         name: obj.name,
@@ -839,6 +844,7 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
           `${obj.nameMeaning ? `“${obj.nameMeaning}” · ` : ''}a ${obj.kind}${tier !== 'plain' ? ` · ${tier}` : ''}`,
           `forged y${obj.forgedYear}${obj.makerName ? ` for ${obj.makerName}` : ''}`,
           holder ? `borne by House ${holder.name}` : 'lost — none now hold it',
+          ...(att.strength >= 12 ? [`an attractor of ambition — ${att.parts.map((p) => p.label).slice(0, 2).join(' · ')}`] : []),
         ],
         houseId: holder?.id,
         houseName: holder?.name,

@@ -417,6 +417,10 @@ export interface IntentDef {
   displayName: string;
   category: string;
   description: string;
+  /** which org CATEGORIES may consider this intent (absent = every category). A kingdom
+   *  weighs expansion; a devotional order weighs rites and relic-quests — one pipeline,
+   *  category-scoped vocabularies (design/34, orders that act). */
+  orgCategories?: string[];
   score(perception: PerceptionFact[], worldview: Worldview, org: Organization): IntentFactor[];
 }
 
@@ -444,7 +448,13 @@ export type OrgEffect =
   | { target: 'treasury'; delta: number } // the org's own funds (2C: OrgResources)
   | { target: 'stability'; delta: number } // the seat's macro.stability
   | { target: 'relation'; neighbourId: SettlementId; delta: number } // an edge's relation
-  | { target: 'reputation'; kind: string }; // an org reputation mark
+  | { target: 'reputation'; kind: string } // an org reputation mark
+  // a devotional order's rite RETELLS its founding legend to residents who lack it
+  // (design/34, orders that act) — inert belief formation via the existing retell machinery,
+  // which is how an institution keeps its own myth alive against decay
+  | { target: 'retell'; count: number }
+  // the Seekers find what they sought: a LOST object passes to the seat's ruling house
+  | { target: 'recover_object'; objectId: EntityId };
 
 /** The PURE result of resolving an action: whether it succeeded, what it would change, and
  *  how it reads — with NO mutation performed. The executor applies the effects and emits

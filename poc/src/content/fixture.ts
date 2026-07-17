@@ -7,7 +7,11 @@
  */
 import { Rng } from '../engine/rng';
 import { DAYS_PER_YEAR, settlementPopulation } from '../engine/model';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization, Rules } from '../engine/model';
+// mechanism reads for the devotional actions (design/34) — call-time only, so the module
+// cycle through the pack boundary is safe (the ambitions/aspirations precedent)
+import { objectById } from '../engine/objects';
+import { getFigure } from '../engine/figures';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, OrgOutcome, World, Settlement, Organization, Rules } from '../engine/model';
 import { biomeOf } from './biomes';
 
 // ------------------------------------------------------------ identity -------
@@ -834,7 +838,7 @@ const r = Math.round;
  */
 export const INTENTS: IntentDef[] = [
   {
-    id: 'remain_neutral', displayName: 'Remain Neutral', category: 'posture',
+    id: 'remain_neutral', displayName: 'Remain Neutral', category: 'posture', orgCategories: ['political'],
     description: 'Hold steady and tend to internal affairs.',
     score: (p, w) => [
       { id: 'isolationist_lean', group: 'disposition', value: r(wvv(w, 'isolationist') * 0.2) },
@@ -843,7 +847,7 @@ export const INTENTS: IntentDef[] = [
     ],
   },
   {
-    id: 'expand', displayName: 'Expand', category: 'outward',
+    id: 'expand', displayName: 'Expand', category: 'outward', orgCategories: ['political'],
     description: 'Seek new territory or influence beyond the current borders.',
     score: (p, w) => [
       { id: 'expansionist_lean', group: 'disposition', value: r(wvv(w, 'expansionist') * 0.3) },
@@ -855,7 +859,7 @@ export const INTENTS: IntentDef[] = [
     ],
   },
   {
-    id: 'prepare_war', displayName: 'Prepare for War', category: 'military',
+    id: 'prepare_war', displayName: 'Prepare for War', category: 'military', orgCategories: ['political'],
     description: 'Mobilise against a perceived threat.',
     score: (p, w) => [
       { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.3) },
@@ -867,7 +871,7 @@ export const INTENTS: IntentDef[] = [
     ],
   },
   {
-    id: 'protect_border', displayName: 'Protect the Border', category: 'military',
+    id: 'protect_border', displayName: 'Protect the Border', category: 'military', orgCategories: ['political'],
     description: 'Shore up defences without seeking conflict.',
     score: (p) => [
       { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.3) },
@@ -876,7 +880,7 @@ export const INTENTS: IntentDef[] = [
     ],
   },
   {
-    id: 'trade', displayName: 'Pursue Trade', category: 'economy',
+    id: 'trade', displayName: 'Pursue Trade', category: 'economy', orgCategories: ['political'],
     description: 'Grow through commerce with neighbours.',
     score: (p, w) => [
       { id: 'mercantile_lean', group: 'disposition', value: r(wvv(w, 'mercantile') * 0.35) },
@@ -885,12 +889,34 @@ export const INTENTS: IntentDef[] = [
     ],
   },
   {
-    id: 'recruit', displayName: 'Recruit', category: 'internal',
+    id: 'recruit', displayName: 'Recruit', category: 'internal', orgCategories: ['political'],
     description: 'Grow the ranks — drawing in members and strength.',
     score: (p, w) => [
       { id: 'militaristic_lean', group: 'disposition', value: r(wvv(w, 'militaristic') * 0.2) },
       { id: 'border_hostility', group: 'military', value: r(fv(p, 'border_hostility') * 0.15) },
       { id: 'population_base', group: 'internal', value: r(Math.min(40, fv(p, 'own_strength') * 0.1)) },
+    ],
+  },
+
+  // ── the DEVOTIONAL vocabulary (design/34, orders that act) ──────────────────────────────
+  // A belief-founded order does not annex or patrol; it keeps its legend alive, and — when
+  // sworn to a LOST relic — it seeks. `relic_lost` is the bounded perception fact the order
+  // holds about the one thing it exists for.
+  {
+    id: 'commemorate', displayName: 'Commemorate the Legend', category: 'devotional', orgCategories: ['devotional'],
+    description: 'Hold the rite — retell the tale, so it does not die with its tellers.',
+    score: (p, w) => [
+      { id: 'devotion', group: 'baseline', value: 22 },
+      { id: 'religious_lean', group: 'disposition', value: r((w.religious ?? 0) * 0.1) },
+      { id: 'relic_in_hand', group: 'devotional', value: r(Math.max(0, 50 - fv(p, 'relic_lost')) * 0.1) },
+    ],
+  },
+  {
+    id: 'seek_relic', displayName: 'Seek the Relic', category: 'devotional', orgCategories: ['devotional'],
+    description: 'Scour the land for what was lost — the quest the order was sworn to.',
+    score: (p) => [
+      { id: 'the_relic_is_lost', group: 'devotional', value: r(fv(p, 'relic_lost') * 0.35) },
+      { id: 'baseline', group: 'baseline', value: 2 },
     ],
   },
 ];
@@ -1029,6 +1055,64 @@ export const ACTIONS: ActionDef[] = [
       eventType: 'org_festival', eventData: { org: org.name },
     }),
   },
+
+  // ── the DEVOTIONAL actions (design/34, orders that act) ─────────────────────────────────
+  {
+    id: 'hold_rite', displayName: 'Hold the Rite',
+    description: 'Retell the founding tale before the town — the order keeps its legend alive.',
+    feasible: (world, org) => {
+      if (org.seatId === undefined || org.legendSubjectId === undefined) return { ok: false, reason: 'no legend to keep' };
+      return orgFunds(world, org) >= 8 ? { ok: true } : { ok: false, reason: 'the order cannot fund the rite' };
+    },
+    resolve: (world, org) => ({
+      success: true,
+      // the retell effect is the point: the tale passes to souls who lacked it, so the
+      // belief that founded the order outlives its first tellers (the loop sustaining itself)
+      effects: [ { target: 'stat', key: 'morale', delta: 8 }, { target: 'treasury', delta: -8 }, { target: 'retell', count: 6 } ],
+      summary: 'held the rite of its legend',
+      eventType: 'order_rite',
+      eventData: { org: org.name, subject: world.names.get(org.legendSubjectId!) ?? 'the legend' },
+    }),
+  },
+  {
+    id: 'search_for_relic', displayName: 'Seek the Relic',
+    description: 'Scour the land for the lost thing the order is sworn to.',
+    feasible: (world, org) => {
+      if (org.seatId === undefined || org.legendSubjectId === undefined) return { ok: false, reason: 'sworn to nothing findable' };
+      const relic = objectById(world, org.legendSubjectId);
+      if (!relic || relic.destroyedYear !== undefined) return { ok: false, reason: 'sworn to nothing findable' };
+      if (relic.holderHouseId !== undefined) return { ok: false, reason: 'the relic is already held' };
+      // a found relic must pass into keeping — the seat needs a ruling house to receive it
+      const seat = actSeat(world, org.seatId);
+      const ruler = seat ? getFigure(world, seat.currentRulerId) : undefined;
+      if (!ruler?.houseId) return { ok: false, reason: 'no house stands ready to keep it' };
+      return orgFunds(world, org) >= 12 ? { ok: true } : { ok: false, reason: 'the order cannot fund the search' };
+    },
+    resolve: (world, org, state): OrgOutcome => {
+      const relic = objectById(world, org.legendSubjectId!)!;
+      const seat = actSeat(world, org.seatId)!;
+      // the search is an ARC, not a die roll: each expedition hones the order (readiness)
+      // until it is equal to the finding — deterministic, and each attempt is history
+      if ((state.readiness ?? 0) < 40) {
+        return {
+          success: true,
+          effects: [ { target: 'treasury', delta: -12 }, { target: 'stat', key: 'readiness', delta: 9 } ],
+          summary: 'scoured the land for its relic, and returned empty-handed',
+          eventType: 'order_search',
+          eventData: { org: org.name, object: relic.name },
+        };
+      }
+      const ruler = getFigure(world, seat.currentRulerId)!;
+      const house = world.houses.find((h) => h.id === ruler.houseId);
+      return {
+        success: true,
+        effects: [ { target: 'treasury', delta: -12 }, { target: 'stat', key: 'morale', delta: 14 }, { target: 'recover_object', objectId: relic.id } ],
+        summary: `found ${relic.name} at last`,
+        eventType: 'object_recovered',
+        eventData: { org: org.name, object: relic.name, settlement: seat.name, house: house?.name ?? 'the ruling house', objectId: relic.id },
+      };
+    },
+  },
 ];
 
 export function actionById(id: string): ActionDef | undefined {
@@ -1045,6 +1129,8 @@ export const INTENT_TO_ACTION: Record<string, string> = {
   protect_border: 'patrol',
   trade: 'trade',
   remain_neutral: 'hold_festival',
+  commemorate: 'hold_rite',
+  seek_relic: 'search_for_relic',
 };
 
 // ----------------------------------------------- organizational interaction ---
@@ -1725,8 +1811,15 @@ export const LEGEND_THEMES: Record<string, LegendTheme> = {
 export const LEGEND_MIN_HOLDERS = 5;
 /** …saturating (full delta) at this many — broader belief pulls no harder past this. */
 export const LEGEND_SATURATION = 25;
-/** Holders at which a legend can FOUND a devotional order (design/34 consumer 3). */
+/** Holders at which a legend can FOUND a devotional order (design/34 consumer 3)… */
 export const LEGEND_ORDER_HOLDERS = 9;
+/** …or this SHARE of the community, whichever is greater — in a full town a tale must
+ *  grip a real fraction of souls, not a corner of one street, before it becomes an
+ *  institution (the Law of Mythic Scarcity, design/30 §7). */
+export const ORDER_HOLDER_SHARE = 0.05;
+/** A settlement raises at most one order per GENERATION — a founding is a rare turning
+ *  of the communal soul, not a season's fashion (scarcity again). */
+export const ORDER_FOUNDING_COOLDOWN_YEARS = 20;
 /** The standing an emulator must build for their own name to stand with the legend's. */
 export const EMULATE_STANDING = 120;
 
