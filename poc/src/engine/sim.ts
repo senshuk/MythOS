@@ -72,6 +72,7 @@ import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { objectById, objectRenownTier } from './objects';
+import { legendOrdersYearly } from './legend';
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
@@ -232,6 +233,7 @@ export function stepTick(world: World): void {
     migrationYearly(world); // people move between settlements (geography-weighted)
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
+    if (hasFocus) legendOrdersYearly(world); // a broadly-held legend founds an order (design/34)
     if (hasFocus && MODULES.factions) civilWarYearly(world); // resolve civil wars after the grace period
     if (hasFocus && MODULES.factions) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
     orgIntentYearly(world); // organizations form their collective intent (Perception→Worldview→Intent)

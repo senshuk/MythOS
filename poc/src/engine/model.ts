@@ -328,6 +328,9 @@ export interface Organization {
   leaderId?: FigureId;
   /** the Location that is currently the organization's seat (HQ/throne/temple), if any. */
   seatId?: LocationId;
+  /** for a belief-founded DEVOTIONAL order (design/34): the legendary subject it is sworn
+   *  to — the figure or heirloom whose tale founded it. Absent for every other org. */
+  legendSubjectId?: EntityId;
   /** the line of seats this organization has held, oldest first — so a moved capital or a
    *  fallen seat leaves a coherent trail. The current seatId is appended here on a move. */
   seatHistory: LocationId[];

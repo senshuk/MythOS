@@ -1691,6 +1691,54 @@ export function driftSpecsFor(base: string): DriftSpec[] {
   return DRIFT_SPECS[base] ?? [];
 }
 
+// --------------------------------------------- the mythic feedback loop ------
+// design/34: legends act on the world. WHAT a legend means — which value it pulls a
+// believing people toward, and what an order sworn to it calls itself — is this
+// universe's vocabulary, keyed by the drift variant that made the tale a tale.
+
+/** A legend's THEME: the value axis it celebrates, how hard a saturated community is
+ *  pulled along it, and the name-prefix an order sworn to it takes. */
+export interface LegendTheme { axis: ValueAxis; delta: number; orderLabel: string }
+
+export const LEGEND_THEMES: Record<string, LegendTheme> = {
+  // …of a death (dead#*)
+  slain: { axis: 'war', delta: 7, orderLabel: 'the Sworn of' },
+  'taken-by-the-sea': { axis: 'nature', delta: 5, orderLabel: 'the Watchers of' },
+  cursed: { axis: 'tradition', delta: 7, orderLabel: 'the Wardens of' },
+  betrayed: { axis: 'honor', delta: 6, orderLabel: 'the Remembrancers of' },
+  vanished: { axis: 'freedom', delta: 5, orderLabel: 'the Seekers of' },
+  // …of an exile (exiled#*)
+  witchcraft: { axis: 'tradition', delta: 6, orderLabel: 'the Wardens of' },
+  fled: { axis: 'freedom', delta: 4, orderLabel: 'the Shadows of' },
+  'went-willingly': { axis: 'freedom', delta: 5, orderLabel: 'the Followers of' },
+  'betrayed-kin': { axis: 'honor', delta: 6, orderLabel: 'the Judges of' },
+  wrongly: { axis: 'honor', delta: 6, orderLabel: 'the Vindicators of' },
+  // …of a lost heirloom (lost#*, design/33)
+  'buried-with-the-king': { axis: 'tradition', delta: 6, orderLabel: 'the Keepers of' },
+  'into-the-hills': { axis: 'freedom', delta: 5, orderLabel: 'the Seekers of' },
+  sank: { axis: 'nature', delta: 5, orderLabel: 'the Divers of' },
+  'melted-down': { axis: 'craft', delta: 6, orderLabel: 'the Reforgers of' },
+  serpent: { axis: 'war', delta: 7, orderLabel: 'the Slayers-to-be of' },
+};
+
+/** A legend nudges a community's worldview once this many living residents affirm it… */
+export const LEGEND_MIN_HOLDERS = 5;
+/** …saturating (full delta) at this many — broader belief pulls no harder past this. */
+export const LEGEND_SATURATION = 25;
+/** Holders at which a legend can FOUND a devotional order (design/34 consumer 3). */
+export const LEGEND_ORDER_HOLDERS = 9;
+/** The standing an emulator must build for their own name to stand with the legend's. */
+export const EMULATE_STANDING = 120;
+
+/** Organization category for belief-founded orders — the first non-political org kind. */
+export const ORG_CATEGORY_DEVOTIONAL = 'devotional';
+
+/** What an order sworn to this legend calls itself ("the Seekers of Wryo"). */
+export function orderNameFor(variant: string, subjectName: string): string {
+  const label = LEGEND_THEMES[variant]?.orderLabel ?? 'the Fellowship of';
+  return `${label} ${subjectName}`;
+}
+
 // ----------------------------------------------------- storied objects -------
 /** The KINDS of heirloom this universe forges (design/33) — pack vocabulary, like venue
  *  types: the engine mints "an object of some kind"; what kinds exist is ours to say.

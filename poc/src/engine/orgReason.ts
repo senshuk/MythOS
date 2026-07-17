@@ -39,6 +39,7 @@ import {
 } from './pack';
 import { getOrganization } from './organization';
 import { getEvent, clamp } from './world';
+import { legendValueNudge } from './legend';
 
 /** A player's polity mandate (P4) lapses after this long unrenewed — so a ruler must keep
  *  steering, and a released/dead player's old steer fades rather than binding forever. */
@@ -79,11 +80,21 @@ function memberValueMean(world: World, seatId: number): Record<ValueAxis, number
   return mean;
 }
 
-/** STAGE 2 — the org's worldview, derived fresh from its members' values (or its culture). */
+/** STAGE 2 — the org's worldview, derived fresh from its members' values (or its culture)
+ *  PLUS the pull of the legends its people currently hold (design/34 consumer 1): a
+ *  community that widely believes its king was slain in battle reads, a little, more
+ *  martial. The nudge is applied to the derived MEAN only — members' innate values are
+ *  never touched, and a legend that stops being retold stops pulling. */
 export function worldviewOf(world: World, orgId: OrgId): Worldview {
   const s = seatOf(world, orgId);
   if (!s) return {};
-  return worldviewFromValues(memberValueMean(world, s.id));
+  const mean = memberValueMean(world, s.id);
+  const nudge = legendValueNudge(world, s.id);
+  for (const axis of VALUES) {
+    const n = nudge[axis];
+    if (n) mean[axis] = clamp(mean[axis] + n, -100, 100);
+  }
+  return worldviewFromValues(mean);
 }
 
 /**

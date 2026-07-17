@@ -21,9 +21,10 @@ import { computeOpinion } from '../engine/opinion';
 import { bestSuitor, strongestFeud, isRuler, canSeekRule } from '../engine/social';
 import { standingOf } from '../engine/reputation';
 import { rankClaimants, getFigure, CLAIM_RIPE_WINDOW } from '../engine/figures';
+import { livingLegendsAt } from '../engine/legend';
 // through the PACK BOUNDARY, not './fixture' — this module is reusable mechanism, so its
 // species lookups must follow whichever universe is bound (see aspirations.ts).
-import { maturityOf, pairBondsFor } from '../engine/pack';
+import { maturityOf, pairBondsFor, LEGEND_THEMES, EMULATE_STANDING } from '../engine/pack';
 
 // Narrative warmth thresholds for the courtship step's progress note (pack's own prose gates, not
 // the engine's escalation thresholds — those live in systems/resolve.ts).
@@ -122,6 +123,51 @@ export const AMBITIONS: AmbitionDef[] = [
       };
     },
     fulfilled: (w, id, t) => t !== undefined && (!isAlive(w, t) || standingOf(w, id) > standingOf(w, t) + ECLIPSE_MARGIN),
+  },
+
+  // ── Walk in a legend's steps ────────────────────────────────────────────────────────────────
+  // The Mythic Feedback Loop's second consumer (design/34): offered to an actor who personally
+  // HOLDS a living legend about a remembered figure, when that legend's theme speaks to their own
+  // strongest value — the tale of the slain king calls to the warlike, the vanished wanderer to
+  // the freedom-hearted. Fulfilled by building a standing worthy of the tale. The offer comes
+  // from the actor's real situation (they know the legend; it matches who they are), never a menu.
+  {
+    id: 'emulate',
+    offerable(w, id) {
+      const home = w.homeSettlement.get(id);
+      const pers = w.personality.get(id);
+      if (home === undefined || !pers) return undefined;
+      for (const lg of livingLegendsAt(w, home)) {
+        if (!lg.holders.includes(id)) continue; // you can only follow a tale you carry
+        if (!w.figuresById.has(lg.subject)) continue; // walk in a PERSON's steps (relics stir seekers, not emulators)
+        const theme = LEGEND_THEMES[lg.variant];
+        if (!theme) continue;
+        if ((pers.values[theme.axis] ?? 0) >= 30) return { target: lg.subject };
+      }
+      return undefined;
+    },
+    label: (w, _id, t) => (t !== undefined ? `Walk in the steps of ${w.names.get(t) ?? 'the legend'}` : 'Live up to a legend'),
+    hint: () => 'let their tale shape your own name',
+    note(w, id, t) {
+      const me = standingOf(w, id);
+      const who = t !== undefined ? w.names.get(t) ?? 'the legend' : 'the legend';
+      if (me >= EMULATE_STANDING) return `Your name is spoken as ${who}'s once was.`;
+      return me > EMULATE_STANDING / 2
+        ? `Folk have begun to see something of ${who} in you.`
+        : `The tale of ${who} is far ahead of you yet.`;
+    },
+    nextStep(_w, _id, t): DecisionView {
+      return {
+        id: `amb:emulate:${t ?? 0}`,
+        urgency: 85,
+        prompt: [{ text: 'To live up to the legend, make your own.' }],
+        options: [
+          { label: 'Do worthy work', hint: 'a name is built deed by deed', intent: { kind: 'work' }, tone: 'neutral' },
+          { label: 'Be seen among folk', hint: 'a legend needs witnesses', intent: { kind: 'socialize' }, tone: 'neutral' },
+        ],
+      };
+    },
+    fulfilled: (w, id) => standingOf(w, id) >= EMULATE_STANDING,
   },
 
   // ── Rise to lead ────────────────────────────────────────────────────────────────────────────
