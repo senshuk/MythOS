@@ -30,10 +30,22 @@ const holdsTrue = (w: W, holder: number, subject: number, assertion: string) => 
  * still hold what happened, and those who hold only the legend.
  */
 function aDeathAndItsLegend() {
+  // the drift draw is a pure hash of (source event, teller chain) — which chain LENGTH
+  // first drifts shifts whenever worldgen's id sequence changes. Walk the chain longer
+  // until the tale turns (same fix as belief.drift.test.ts's driftedChain): the property
+  // under test is the drift and its consumers, never one length's hash luck.
+  for (let len = 13; len <= 61; len += 4) {
+    const built = buildDeathChain(len);
+    if (built) return built;
+  }
+  throw new Error('the chain produced no legend — the drift mechanism is not firing');
+}
+
+function buildDeathChain(len: number) {
   const w = createWorld(123);
   const actors = fullActors(w);
   const dead = actors[0];
-  const chain = actors.slice(1, 14);
+  const chain = actors.slice(1, len + 1);
   const deathId = emit(w, 'died', [dead], {});
   witnessBelief(w, chain[0], dead, 'dead', deathId);
   for (let i = 0; i < chain.length - 1; i++) {
@@ -48,7 +60,7 @@ function aDeathAndItsLegend() {
   const drifted = (w.beliefs.get(chain[chain.length - 1]) ?? [])
     .map((b) => b.assertion)
     .find((a) => baseAssertion(a) === 'dead' && driftVariant(a) !== undefined);
-  if (!drifted) throw new Error('the chain produced no legend — the drift mechanism is not firing');
+  if (!drifted) return undefined;
 
   // those who hold ONLY the legend, and those who still hold the plain truth
   const legendFolk = chain.filter((c) => holdsTrue(w, c, dead, drifted) && !holdsTrue(w, c, dead, 'dead'));

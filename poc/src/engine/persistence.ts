@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, RULES, setCulturesForSeed } from './pack';
 
-export const SAVE_VERSION = 28;
+export const SAVE_VERSION = 29;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -80,6 +80,9 @@ export interface SaveFile {
    *  (a decaying stack — see model.ts PrestigeMark). Pre-v26 saves carry the old shape;
    *  `deserializeWorld` migrates each house to a single permanent legacy mark. */
   houses: (World['houses'][number] | (Omit<World['houses'][number], 'prestigeMarks'> & { prestige: number }))[];
+  /** Storied objects — dynastic heirlooms (design/33). Optional for saves predating v29
+   *  (which minted none: objects only enter a world at its own worldgen/successions). */
+  objects?: World['objects'];
   /** First-class organizations (plain objects). Optional for saves predating v11. */
   organizations?: Organization[];
   /** per-org membership rosters as entries. Optional for saves predating v12. */
@@ -203,6 +206,7 @@ export function serializeWorld(world: World): SaveFile {
     director: world.director,
     figures: world.figures,
     houses: world.houses,
+    objects: world.objects,
     organizations: world.organizations,
     orgMembers: [...world.orgMembers],
     currentIntent: [...world.currentIntent],
@@ -500,6 +504,9 @@ export function deserializeWorld(save: SaveFile): World {
       const { prestige, ...rest } = h;
       return { ...rest, prestigeMarks: prestige ? [{ kind: 'legacy', value: prestige, sinceTick: 0 }] : [] };
     }),
+    // pre-v29 worlds minted no heirlooms — they simply have none (objects enter a world
+    // only at its own house foundings, so an old save stays exactly the world it was)
+    objects: s.objects ?? [],
     organizations,
     organizationsById,
     orgMembers,

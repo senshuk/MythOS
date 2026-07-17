@@ -54,7 +54,7 @@ import { foundPolity, noteOrgThought, orgOpinionOf, getOrganization } from './or
 import { activeAgreement } from './orgInteraction';
 import { declareOrContinueWar, warBetween, joinWar, addExhaustion } from './war';
 import { recordDeed } from './reputation';
-import { mintFigure, foundHouse, endHouseAt, houseConquers } from './figures';
+import { mintFigure, foundHouse, endHouseAt, houseConquers, plunderHouse } from './figures';
 import {
   SPECIES,
   speciesById,
@@ -941,7 +941,7 @@ export function geographyYearly(world: World): void {
           const year = Math.floor(world.tick / DAYS_PER_YEAR);
           const realm = getOrganization(world, strong.polityId)?.name ?? strong.name;
           const annexId = emit(world, 'annexed', subjects, { victor: strong.name, annexed: weak.name, realm }, [], [strong.id, weak.id]);
-          endHouseAt(world, weak, year, annexId); // the old House falls; its polity dissolves
+          endHouseAt(world, weak, year, annexId, strong); // the old House falls (its heirlooms seized); its polity dissolves
           weak.polityId = strong.polityId; // the town now answers to the victor's realm
           weak.currentRulerId = undefined; // a province — no local lord
           houseConquers(world, strong);
@@ -956,6 +956,9 @@ export function geographyYearly(world: World): void {
           const conqId = emit(world, 'conquest', subjects, { victor: strong.name, fallen: weak.name, reason: mostOpposedValue(A.cultureId, B.cultureId) }, [], [strong.id, weak.id]);
           houseConquers(world, strong); // the victor's House gains prestige (the loser's line
           //                               falls when recordRuins registers the emptied town)
+          // …and carries off the fallen line's heirlooms NOW, while the victor is known —
+          // by the time recordRuins ends the house, the plunder has already left (design/33)
+          plunderHouse(world, weak, strong, Math.floor(world.tick / DAYS_PER_YEAR), conqId);
           // razing a city brands the victor's POLITY with lasting infamy (2C: OrgReputation).
           if (strong.polityId !== undefined) recordDeed(world, strong.polityId, 'org_conquest', { cause: conqId });
           drawInAllies(world, weak, strong); // the fallen town's allies are drawn against the conqueror (2E)

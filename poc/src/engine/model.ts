@@ -263,6 +263,32 @@ export interface House {
   extinctYear?: number;
 }
 
+/**
+ * An OBJECT (the ontology's fourth entity tier — design/11 §Object, design/33 v1 slice):
+ * a persistent, non-autonomous thing whose value to the simulation is entirely the events
+ * it participates in. v1 objects are DYNASTIC HEIRLOOMS — held by a House (the tier that
+ * already endures across generations), passed down the line implicitly with succession,
+ * seized when the holder's seat falls to a conqueror, lost when it falls to ruin. Its id
+ * shares the entity space, so it can be an Event subject and a Belief subject ("the blade
+ * was carried into the hills") with no adapter — and its legend drifts like any other.
+ */
+export interface WorldObject {
+  id: EntityId;
+  name: string; // coined in the founding culture's own tongue ("Voskarn")
+  nameMeaning?: string; // …with its sense kept legible ("the bright edge")
+  kind: string; // pack vocabulary: 'blade', 'crown', 'torc', …
+  forgedYear: number;
+  originSettlementId: SettlementId;
+  makerName?: string; // whose hand it is remembered from (the founder it was made for)
+  /** the House that holds it now — undefined once LOST (a relic waiting to resurface). */
+  holderHouseId?: HouseId;
+  destroyedYear?: number; // v1 never destroys; the field completes the ontology
+  /** an INDEX of the events this object was party to (id + when + what kind), like
+   *  eventsBySettlement — the biography lives in the Events; renown is always RECOMPUTED
+   *  from these with decay (design/18 "significance is derived, never stored"). */
+  history: { eventId: EventId; year: number; kind: string }[];
+}
+
 export type OrgId = EntityId; // shares the monotonic entity id space (like FigureId/HouseId)
 
 /** An Organization's broad, engine-level CATEGORY — an open string, pack-defined
@@ -1085,6 +1111,9 @@ export interface World {
   figuresBySettlement: Map<SettlementId, FigureId[]>;
   /** The great Houses — lineages that hold seats and endure across generations. */
   houses: House[];
+  /** Storied OBJECTS — dynastic heirlooms and, in time, every other persistent thing
+   *  (design/33). World-tier like houses: they outlive actors and survive focus shifts. */
+  objects: WorldObject[];
   /** First-class Organizations — the enduring collective actors (polities today;
    *  guilds/churches later). In creation (id) order. */
   organizations: Organization[];
@@ -1237,7 +1266,8 @@ export type EventRef =
   | { kind: 'culture'; id: string } // a creed/people (pack culture id)
   | { kind: 'deity'; id: string } // a god (pack deity id)
   | { kind: 'feature'; id: number } // a named geographic feature (per-world index)
-  | { kind: 'venue'; id: LocationId }; // a public venue (a Location — design/25)
+  | { kind: 'venue'; id: LocationId } // a public venue (a Location — design/25)
+  | { kind: 'object'; id: EntityId }; // a storied Object — an heirloom (design/33)
 
 /** One run of an event's rendered prose — plain text, or a clickable entity ref. */
 export interface EventPart {

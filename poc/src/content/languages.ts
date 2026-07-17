@@ -374,6 +374,29 @@ export function venueName(cultureId: string, seed: number, salt: number): { name
   return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
 }
 
+// ---------------------------------------------------------- storied objects ---
+// An heirloom is named in its founding people's OWN tongue ("Voskarn — 'the bright
+// edge'"), like towns and taverns — deterministic per (world, salt), no world RNG.
+// The concepts lean elemental: the names a smith gives a blade, not a barkeep a room.
+const OBJECT_CONCEPTS: Concept[] = [
+  { id: 'edge', gloss: 'edge' },
+  { id: 'flame', gloss: 'flame' },
+  { id: 'star', gloss: 'star' },
+  { id: 'fang', gloss: 'fang' },
+  { id: 'ward', gloss: 'ward' },
+  { id: 'oath', gloss: 'oath' },
+];
+
+/** Name a storied OBJECT in its founding people's tongue, with its meaning. Stable per
+ *  (world seed, salt) — the same heirloom always answers to the same name. */
+export function objectName(cultureId: string, seed: number, salt: number): { name: string; meaning: string } {
+  const rng = new Rng(mixSeed(seed, 0x0b7ec, salt));
+  const desc = rng.pick(DESCRIPTORS);
+  const kind = rng.pick(OBJECT_CONCEPTS);
+  const name = compose(tongueFor(cultureId, seed), [lexeme(cultureId, seed, desc.id), lexeme(cultureId, seed, kind.id)]);
+  return { name, meaning: `the ${desc.gloss} ${kind.gloss}` };
+}
+
 /** A curated sample of concepts for the Tongues panel — enough of a lexicon to LEARN a
  *  people's words and recognise them in town names, without dumping the whole table. */
 export const LEXICON_SAMPLE: { id: string; gloss: string }[] = [

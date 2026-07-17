@@ -58,6 +58,11 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   inherited: (n, d) =>
     `${d.predecessor} was dead; ${n(0)}${d.house ? ` of House ${d.house}` : ''} took up the line.`,
   house_fallen: (_n, d) => `House ${d.house} fell with ${d.settlement} — its line ended.`,
+  // storied objects (design/33): the heirloom's name is subjects[0], resolved via the
+  // name registry — so the prose survives every age, and links to the object's card.
+  object_forged: (n, d) => `${n(0)}${d.meaning ? `, “${d.meaning}”` : ''} — ${d.kind} — was forged in ${d.settlement} for House ${d.house}.`,
+  object_seized: (n, d) => `${n(0)} was carried off from fallen ${d.settlement} — House ${d.victor} took it from House ${d.fallen}.`,
+  object_lost: (n, d) => `${n(0)}, treasure of House ${d.house}, was lost when ${d.settlement} fell.`,
   ruler_died: (n, d) => `${n(0)}, ${d.title || 'ruler'} of ${d.settlement}, passed away.`,
   prosperity: (_n, d) => `${d.name} enjoyed a prosperous year (now ${d.population} souls).`,
   hardship: (_n, d) => `${d.name} suffered hardship — ${d.toll} souls lost.`,
@@ -161,6 +166,9 @@ export function eventInterest(type: string, data: Record<string, number | string
   const age = typeof data.age === 'number' ? data.age : 0;
   switch (type) {
     case 'civil_war': return 65; // a community tearing itself apart — rival to conquest in drama
+    case 'object_seized': return 56; // plunder with a name — a dynasty's treasure changing hands
+    case 'object_lost': return 50; // a named relic vanishing — the seed of every treasure-tale
+    case 'object_forged': return 40; // an heirloom enters the world — annals-worthy, quietly
     case 'return_from_exile': return 58; // a triumphant return — dramatic resolution of the exile arc
     case 'exile': return 52; // a named expulsion — memorable consequence, below a brawl death
     case 'contested_succession': return 42; // a power shift between factions — between ascension and dynasty

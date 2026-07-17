@@ -71,6 +71,7 @@ import { PLAYER_ACTIONS } from './pack';
 import { evaluateDecisions } from './decision';
 import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
+import { objectById, objectRenownTier } from './objects';
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
@@ -161,6 +162,7 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
     figuresById: new Map(),
     figuresBySettlement: new Map(),
     houses: [],
+    objects: [],
     organizations: [],
     organizationsById: new Map(),
     orgMembers: new Map(),
@@ -819,6 +821,26 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
           `${loc.nameMeaning ? `“${loc.nameMeaning}” · ` : ''}a ${loc.locationType} in ${s?.name ?? '?'}`,
           `raised y${loc.foundedYear ?? '?'}`,
         ],
+      };
+    }
+    case 'object': {
+      // a storied heirloom (design/33): what it is, whose hand it is remembered from,
+      // who bears it now (or that it is LOST), and its computed renown tier — never stored
+      const obj = objectById(world, ref.id);
+      if (!obj) return undefined;
+      const holder = obj.holderHouseId !== undefined ? world.houses.find((h) => h.id === obj.holderHouseId) : undefined;
+      const tier = objectRenownTier(world, obj);
+      return {
+        kind: 'object',
+        name: obj.name,
+        lines: [
+          `${obj.nameMeaning ? `“${obj.nameMeaning}” · ` : ''}a ${obj.kind}${tier !== 'plain' ? ` · ${tier}` : ''}`,
+          `forged y${obj.forgedYear}${obj.makerName ? ` for ${obj.makerName}` : ''}`,
+          holder ? `borne by House ${holder.name}` : 'lost — none now hold it',
+        ],
+        houseId: holder?.id,
+        houseName: holder?.name,
+        dead: obj.holderHouseId === undefined,
       };
     }
   }
@@ -1985,6 +2007,10 @@ export function canonicalize(world: World): string {
         // resources serialized generically over the pack's RESOURCES vector
         RESOURCES.map((r) => `s_${r}${Math.round(s.econ.stock[r] ?? 0)}.p_${r}${Math.round((s.econ.price[r] ?? 0) * 100)}`).join('.'),
     );
+  }
+  // storied objects (design/33): identity, holder, and biography index — part of the world
+  for (const o of world.objects) {
+    parts.push(`O${o.id}:${o.name}.k${o.kind}.f${o.forgedYear}.h${o.holderHouseId ?? -1}.ev${o.history.map((h) => h.eventId).join('-') || '-'}`);
   }
   // generic (non-settlement) locations: the spatial tree + any in-flight transit. Empty in
   // the default world, so this appends nothing there and existing hashes are unaffected.

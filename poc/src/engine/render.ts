@@ -29,15 +29,20 @@ export function renderEvent(world: World, ev: WorldEvent): string {
 export function renderEventParts(world: World, ev: WorldEvent): EventPart[] {
   const text = renderEvent(world, ev);
   const tokens: { name: string; ref: EventRef }[] = [];
+  const objectIds = new Set(world.objects.map((o) => o.id));
   for (const id of ev.subjects) {
     // link a subject only where it actually RESOLVES: a live actor → its inspector; a remembered
-    // figure → the figure inspector. A demoted actor whose identity was freed but who is not a
-    // figure has a lingering name in the registry — render it as plain text, never a DEAD link.
+    // figure → the figure inspector; a storied object → its card (design/33). A demoted actor
+    // whose identity was freed but who is not a figure has a lingering name in the registry —
+    // render it as plain text, never a DEAD link.
     if (world.identity.has(id)) {
       tokens.push({ name: fullName(world, id), ref: { kind: 'actor', id } });
     } else if (world.figuresById.has(id)) {
       const name = world.names.get(id);
       if (name) tokens.push({ name, ref: { kind: 'figure', id } });
+    } else if (objectIds.has(id)) {
+      const name = world.names.get(id);
+      if (name) tokens.push({ name, ref: { kind: 'object', id } });
     }
   }
   for (const s of world.settlements) tokens.push({ name: s.name, ref: { kind: 'settlement', id: s.id } });

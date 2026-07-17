@@ -198,6 +198,8 @@ export let DECISIONS = FANTASY_PACK.DECISIONS;
 export let VENUES = FANTASY_PACK.VENUES;
 export let VENUE_HOSTS = FANTASY_PACK.VENUE_HOSTS;
 export let venueName = FANTASY_PACK.venueName;
+export let objectName = FANTASY_PACK.objectName;
+export let OBJECT_KINDS = FANTASY_PACK.OBJECT_KINDS;
 
 /** Bind a universe: every engine import re-resolves to this pack from now on.
  * Called at world creation; the default (no call) is the fantasy pack. */
@@ -355,6 +357,8 @@ export function setPack(p: UniversePack): void {
   VENUES = p.VENUES;
   VENUE_HOSTS = p.VENUE_HOSTS;
   venueName = p.venueName;
+  objectName = p.objectName;
+  OBJECT_KINDS = p.OBJECT_KINDS;
 }
 
 /** Generate this world-seed's founding creeds and bind them as the active roster — FANTASY

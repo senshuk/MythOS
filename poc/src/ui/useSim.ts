@@ -173,6 +173,7 @@ export function useSim(initialSeed: number) {
     else if (ref.kind === 'deity') inspectDeity(ref.id);
     else if (ref.kind === 'feature') inspectFeature(ref.id);
     else if (ref.kind === 'venue') inspectVenue(ref.id);
+    else if (ref.kind === 'object') { /* hover peek only in v1 (design/33) — its card names the holding House */ }
     else inspectSettlement(ref.id);
   }, [inspectActor, inspectFigure, inspectSettlement, inspectHouse, inspectCulture, inspectDeity, inspectFeature, inspectVenue]);
 

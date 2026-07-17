@@ -189,6 +189,11 @@ export const BELIEF_WORTHY: Record<string, string> = {
   // Cast out after a civil war: public, rare, momentous, and — unlike a death — a thing whose
   // REASON folk will happily invent. "Why was she exiled?" is how legends start.
   exile: 'exiled',
+  // An heirloom's fate when its holder's city falls (design/33). Both are public (a sack is
+  // watched; plunder is paraded), rare (objects are minted scarce), and consequential — and
+  // `lost` is the treasure-tale seed: WHERE it went is precisely what the drift table invents.
+  object_lost: 'lost',
+  object_seized: 'seized',
 };
 
 /**

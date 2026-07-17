@@ -56,12 +56,20 @@ function chainOfMouths(seed: number, len = 13, burn = 0) {
   return { w, dead, chain, heard: versionsHeldBy(w, chain[chain.length - 1], dead) };
 }
 
-/** A chain that actually produced a legend, plus the drifted version it invented. */
+/** A chain that actually produced a legend, plus the drifted version it invented.
+ *  The drift draw is a pure hash of (source event, teller chain), so WHICH chain length
+ *  first drifts shifts whenever worldgen's id sequence changes (a new event kind minted
+ *  ahead of the death moves every id). The property under test is the drift itself, not
+ *  one length's hash luck — walk the chain longer until the tale turns. Deterministic:
+ *  the same build always lands on the same length, burned or not (the hash is deaf to
+ *  the RNG, which is exactly what the burn tests prove). */
 function driftedChain(burn = 0) {
-  const run = chainOfMouths(123, 13, burn);
-  const drifted = run.heard.find((a) => driftVariant(a) !== undefined);
-  if (!drifted) throw new Error('the chain produced no drift — the mechanism is not firing');
-  return { ...run, drifted };
+  for (let len = 13; len <= 61; len += 4) {
+    const run = chainOfMouths(123, len, burn);
+    const drifted = run.heard.find((a) => driftVariant(a) !== undefined);
+    if (drifted) return { ...run, drifted };
+  }
+  throw new Error('the chain produced no drift — the mechanism is not firing');
 }
 
 describe('Legend Drift — a story changes in the telling (design/30 §4.1)', () => {

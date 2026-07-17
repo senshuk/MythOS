@@ -1673,6 +1673,16 @@ export const DRIFT_SPECS: Record<string, DriftSpec[]> = {
     { id: 'betrayed-kin', label: 'was driven out for selling their own kin' },
     { id: 'wrongly', label: 'was cast out for a crime they never committed' },
   ],
+  // An heirloom LOST when a city fell (design/33): everyone knows it is gone; where it went
+  // is exactly the kind of thing folk invent. Three generations on, the plain fact "lost in
+  // the fall" has become a treasure-tale — which is how every real lost-relic legend starts.
+  lost: [
+    { id: 'buried-with-the-king', label: 'was buried with the last of the line that bore it' },
+    { id: 'into-the-hills', label: 'was carried into the hills and hidden' },
+    { id: 'sank', label: 'sank, and lies under the water still' },
+    { id: 'melted-down', label: 'was broken and melted down by the victors' },
+    { id: 'serpent', label: 'was taken into a serpent’s hoard' },
+  ],
 };
 
 /** The versions `base` can drift into — empty (never drifts) for propositions this universe
@@ -1680,6 +1690,18 @@ export const DRIFT_SPECS: Record<string, DriftSpec[]> = {
 export function driftSpecsFor(base: string): DriftSpec[] {
   return DRIFT_SPECS[base] ?? [];
 }
+
+// ----------------------------------------------------- storied objects -------
+/** The KINDS of heirloom this universe forges (design/33) — pack vocabulary, like venue
+ *  types: the engine mints "an object of some kind"; what kinds exist is ours to say.
+ *  `label` reads after "…was forged" in prose ("a blade was forged for House Vrihi"). */
+export const OBJECT_KINDS: { id: string; label: string }[] = [
+  { id: 'blade', label: 'a blade' },
+  { id: 'crown', label: 'a crown' },
+  { id: 'torc', label: 'a torc' },
+  { id: 'signet', label: 'a signet ring' },
+  { id: 'banner', label: 'a war-banner' },
+];
 
 /** Deed labels this culture especially abhors (precept weight ≥ 1.5) — used by the
  *  view layer to surface what a settlement's people hold as sacred/forbidden. Preserves

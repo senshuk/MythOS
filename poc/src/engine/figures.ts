@@ -28,6 +28,7 @@ import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_
 import { givenName, houseName } from './pack';
 import { startCivilWarClock } from './factions';
 import { appointLeader, dissolve, getOrganization } from './organization';
+import { maybeMintHeirloom, transferHeirlooms } from './objects';
 import { type Reason, activeMarks, dropExpired, indexByKind } from './mark';
 
 // ------------------------------------------------------------- houses --------
@@ -116,6 +117,10 @@ export function foundHouse(world: World, founder: HistoricalFigure, settlementId
   addPrestige(house, 'found', HOUSE_FOUND, world.tick, PRESTIGE_FOUND_YEARS);
   world.houses.push(house);
   founder.houseId = house.id;
+  // some founding lines come with an HEIRLOOM (design/33) — a named treasure forged for
+  // the founder, carried by the House down its whole line. Stream-free and per-house
+  // deterministic; most houses get none (scarcity is what makes the rest matter).
+  maybeMintHeirloom(world, house, settlementId, year, founder.name);
   return house;
 }
 
@@ -126,9 +131,21 @@ export function houseConquers(world: World, victor: Settlement): void {
   if (house) addPrestige(house, 'conquest', HOUSE_CONQUEST, world.tick, PRESTIGE_CONQUEST_YEARS);
 }
 
+/** A razing victor carries off the fallen line's heirlooms (design/33). Called at the
+ *  CONQUEST site, where the victor is known — the fallen house itself ends later, when
+ *  recordRuins registers the emptied town (and by then there is nothing left to take). */
+export function plunderHouse(world: World, fallen: Settlement, victor: Settlement, year: number, cause?: number): void {
+  const fallenHouse = houseById(world, getFigure(world, fallen.currentRulerId)?.houseId);
+  const victorHouse = houseById(world, getFigure(world, victor.currentRulerId)?.houseId);
+  if (!fallenHouse || fallenHouse.extinctYear !== undefined) return;
+  transferHeirlooms(world, fallenHouse, fallen, year, cause, victorHouse);
+}
+
 /** A settlement's ruling House falls with the city: it loses its seat and its line ends.
- *  Called when a settlement is razed (pre-history or live conquest). */
-export function endHouseAt(world: World, settlement: Settlement, year: number, cause?: number): void {
+ *  Called when a settlement is razed (pre-history or live conquest). When the caller knows
+ *  a VICTOR (a conquest, an annexation), the fallen line's heirlooms are SEIZED by the
+ *  victor's ruling house; with no victor (ruin, decline) they are LOST — design/33. */
+export function endHouseAt(world: World, settlement: Settlement, year: number, cause?: number, victor?: Settlement): void {
   const ruler = getFigure(world, settlement.currentRulerId);
   const house = houseById(world, ruler?.houseId);
   if (!house || house.extinctYear !== undefined) return;
@@ -137,6 +154,8 @@ export function endHouseAt(world: World, settlement: Settlement, year: number, c
   // the House falls because the city fell (the conquest/ruin event, when the caller knows it);
   // and the polity it seated dissolves in turn — a traceable chain of collapse.
   const fallEv = emit(world, 'house_fallen', [], { house: house.name, settlement: settlement.name }, cause !== undefined ? [cause] : [], [settlement.id]);
+  const victorHouse = victor ? houseById(world, getFigure(world, victor.currentRulerId)?.houseId) : undefined;
+  transferHeirlooms(world, house, settlement, year, fallEv, victorHouse);
   dissolve(world, settlement.polityId, year, [fallEv]);
 }
 
