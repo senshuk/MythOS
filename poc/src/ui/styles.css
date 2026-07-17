@@ -424,11 +424,16 @@ button { font-family: inherit; }
 .polity-wars { margin: var(--space-1) 0; font-size: var(--fs-xs); color: #c0504d; letter-spacing: 0.02em; }
 /* exile status: shown in an actor's Nature line when they've been expelled */
 .exile-status { color: var(--amber); }
-/* a living map: caravans flow along trade routes, borders bristle, the focus pulses */
+/* a living map: caravans flow along trade routes, borders bristle, the focus pulses.
+   SVG stroke animations aren't compositor-accelerated — every animated edge repaints
+   the layer continuously — so only the top few routes/marches animate (`still` for the
+   rest, set by MapView), and a live pan gesture pauses them all (.dragging). */
 .edge.trade { stroke-dasharray: 2.2 2.4; animation: flow 2.6s linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -4.6; } }
 .edge.hostile { stroke-dasharray: 1.6 1.1; animation: bristle 2s ease-in-out infinite; }
 @keyframes bristle { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
+.edge.still { animation: none; }
+.map-wrap.dragging .edge, .map-wrap.dragging .focus-ring { animation-play-state: paused; }
 .focus-ring { animation: ring 2.6s ease-in-out infinite; }
 @keyframes ring { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
 /* in a space setting, settlements read as glowing star systems */

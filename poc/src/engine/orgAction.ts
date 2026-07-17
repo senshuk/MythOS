@@ -21,6 +21,7 @@ import {
   type OrgEffect,
   type OperationalState,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { INTENT_TO_ACTION, actionById, baselineOperational } from './pack';
 import { emit, clamp } from './world';
@@ -86,7 +87,7 @@ export function applyEffects(world: World, org: Organization, effects: OrgEffect
       }
       case 'reputation':
         // the org's deed is witnessed by its seat's people — scales how widely it is known
-        recordDeed(world, org.id, e.kind, { witnesses: seat ? Math.max(1, seat.macro.population) : 1 });
+        recordDeed(world, org.id, e.kind, { witnesses: seat ? Math.max(1, settlementPopulation(world, seat)) : 1 });
         break;
     }
   }

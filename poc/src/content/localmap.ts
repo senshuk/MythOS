@@ -319,11 +319,31 @@ function smoothPts(pts: { x: number; y: number }[], ok: (x: number, y: number) =
 
 /** streets laid by TownPlan, consumed by Buildings/Parcels/Palisade (kept off the plan
  *  model — it's pipeline working state, threaded via this per-run context). */
+/**
+ * URBANITY — how much of a CITY this settlement is: 0 (a hamlet or village, everything
+ * below URBAN_FLOOR souls) rising log-scaled to 1 (a great capital). Since carrying
+ * capacity went superlinear, a settlement can claim tens of thousands of souls; the
+ * close view cannot draw a roof per family at that scale (nor should it — the frame
+ * shows a town and its hinterland), so every scale cue reads THIS one number instead:
+ * radius, house budget, lane count, the stone wall, the plaza, the crowd. One number,
+ * so the cues agree — a city is walled AND dense AND busy, never a walled hamlet.
+ * Identity at village scale: below the floor every knob is exactly its old value.
+ */
+const URBAN_FLOOR = 600;
+const URBAN_CEIL = 24000;
+function urbanity(pop: number): number {
+  if (pop <= URBAN_FLOOR) return 0;
+  return Math.min(1, Math.log(pop / URBAN_FLOOR) / Math.log(URBAN_CEIL / URBAN_FLOOR));
+}
+
 interface TownCtx {
   streets: { angle: number; pts: { x: number; y: number }[]; reach: number }[];
   townRadius: number;
   houses: number; // budget remaining
   form: TownForm;
+  /** the urbanity of this plan's settlement (see `urbanity`) — later steps read it so
+   *  the wall, plaza and crowd scale with the same number the streets did. */
+  urban: number;
   /** claimed building footprints — nothing overlaps (design/24 §8.2 parcels). Every
    *  structure calls `claim()` before it is placed, so civic, homes and workshops all
    *  respect one another and back yards fall out of the spacing. */
@@ -446,15 +466,18 @@ const TerrainStreets: LocalGenStep = {
     const pop = settlement.ruinedYear !== undefined
       ? Math.min(400, 60 + (settlement.ruinedYear - settlement.foundedYear) * 2)
       : settlement.population;
-    const townRadius = Math.min(2.6, 0.9 + Math.sqrt(pop) * 0.075);
-    const houses = Math.max(6, Math.min(150, Math.round(pop / 3.2)));
+    // village scale is the old curve exactly; a CITY grows past it on its urbanity —
+    // a 21k capital fills most of the frame instead of dressing like a 500-soul town
+    const urban = urbanity(pop);
+    const townRadius = Math.min(2.6, 0.9 + Math.sqrt(pop) * 0.075) + urban * 1.7;
+    const houses = Math.max(6, Math.min(150, Math.round(pop / 3.2))) + Math.round(urban * 150);
     const form = townFormFor(facts);
     // streets run toward the real road-graph neighbours; a hermit village still has a lane
     const angles = facts.roadEntries.length > 0 ? [...facts.roadEntries] : [rng.next() * Math.PI * 2];
     if (angles.length === 1) angles.push(angles[0] + Math.PI + (rng.next() - 0.5) * 0.8); // a through-road
     // beyond the through-roads, a grown town sprouts its own MINOR LANES between them —
-    // one line of houses reads as a hamlet, not a town
-    const lanes = 1 + Math.min(3, Math.floor(pop / 160));
+    // one line of houses reads as a hamlet, not a town; a city webs itself further still
+    const lanes = 1 + Math.min(3, Math.floor(pop / 160)) + Math.round(urban * 3);
     const laneAngles: number[] = [];
     for (let i = 0; i < lanes; i++) {
       laneAngles.push(rng.next() * Math.PI * 2);
@@ -592,7 +615,7 @@ const TerrainStreets: LocalGenStep = {
       streets.push({ angle: Math.atan2((p0.y + p1.y) / 2 - pos.y, (p0.x + p1.x) / 2 - pos.x), pts: run, reach: townRadius });
     }
     plan.radius = townRadius;
-    ctxOf.set(plan, { streets, townRadius, houses, form, parcels: [], scars: [] });
+    ctxOf.set(plan, { streets, townRadius, houses, form, urban, parcels: [], scars: [] });
   },
 };
 
@@ -722,7 +745,8 @@ const MarketSquare: LocalGenStep = {
     const ctx = ctxOf.get(plan)!;
     const spec = s.specialization.toLowerCase();
     const tradey = /trade|market|craft|weav|carv|glass|dye|port|harbou?r/.test(spec);
-    const sz = tradey ? 0.62 : 0.48; // a trading town's plaza is broader
+    // a trading town's plaza is broader; a CITY's is a true forum whatever its trade
+    const sz = (tradey ? 0.62 : 0.48) * (1 + ctx.urban * 0.55);
     const venue = facts.venues?.find((v) => v.type === 'square');
     ctx.parcels.push({ x: facts.pos.x, y: facts.pos.y, r: sz * 0.72 }); // keep the plaza clear
     plan.items.push({
@@ -855,7 +879,9 @@ const Houses: LocalGenStep = {
     const archId = archStyleFor(settlement.cultureId).id;
     let budget = ctx.houses;
     const form = ctx.form;
-    const spacing = 0.24 / form.packing; // dispersed folk spread out; a walled grid packs tight
+    // a city packs its lots tighter than any village — urban ground is dear.
+    // (identity at village scale: urban = 0 leaves the spacing exactly as it was)
+    const spacing = 0.24 / (form.packing * (1 + ctx.urban * 0.5));
     const baseOff = 0.15 / Math.sqrt(form.packing);
     // homes line the streets, densest near the square, thinning outward — and a house needs
     // dry, standable ground (the geography, not the plan, has the final word). Lots are laid
@@ -920,10 +946,12 @@ const Houses: LocalGenStep = {
         derelict = rng.next() < decay * (0.35 + edge * 0.8);
       }
       // ZONING & AGE (§8.3): the wealthy raise walled COMPOUNDS in the weathered old core; the
-      // dense heart packs ROW houses; the growing edge is plain new cots.
-      const core = lot.t < ctx.townRadius * 0.55;
+      // dense heart packs ROW houses; the growing edge is plain new cots. In a CITY the
+      // core is row-house fabric whatever the people's rural habit — density is what urban
+      // ground demands — and the row belt reaches further out as urbanity climbs.
+      const core = lot.t < ctx.townRadius * (0.55 + ctx.urban * 0.2);
       const compound = !ruined && !derelict && wealthTier === 1 && core && rng.next() < 0.22;
-      const shape: 'cot' | 'row' | 'compound' = compound ? 'compound' : core && form.pattern === 'grid' ? 'row' : 'cot';
+      const shape: 'cot' | 'row' | 'compound' = compound ? 'compound' : core && (form.pattern === 'grid' || ctx.urban > 0.35) ? 'row' : 'cot';
       const fresh = fort.prospering && anon && lot.t > ctx.townRadius * 0.6; // a thriving town builds new at its edge
       const era: 'old' | 'new' | undefined = ruined || derelict ? undefined : lot.t < ctx.townRadius * 0.5 ? 'old' : lot.t > ctx.townRadius * 1.05 || fresh ? 'new' : undefined;
       const sizeBase = (0.11 + rng.next() * 0.06 + wealthTier * 0.03) * (0.72 + bild * 0.28) * (compound ? 1.5 : 1);
@@ -1275,10 +1303,12 @@ const Palisade: LocalGenStep = {
     const fort = settlementFortunes(facts);
     const wallPop = fort.atWar ? 130 : 220;
     if (s.ruinedYear !== undefined || s.population < wallPop || !s.leaderTitle) return;
-    const wallW = fort.atWar ? 0.06 : 0.045; // a threatened town raises a heavier wall
+    // a village raises a palisade; a CITY raises a WALL — visibly heavier stonework,
+    // set further out to take in the dense quarters urbanity built
+    const wallW = (fort.atWar ? 0.06 : 0.045) * (1 + ctx.urban * 0.9);
     // the wall HUGS the built town (houses thin out well inside townRadius) — a ring
     // out at the fields reads as absurd, not defensive
-    const r = ctx.townRadius * 0.62;
+    const r = ctx.townRadius * (0.62 + ctx.urban * 0.1);
     const gateAngles = ctx.streets.map((st) => st.angle);
     const segs: { x: number; y: number }[][] = [];
     let cur: { x: number; y: number }[] = [];
@@ -1296,8 +1326,9 @@ const Palisade: LocalGenStep = {
     }
     if (cur.length > 2) segs.push(cur);
     for (const seg of segs) plan.items.push({ kind: 'wall', pts: seg, width: wallW });
-    // WATCHTOWERS at the gates when the town stands to arms (design/28 §2)
-    if (fort.atWar) {
+    // WATCHTOWERS at the gates when the town stands to arms (design/28 §2) — and a CITY
+    // keeps its gate towers in peacetime too: a wall that size is manned, war or no war.
+    if (fort.atWar || ctx.urban > 0.45) {
       for (const g of gateAngles) {
         // slide along the wall to find standing room: one exact point on the ring is easily
         // taken by whatever house fell nearest it, and then the town at war has no towers at all
@@ -1307,7 +1338,7 @@ const Palisade: LocalGenStep = {
           const x = facts.pos.x + Math.cos(a) * r, y = facts.pos.y + Math.sin(a) * r;
           if (!buildable(facts.geo, x, y)) continue;
           if (!claim(ctx, x, y, 0.08)) continue;
-          plan.items.push({ kind: 'building', x, y, w: 0.12, h: 0.12, rot: faceToward(x, y, facts.pos.x, facts.pos.y), role: 'watchtower', label: 'a watchtower — the town stands to arms', tone: 'grand' });
+          plan.items.push({ kind: 'building', x, y, w: 0.12, h: 0.12, rot: faceToward(x, y, facts.pos.x, facts.pos.y), role: 'watchtower', label: fort.atWar ? 'a watchtower — the town stands to arms' : 'a gate tower — the city watches its roads', tone: 'grand' });
           break;
         }
       }
@@ -1434,9 +1465,10 @@ const Grounds: LocalGenStep = {
       tone: [134, 110, 78], blend: 0.5,
     });
     if (s.wealth > 200 && s.population >= 120) {
+      // a city's paving reaches further out — the whole walled heart is cobbled
       plan.items.push({
         kind: 'ground', surface: 'cobble',
-        x: facts.pos.x, y: facts.pos.y, r: ctx.townRadius * 0.4,
+        x: facts.pos.x, y: facts.pos.y, r: ctx.townRadius * (0.4 + ctx.urban * 0.18),
         tone: [128, 122, 112], speckle: 0.55, blend: 0.66,
       });
     }
@@ -1451,7 +1483,8 @@ const Inhabitants: LocalGenStep = {
   name: 'inhabitants',
   run(facts, rng, plan) {
     if (facts.settlement.ruinedYear !== undefined) return;
-    const CAP = 40; // a city shouldn't become a crowd of dots
+    const ctx = ctxOf.get(plan)!;
+    const CAP = 40 + Math.round(ctx.urban * 20); // a city is busier, still never a crowd of dots
     let placed = 0;
     const add = (x: number, y: number, tone: PlanPerson['tone'], facing: number, ref?: EventRef, label?: string) => {
       if (placed >= CAP) return;
@@ -1502,15 +1535,30 @@ const Inhabitants: LocalGenStep = {
       }
     }
 
-    // 3) AT THE SQUARE — a small knot of folk facing in, the public heart occupied
+    // 3) AT THE SQUARE — a small knot of folk facing in, the public heart occupied;
+    // a city's forum draws a real press of people
     const square = structures.find((p) => p.kind === 'square') as PlanPatch | undefined;
     if (square) {
-      const crowd = Math.min(6, 2 + Math.floor(facts.settlement.population / 120));
+      const crowd = Math.min(6 + Math.round(ctx.urban * 10), 2 + Math.floor(facts.settlement.population / 120));
       for (let i = 0; i < crowd; i++) {
         const ang = (i / crowd) * Math.PI * 2 + rng.next() * 0.3;
         const rad = square.w * 0.26 + rng.next() * square.w * 0.12;
         add(square.x + Math.cos(ang) * rad, square.y + Math.sin(ang) * rad, 'folk', ang + Math.PI);
       }
+    }
+
+    // 4) IN THE STREETS — passers-by on a city's thoroughfares (none in a village: at
+    // urban 0 this loop runs zero times and the stream is untouched)
+    const walkers = Math.round(ctx.urban * 12);
+    const streets = ctx.streets;
+    for (let i = 0; i < walkers && streets.length > 0; i++) {
+      const st = streets[i % streets.length];
+      const f = 0.12 + rng.next() * 0.55; // along the street, inside the built town
+      const si = Math.min(st.pts.length - 1, Math.max(1, Math.floor(f * (st.pts.length - 1))));
+      const p0 = st.pts[si - 1], p1 = st.pts[si];
+      const heading = Math.atan2(p1.y - p0.y, p1.x - p0.x) + (rng.next() < 0.5 ? Math.PI : 0);
+      const side = (rng.next() - 0.5) * 0.05;
+      add(p0.x + Math.cos(heading + Math.PI / 2) * side, p0.y + Math.sin(heading + Math.PI / 2) * side, 'folk', heading);
     }
   },
 };

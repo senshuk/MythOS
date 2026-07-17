@@ -55,7 +55,13 @@ function parkEnvoy(w: ReturnType<typeof createWorld>, from: OrgId, to: OrgId, de
 describe('an incoming envoy is parked for the player, not auto-resolved', () => {
   it('a neighbour whose proposal is addressed to the ruled polity parks an audience', () => {
     const { w, P, Q } = diploWorld();
-    // only Q has a diplomatic intent this pass, and P is its friendliest neighbour
+    // only Q has a diplomatic intent this pass, and P is its friendliest neighbour.
+    // The run-up years leave real diplomatic state behind — a pact Q and P already
+    // sealed would send Q's envoy elsewhere, and a recent interaction leaves Q on
+    // cooldown. Both are cleared (as annex.test clears pacts): the property under test
+    // is the parking, not this seed's diary.
+    w.orgAgreements = [];
+    w.lastInteraction.clear();
     w.currentIntent.clear();
     w.currentIntent.set(Q.id, { kind: 'trade' } as never);
     for (const e of w.edges) {

@@ -12,6 +12,7 @@ import { declareOrContinueWar, warBetween, joinWar, warYearly, activeWarsOf, add
 import { activeAgreement } from './orgInteraction';
 import { adjustTreasury, treasuryOf } from './organization';
 import { serializeWorld, deserializeWorld } from './persistence';
+import { settlementPopulation } from './model';
 
 /** A forged world plus two distinct living polities to fight, and a third to ally. */
 function belligerents(seed = 123456) {
@@ -76,9 +77,13 @@ describe('resolving a war', () => {
     const war = declareOrContinueWar(w, agg, def)!;
     adjustTreasury(w, def, 100); // the loser has a treasury to be mulcted
     const victorBefore = treasuryOf(w, agg);
-    // the defender has bled far more, over a long war
-    addExhaustion(w, war, def, 80);
-    addExhaustion(w, war, agg, 10);
+    // the defender has bled far more, over a long war — losses its own PEOPLE can feel
+    // (the capitulation floor scales with the bled side's seat, so a city fights past a
+    // village-sized toll; the sim's battle tolls scale the same way)
+    const defSeat = w.settlements[getOrganization(w, def)!.seatId!];
+    const felt = Math.max(80, Math.round(settlementPopulation(w, defSeat) * 0.15));
+    addExhaustion(w, war, def, felt);
+    addExhaustion(w, war, agg, Math.round(felt / 8));
     w.tick += 5 * 365; // past the minimum war duration for terms
     const before = w.events.length;
     const loserBefore = treasuryOf(w, def);

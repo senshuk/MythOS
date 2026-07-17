@@ -6,11 +6,17 @@
  *              killed coarsely (yearly), keeps identity + relationships across
  *              focus changes. This is what makes cross-settlement relationships and
  *              "the person you met is still there when you return" possible.
- *   aggregate— the anonymous mass; no entity at all, just MacroPop rates.
+ *   aggregate— the anonymous mass; no entity at all, just MacroPop rates. The
+ *              focused settlement KEEPS an aggregate remainder when it is larger
+ *              than the cast promote() can afford (sampled promotion) — a great
+ *              city is a bounded cast of actors atop a statistical mass, so claimed
+ *              population is decoupled from entity count (settlementPopulation()
+ *              is the one true headcount).
  *
  * INVARIANT: full actors live in the focused settlement; summary actors live in
  * every OTHER settlement. Focusing a settlement upgrades its resident summaries to
- * full; leaving it demotes a few notables to summaries and frees the rest.
+ * full and materializes a cast up to CAST_TARGET; leaving it folds the cast back
+ * into the aggregate, demotes a few notables to summaries and frees the rest.
  *
  * Determinism: each settlement owns an independent RNG stream; the focused stream
  * is world.rng. Summary aging + migration use world.rng (a deliberate
@@ -25,6 +31,7 @@ import {
   type EntityId,
   type Vec2,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { Rng, mixSeed } from './rng';
 import { type Site } from './substrate';
@@ -132,6 +139,33 @@ const MIN_SPACING = 12; // settlements don't crowd
 const PREHISTORY_YEARS = 180; // centuries of growth before the world is "now"
 
 /**
+ * How many souls a site can sustain. The LAND sets it (site capacity × its food), and
+ * the best ground compounds: above-average land earns a superlinear URBAN bonus, so a
+ * fertile river-coast (capacity → 1.9) grows a true CITY of tens of thousands while
+ * ordinary and marginal ground keeps exactly its old hamlet/village ceiling (the curve
+ * is 1 at capacity ≤ 1). This is what gives a world Minas-Tirith-scale capitals beside
+ * ordinary villages, instead of uniformly inflating everything: cities are where
+ * geography earns them. Sampled promotion (CAST_TARGET) is what makes these numbers
+ * affordable — claimed population no longer bounds the actor count.
+ *   capacity 1.0 → ~260 · 1.2 → ~500 · 1.4 → ~1.5k · 1.6 → ~5k · 1.9 → ~20k (per food)
+ */
+const CAP_BASE = 260;
+const URBAN_GAIN = 45;
+const URBAN_EXP = 3;
+export function carryingCapacityOf(siteCapacity: number, food: number): number {
+  const urban = 1 + URBAN_GAIN * Math.pow(Math.max(0, siteCapacity - 1), URBAN_EXP);
+  return CAP_BASE * siteCapacity * urban * clamp(food, 0.5, 1.3);
+}
+
+/** Scale a hand-tuned toll (heads, tuned when ~260 souls was a whole town) to the
+ *  community it actually strikes — a hardship that gutted a village must be felt by a
+ *  city of thousands too, not shrug off 14 deaths. Identity for communities at or
+ *  under the old scale, so small-world balance is untouched. */
+export function scaleToll(heads: number, pop: number): number {
+  return Math.round(heads * Math.max(1, pop / CAP_BASE));
+}
+
+/**
  * Grow the world's settlements through a PRE-HISTORY (Dwarf-Fortress style) rather than
  * dropping them all at year 0. A few founding PEOPLES arise far apart, each a distinct
  * culture; over the centuries they GROW and COLONISE nearby suitable land, their colonists
@@ -225,7 +259,7 @@ export function createSettlements(world: World): void {
       // carrying capacity is limited by FOOD (the biome), not just the land — so a cold or
       // desert settlement grows to a SMALL sustainable size and enters the live sim viable,
       // instead of over-growing then crashing to ruin.
-      const cap = 260 * s.site.capacity * clamp(terrainYields(s.site.attributes).food, 0.5, 1.3);
+      const cap = carryingCapacityOf(s.site.capacity, terrainYields(s.site.attributes).food);
       s.pop += s.pop * 0.045 * (1 - s.pop / cap);
     }
     // WARS: culturally-opposed neighbours clash; the strong conquer the weak — razing them
@@ -261,9 +295,10 @@ export function createSettlements(world: World): void {
   for (let i = 0; i < protos.length; i++) {
     const d = protos[i];
     world.tick = d.foundedYear * DAYS_PER_YEAR; // so the founding event & founder are dated right
-    // cap the STARTING size (the live sim grows it on toward the land's full capacity) —
-    // keeps a focused settlement's live-actor count, and so worldgen cost, in check.
-    const pop = Math.round(clamp(d.peakPop ?? d.pop, 20, 360));
+    // the settlement enters the live sim at its FULL pre-history size — sampled promotion
+    // (CAST_TARGET) bounds the live-actor count now, so a great city no longer has to be
+    // clamped down to what promote() could afford to materialize.
+    const pop = Math.round(Math.max(20, d.peakPop ?? d.pop));
     const macro = freshBands(pop, d.people.species, gen);
     macro.stability = gen.range(-10, 50);
 
@@ -496,25 +531,54 @@ function bandRanges(speciesId: string): Array<[number, number]> {
   ];
 }
 
-/** Materialize a settlement into full actors. Caller must have set
- *  world.focusedSettlementId = s.id and pointed world.rng at s's stream. */
+/** Remove one head from the aggregate ledger — the band this actor's ACTUAL age puts
+ *  them in — used when a named resident steps out of the mass into the cast. */
+function drainBand(world: World, m: MacroPop, id: EntityId): void {
+  const age = world.lifecycle.get(id)!.ageYears;
+  const sp = world.identity.get(id)!.speciesId;
+  if (age < maturityOf(sp)) m.children = Math.max(0, m.children - 1);
+  else if (age < elderhoodOf(sp)) m.adults = Math.max(0, m.adults - 1);
+  else m.elders = Math.max(0, m.elders - 1);
+  m.population = Math.max(0, m.population - 1);
+}
+
+/** The largest CAST a focused settlement materializes as full actors ("sampled
+ *  promotion"). A community at or under this size materializes whole — a
+ *  village is still every one of its people. Above it, promote() raises a
+ *  representative cast and the rest of the headcount stays in `macro` as the
+ *  anonymous REMAINDER, still evolving by rates. This is what decouples how big a
+ *  city can CLAIM to be from how many actors the per-actor sim can afford: the
+ *  cast is the size the live sim was tuned around (the founding clamp's ceiling). */
+const CAST_TARGET = 360;
+
+/** Materialize a settlement into full actors — ALL of them for a community up to
+ *  CAST_TARGET, a sampled cast for anything larger (the rest stays in s.macro as
+ *  the anonymous remainder). Caller must have set world.focusedSettlementId = s.id
+ *  and pointed world.rng at s's stream. */
 export function promote(world: World, s: Settlement): void {
   s.detailed = true;
   const rng = world.rng;
   const m = s.macro;
 
-  // 1) upgrade resident summary actors back to full (identity + relations intact)
+  // 1) upgrade resident summary actors back to full (identity + relations intact).
+  // They leave the aggregate ledger: from here on, `m` counts only the UNmaterialized.
   const residents = summaryActors(world).filter((id) => world.homeSettlement.get(id) === s.id);
-  for (const id of residents) world.fidelity.set(id, 'full');
+  for (const id of residents) {
+    world.fidelity.set(id, 'full');
+    drainBand(world, m, id);
+  }
 
-  // 2) fill the remaining headcount with fresh anonymous actors, by age band
+  // 2) fill the cast with fresh anonymous actors, sampled by age band WITHOUT
+  // replacement — each materialized head is drawn out of the aggregate bands, so
+  // the remainder keeps a consistent demographic shape.
   const made: EntityId[] = [...residents];
-  const remaining = Math.max(0, m.population - made.length);
-  const bandW = [Math.max(0, m.children), Math.max(0, m.adults), Math.max(0, m.elders)];
-  const weights = bandW.some((w) => w > 0) ? bandW : [1, 1, 1];
-  for (let i = 0; i < remaining; i++) {
+  const toMake = Math.max(0, Math.min(m.population + made.length, CAST_TARGET) - made.length);
+  for (let i = 0; i < toMake; i++) {
+    const bands = [Math.max(0, m.children), Math.max(0, m.adults), Math.max(0, m.elders)];
+    const empty = !bands.some((w) => w > 0); // band drift can undercount — still honour toMake
     const species = rng.chance(0.7) ? m.dominantSpecies : SPECIES[rng.int(SPECIES.length)].id;
-    const [lo, hi] = bandRanges(species)[rng.weightedIndex(weights)];
+    const band = rng.weightedIndex(empty ? [1, 1, 1] : bands);
+    const [lo, hi] = bandRanges(species)[band];
     const house = houseName(s.cultureId, world.seed, rng);
     world.houseMeaning.set(house.name, house.meaning);
     made.push(
@@ -528,7 +592,11 @@ export function promote(world: World, s: Settlement): void {
         ageYears: clamp(rng.range(lo, hi), 0, hi),
       }),
     );
+    if (band === 0) m.children = Math.max(0, m.children - 1);
+    else if (band === 1) m.adults = Math.max(0, m.adults - 1);
+    else m.elders = Math.max(0, m.elders - 1);
   }
+  m.population = m.children + m.adults + m.elders; // the anonymous remainder
 
   // 3) seed marriages among the unmarried adults
   seedMarriages(world, made, rng);
@@ -576,15 +644,19 @@ function seedMarriages(world: World, ids: EntityId[], rng: Rng): void {
   }
 }
 
-/** Fold the focused settlement back into aggregate state: keep a few notables as
- *  persistent summary actors, free the anonymous rest. */
+/** Fold the focused settlement back into aggregate state: the cast rejoins the
+ *  anonymous remainder (which kept evolving while we watched), a few notables stay
+ *  as persistent summary actors, and the rest are freed. */
 export function demote(world: World, s: Settlement): void {
   const full = fullActors(world); // these are s's actors (s is currently focused)
 
-  let children = 0;
-  let adults = 0;
-  let elders = 0;
+  // fold every cast member back into the aggregate bands, ON TOP of the remainder
+  let children = s.macro.children;
+  let adults = s.macro.adults;
+  let elders = s.macro.elders;
   const tally = new Map<string, number>();
+  // the unmaterialized mass keeps its standing claim on the dominant species
+  tally.set(s.macro.dominantSpecies, s.macro.population);
   for (const id of full) {
     const age = world.lifecycle.get(id)!.ageYears;
     const sp = world.identity.get(id)!.speciesId;
@@ -596,7 +668,7 @@ export function demote(world: World, s: Settlement): void {
   let dominant = s.macro.dominantSpecies;
   let best = -1;
   for (const [sp, c] of tally) if (c > best) { best = c; dominant = sp; }
-  s.macro = { population: full.length, children, adults, elders, stability: s.macro.stability, dominantSpecies: dominant };
+  s.macro = { population: s.macro.population + full.length, children, adults, elders, stability: s.macro.stability, dominantSpecies: dominant };
 
   // Survivors become persistent summary actors — capped so the summary tier stays
   // bounded. Prioritize anyone with a cross-settlement tie (so those relationships
@@ -663,17 +735,26 @@ export function focusSettlement(world: World, targetId: number): void {
 
 export function macroYearly(world: World): void {
   for (const s of world.settlements) {
-    if (s.detailed) continue;
+    if (s.detailed) {
+      // The focused settlement's anonymous REMAINDER (sampled promotion) keeps
+      // breathing while we watch: births, deaths, hardships at aggregate rates,
+      // judged against the TOTAL community (cast + remainder). Uses world.rng —
+      // the focused stream IS this settlement's stream while it holds the gaze.
+      // A fully-materialized town (remainder 0) draws nothing, so small-world
+      // behaviour is unchanged.
+      if (s.macro.population > 0) stepMacro(world, s, world.rng, fullActors(world).length);
+      continue;
+    }
     const rng = new Rng(s.rngState);
     stepMacro(world, s, rng);
     s.rngState = rng.state;
   }
 }
 
-function stepMacro(world: World, s: Settlement, rng: Rng): void {
+function stepMacro(world: World, s: Settlement, rng: Rng, cast = 0): void {
   const m = s.macro;
   if (m.population <= 0) return;
-  const before = m.population;
+  const before = m.population + cast;
 
   const mat = maturityOf(m.dominantSpecies);
   const eld = elderhoodOf(m.dominantSpecies);
@@ -688,7 +769,9 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // decline death, distinct from conquest: geography makes it likeliest for the small,
   // marginal sites that famine, plague or raids have already gutted. Without it, the
   // logistic recovery below would let every settlement bounce back forever (no falls).
-  if (m.population < 15) {
+  // Judged on the WHOLE community — a focused town with a living cast is not "dying"
+  // merely because its anonymous remainder has run thin.
+  if (m.population + cast < 15) {
     applyDeaths(m, Math.max(2, Math.round(m.population * 0.4))); // the last people drain away
     m.population = m.children + m.adults + m.elders;
     return; // no recovery below the floor
@@ -703,12 +786,12 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   // carrying capacity is set by the LAND and its FOOD: fertile, watered, food-rich sites
   // grow great cities; cold, barren, or dry ones stay villages (a tundra town can't feed a
   // metropolis however "developed" the land).
-  const CAPACITY = 260 * s.capacity * clamp(s.econ.production.food, 0.5, 1.3);
-  const room = Math.max(0, 1 - m.population / CAPACITY);
+  const CAPACITY = carryingCapacityOf(s.capacity, s.econ.production.food);
+  const room = Math.max(0, 1 - (m.population + cast) / CAPACITY);
   // births also depend on FOOD: a starving settlement does not breed its way back to
   // health. So a chronically food-broken, trade-isolated place (geography's marginal,
   // dry, inland sites) can actually decline toward ruin instead of bouncing back.
-  const foodYears = s.econ.stock[SUBSISTENCE_RESOURCE] / Math.max(1, m.population);
+  const foodYears = s.econ.stock[SUBSISTENCE_RESOURCE] / Math.max(1, m.population + cast);
   const foodFactor = 0.25 + 0.75 * clamp(foodYears, 0, 1);
   // aggregate fertility is SPECIES DATA: an ordinary people = 1, a non-reproducing
   // construct society = 0 (its numbers only change by migration & mortality).
@@ -724,22 +807,29 @@ function stepMacro(world: World, s: Settlement, rng: Rng): void {
   const elderMort = Math.min(0.12, 1 / Math.max(4, lifespan - eld)); // elders live out their remaining span
   let deaths = Math.round(m.children * 0.004 * lifeScale + m.adults * 0.008 * lifeScale + m.elders * elderMort);
   if (rng.chance(0.05)) {
-    const toll = rng.range(3, 14) + Math.round(Math.max(0, -m.stability) / 12);
+    const toll = scaleToll(rng.range(3, 14) + Math.round(Math.max(0, -m.stability) / 12), m.population + cast);
     deaths += toll;
     m.stability = clamp(m.stability - rng.range(3, 8), -100, 100);
     emit(world, 'hardship', [], { name: s.name, toll }, [], [s.id]);
   } else if (rng.chance(0.06)) {
     m.stability = clamp(m.stability + rng.range(3, 9), -100, 100);
-    if (m.stability > 30) emit(world, 'prosperity', [], { name: s.name, population: m.population }, [], [s.id]);
+    if (m.stability > 30) emit(world, 'prosperity', [], { name: s.name, population: m.population + cast }, [], [s.id]);
   }
 
   applyDeaths(m, deaths);
   m.population = m.children + m.adults + m.elders;
 
-  if (Math.floor(m.population / 100) > Math.floor(before / 100) && m.population > before) {
-    emit(world, 'milestone', [], { name: s.name, population: Math.floor(m.population / 100) * 100 }, [], [s.id]);
+  // growth milestones on a LADDER, not every 100 souls — a city climbing toward tens
+  // of thousands should mark the great thresholds, not flood the chronicle yearly.
+  const after = m.population + cast;
+  const crossed = MILESTONES.filter((t) => before < t && after >= t).pop();
+  if (crossed !== undefined) {
+    emit(world, 'milestone', [], { name: s.name, population: crossed }, [], [s.id]);
   }
 }
+
+/** The population thresholds worth a line in the chronicle. */
+const MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 function applyDeaths(m: MacroPop, deaths: number): void {
   let d = deaths;
@@ -841,7 +931,9 @@ export function geographyYearly(world: World): void {
           strong.polityId !== undefined &&
           weak.polityId !== undefined &&
           weak.polityId !== strong.polityId &&
-          (weak.macro.population >= ANNEX_WORTH_POP || world.currentIntent.get(strong.polityId)?.kind === 'expand');
+          (weak.macro.population >= strong.macro.population * ANNEX_WORTH_RATIO ||
+            weak.macro.population >= ANNEX_WORTH_CITY ||
+            world.currentIntent.get(strong.polityId)?.kind === 'expand');
         if (annex) {
           // ANNEX — the town is taken, not emptied. Its old dynasty is deposed and its polity
           // dissolves; the settlement survives and passes to the victor's realm as a PROVINCE
@@ -875,9 +967,10 @@ export function geographyYearly(world: World): void {
         const war = strong.polityId !== undefined && weak.polityId !== undefined
           ? declareOrContinueWar(world, strong.polityId, weak.polityId)
           : undefined;
-        // an inconclusive BATTLE — both sides bleed, named by their rulers
-        const aToll = Math.round(rng.range(6, 20) * proximity);
-        const bToll = Math.round(rng.range(6, 20) * proximity);
+        // an inconclusive BATTLE — both sides bleed, named by their rulers. Tolls scale
+        // with each side's own size: a clash of cities is a clash of thousands.
+        const aToll = scaleToll(Math.round(rng.range(6, 20) * proximity), A.macro.population);
+        const bToll = scaleToll(Math.round(rng.range(6, 20) * proximity), B.macro.population);
         raidMacro(A.macro, aToll);
         A.macro.population = A.macro.children + A.macro.adults + A.macro.elders;
         raidMacro(B.macro, bToll);
@@ -911,13 +1004,13 @@ export function geographyYearly(world: World): void {
         // and their courts are now drawn against it. RNG-FREE tolls so alliance-free worlds
         // are byte-identical.
         if (support > 0) {
-          raidMacro(strong.macro, Math.min(30, Math.round(support * 0.25)));
+          raidMacro(strong.macro, Math.min(scaleToll(30, strong.macro.population), Math.round(support * 0.25)));
           strong.macro.population = strong.macro.children + strong.macro.adults + strong.macro.elders;
           for (const a of allies) {
             const seat = getOrganization(world, a)?.seatId;
             const as = seat !== undefined ? world.settlements[seat] : undefined;
             if (!as || as.ruinedYear !== undefined || as.detailed) continue; // the focused town keeps full actors
-            raidMacro(as.macro, Math.min(10, Math.round(as.macro.population * 0.04)));
+            raidMacro(as.macro, Math.min(scaleToll(10, as.macro.population), Math.round(as.macro.population * 0.04)));
             as.macro.population = as.macro.children + as.macro.adults + as.macro.elders;
           }
           const answerer = getOrganization(world, allies[0])?.name ?? 'an ally';
@@ -935,7 +1028,7 @@ export function geographyYearly(world: World): void {
       e.relation = clamp(e.relation - rng.range(3, 9), -100, 100);
       let toll = 0;
       if (!victim.detailed) {
-        toll = Math.max(1, Math.round(proximity * rng.range(3, 11)));
+        toll = scaleToll(Math.max(1, Math.round(proximity * rng.range(3, 11))), victim.macro.population);
         raidMacro(victim.macro, toll);
         victim.macro.population = victim.macro.children + victim.macro.adults + victim.macro.elders;
         victim.macro.stability = clamp(victim.macro.stability - rng.range(4, 12), -100, 100);
@@ -954,8 +1047,12 @@ export function geographyYearly(world: World): void {
 
 /** How sharply an ally's border with an aggressor sours when it is drawn into a war. */
 const ALLY_DRAWN_IN = 14;
-/** A conquered town of at least this size is a prize worth ruling — annexed, not razed. */
-const ANNEX_WORTH_POP = 120;
+/** A conquered town is a prize worth ruling — annexed, not razed — when it is a real
+ *  fraction of the victor's OWN size (scale-free: a village judges a hamlet the way an
+ *  empire judges a town) or a true city outright (no victor burns ten thousand souls
+ *  of tribute). Anything less is put to the torch by a non-expansionist victor. */
+const ANNEX_WORTH_RATIO = 0.25;
+const ANNEX_WORTH_CITY = 500;
 /** The fraction of an ally's population that counts as committed force in a neighbour's
  *  defense — not all of a distant friend's strength reaches the front. */
 const ALLY_FORCE_FRACTION = 0.5;
@@ -977,7 +1074,7 @@ function alliesOf(world: World, defender: number | undefined, aggressor: number 
 function allyPop(world: World, orgId: number): number {
   const seat = getOrganization(world, orgId)?.seatId;
   const s = seat !== undefined ? world.settlements[seat] : undefined;
-  return s && s.ruinedYear === undefined ? s.macro.population : 0;
+  return s && s.ruinedYear === undefined ? settlementPopulation(world, s) : 0;
 }
 
 /**
@@ -1033,7 +1130,8 @@ function raidMacro(m: MacroPop, toll: number): void {
 export function economyYearly(world: World): void {
   const fullIds = fullActors(world);
   const fullCount = fullIds.length;
-  const popOf = (s: Settlement) => (s.detailed ? fullCount : s.macro.population);
+  // the focused town's economy feeds cast AND remainder — the whole community
+  const popOf = (s: Settlement) => (s.detailed ? fullCount + s.macro.population : s.macro.population);
 
   // 1) produce & consume -> stocks; earn/decay wealth; set prices
   for (const s of world.settlements) {
@@ -1081,7 +1179,11 @@ export function economyYearly(world: World): void {
       if (gap < 0.4) continue;
       // goods stocks are continuous, so trade can be fractional — don't floor it
       // away on cold/distant routes (that silently killed trade for some seeds).
-      const qty = Math.min(seller.econ.stock[r] * 0.3, gap * 9) * proximity * relFactor;
+      // the flow ceiling scales with the PAIR's size (identity at the old village
+      // scale) — a city's caravans move city quantities, or trade could never
+      // matter to ten thousand mouths.
+      const flowScale = Math.max(1, (popA + popB) / (2 * CAP_BASE));
+      const qty = Math.min(seller.econ.stock[r] * 0.3, gap * 9 * flowScale) * proximity * relFactor;
       if (qty <= 0.01) continue;
       seller.econ.stock[r] -= qty;
       buyer.econ.stock[r] += qty;

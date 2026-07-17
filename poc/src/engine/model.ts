@@ -644,10 +644,16 @@ export interface Transit {
 export type WorldPosition = Vec2;
 
 /**
- * Aggregate ("macro") population state for a settlement that is NOT being
- * simulated in detail. Evolves by rates, costs O(1) per year, and holds NO
- * individual entities — this is what lets the world be far larger than the set
- * of actors we can afford to simulate.
+ * Aggregate ("macro") population state. Evolves by rates, costs O(1) per year, and
+ * holds NO individual entities — this is what lets the world be far larger than the
+ * set of actors we can afford to simulate.
+ *
+ * For a settlement NOT simulated in detail, this is its whole headcount (named
+ * summary residents included). For the FOCUSED (detailed) settlement it is the
+ * anonymous REMAINDER — the mass that was never materialized as full actors —
+ * so a great city can claim tens of thousands while only a bounded cast lives as
+ * entities. A settlement's true headcount is therefore always derived, never
+ * stored: read it through `settlementPopulation`, not off either field alone.
  */
 export interface MacroPop {
   population: number;
@@ -656,6 +662,20 @@ export interface MacroPop {
   elders: number; // >= dominant species' elderhood
   stability: number; // -100..100, drives prosperity/hardship
   dominantSpecies: string;
+}
+
+/**
+ * A settlement's TRUE headcount — the one source of truth for every system that
+ * asks "how many people live here". Aggregate settlements answer from MacroPop
+ * (which counts their summary residents); the focused settlement adds its
+ * materialized cast (the full actors) to its unmaterialized remainder.
+ */
+export function settlementPopulation(world: World, s: Settlement): number {
+  if (!s.detailed) return s.macro.population;
+  // count LIVE full actors (dead ones keep their fidelity entry for the UI/hash)
+  let cast = 0;
+  for (const id of world.entities) if (world.fidelity.get(id) === 'full') cast++;
+  return s.macro.population + cast;
 }
 
 // ---- economy ----

@@ -17,11 +17,12 @@ import {
   type EntityId,
   type EventId,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { Rng } from './rng';
 import { emit, fullActors, relCount } from './world';
 import { standingOf, recordDeed } from './reputation';
-import { perceiveCoronation } from './perception';
+import { perceiveCoronation, perceiveEvent } from './perception';
 import { propagateCoronation } from './news';
 import { maturityOf, ambitionOf, governmentById, leaderTitleOf, reignSpan, HEIR_WEIGHTS } from './pack';
 import { givenName, houseName } from './pack';
@@ -240,7 +241,7 @@ export function pressClaim(world: World, claimant: EntityId, rng: Rng): void {
   const h = world.homeSettlement.get(claimant);
   if (h === undefined) return;
   const s = world.settlements[h];
-  if (!s || s.ruinedYear !== undefined || s.macro.population <= 0) return;
+  if (!s || s.ruinedYear !== undefined || settlementPopulation(world, s) <= 0) return;
   if (s.currentRulerId === claimant) return; // already yours
   if (governmentById(s.governmentId).succession === 'none') return; // a leaderless polity has no seat
   if (rankClaimants(world, h)[0]?.id !== claimant) return; // you must be the one they'd raise
@@ -335,7 +336,7 @@ export function figuresYearly(world: World): void {
   const year = Math.floor(world.tick / DAYS_PER_YEAR);
 
   for (const s of world.settlements) {
-    if (s.ruinedYear !== undefined || s.macro.population <= 0) continue; // no rule in a dying town
+    if (s.ruinedYear !== undefined || settlementPopulation(world, s) <= 0) continue; // no rule in a dying town
     // an annexed PROVINCE (its polity's seat is another town) is ruled from the capital — it
     // raises no local line of its own (2E annexation). Its polity's succession runs at the seat.
     const owner = getOrganization(world, s.polityId);
@@ -362,6 +363,10 @@ export function figuresYearly(world: World): void {
         // a completed reign
         if (oldHouse) addPrestige(oldHouse, 'reign', HOUSE_REIGN + (year - ruler.reignStart), world.tick, PRESTIGE_REIGN_YEARS);
         deathEv = emit(world, 'ruler_died', [ruler.id], { settlement: s.name, title }, [], [s.id]);
+        // the ruler's own people come to know it — and only they: this pass sweeps EVERY
+        // settlement, so the locality arg is what keeps a distant king's death from being
+        // "witnessed" at home. Remote towns learn once news travels (1C-distal).
+        perceiveEvent(world, deathEv, s.id);
       }
       // In the focused settlement, rule may pass to a real local heir (so an actor — and the
       // player — can actually rise to lead). Otherwise the dynasty continues or a new one rises.

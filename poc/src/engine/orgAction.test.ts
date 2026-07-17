@@ -11,7 +11,7 @@ import { serializeWorld, deserializeWorld } from './persistence';
 import { orgActionYearly, applyEffects, actionForIntent, operationalOf } from './orgAction';
 import { allEvents } from './world';
 import { SUBSISTENCE_RESOURCE, baselineOperational } from '../content/fixture';
-import type { World, Organization } from './model';
+import { settlementPopulation, type World, type Organization } from './model';
 
 const roundTrip = (w: World): World => deserializeWorld(JSON.parse(JSON.stringify(serializeWorld(w))));
 
@@ -28,7 +28,7 @@ describe('Execution: decide vs apply', () => {
     const org = aPolity(w);
     const seat = w.settlements[org.seatId!];
     seat.econ.wealth = 100; // make the festival feasible
-    seat.econ.stock[SUBSISTENCE_RESOURCE] = seat.macro.population * 5;
+    seat.econ.stock[SUBSISTENCE_RESOURCE] = settlementPopulation(w, seat) * 5;
     const action = actionForIntent('remain_neutral')!; // hold_festival
     const opsBefore = { ...operationalOf(w, org.id) };
     const wealthBefore = seat.econ.wealth;
@@ -64,7 +64,7 @@ describe('Execution: feasibility gates history', () => {
     w.orgTreasury.set(org.id, 25); // funded — food is the gate under test first
     seat.econ.stock[SUBSISTENCE_RESOURCE] = 0;
     expect(recruit.feasible(w, org, operationalOf(w, org.id)).ok).toBe(false);
-    seat.econ.stock[SUBSISTENCE_RESOURCE] = seat.macro.population * 5; // ~5 years' buffer
+    seat.econ.stock[SUBSISTENCE_RESOURCE] = settlementPopulation(w, seat) * 5; // ~5 years' buffer
     expect(recruit.feasible(w, org, operationalOf(w, org.id)).ok).toBe(true);
     // 2C: the levies must also be PAID — a penniless treasury blocks the same action
     w.orgTreasury.set(org.id, 0);

@@ -249,15 +249,25 @@ export function LocalTerrain3DThree({ geo, plan, cx, cy, span, seed, onExit }: {
           bw = pow(abs(vWNrm), vec3(4.0));
           bw /= max(1e-4, bw.x + bw.y + bw.z);
           vec3 base = diffuseColor.rgb;
-          vec3 grassCol = base * (tpA(tGrass) * 1.55);  // biome hue × grass detail (matched to the flatter 2D biome tint)
-          grassCol = mix(vec3(dot(grassCol, vec3(0.299, 0.587, 0.114))), grassCol, 0.72); // mute the verdancy toward the 2D palette
-          grassCol *= vec3(1.06, 1.0, 0.90);                           // a touch warmer/yellower, like the 2D biome green
-          vec3 rockCol = mix(tpA(tRock) * 1.12, base, 0.18);           // earthy stone, biome-tinted (not stark grey)
-          vec3 snowCol = tpA(tSnow) * 1.05;                            // its own white snow
-          vec3 sandCol = tpA(tSand) * 1.08;                            // warm sand, matched to the 2D beach tone
-          vec3 mudCol  = tpA(tMud) * 1.12;                             // its own wet mud
-          vec3 gravelCol = mix(tpA(tGravel) * 1.08, base, 0.16);       // loose stone, faintly biome-tinted
-          diffuseColor.rgb = grassCol * wGrass + rockCol * wRock + snowCol * wSnow + sandCol * wSand + mudCol * wMud + gravelCol * wGravel;
+          // WEIGHT-GATED FETCHES: sampling all six materials triplanar cost up to 18 albedo
+          // fetches per fragment even where five weights were zero. The weights are spatially
+          // coherent (a grass plain is grass for whole tiles), so these branches skip nearly
+          // all of it on ordinary ground; a renormalising wSum keeps the blend exact when a
+          // sub-threshold sliver is dropped.
+          vec3 accum = vec3(0.0);
+          float wSum = 0.0;
+          if (wGrass > 0.004) {
+            vec3 grassCol = base * (tpA(tGrass) * 1.55);  // biome hue × grass detail (matched to the flatter 2D biome tint)
+            grassCol = mix(vec3(dot(grassCol, vec3(0.299, 0.587, 0.114))), grassCol, 0.72); // mute the verdancy toward the 2D palette
+            grassCol *= vec3(1.06, 1.0, 0.90);                         // a touch warmer/yellower, like the 2D biome green
+            accum += grassCol * wGrass; wSum += wGrass;
+          }
+          if (wRock > 0.004)   { accum += mix(tpA(tRock) * 1.12, base, 0.18) * wRock; wSum += wRock; }       // earthy stone, biome-tinted
+          if (wSnow > 0.004)   { accum += tpA(tSnow) * 1.05 * wSnow; wSum += wSnow; }                        // its own white snow
+          if (wSand > 0.004)   { accum += tpA(tSand) * 1.08 * wSand; wSum += wSand; }                        // warm sand
+          if (wMud > 0.004)    { accum += tpA(tMud) * 1.12 * wMud; wSum += wMud; }                           // its own wet mud
+          if (wGravel > 0.004) { accum += mix(tpA(tGravel) * 1.08, base, 0.16) * wGravel; wSum += wGravel; } // loose stone
+          diffuseColor.rgb = accum / max(wSum, 1e-3);
           diffuseColor.rgb *= mix(0.86, 1.14, macro(vWPos.xz * 0.07)); // break up the tile at range
         }`)
         // RELIEF per material, triplanar and in WORLD space. The weights partition to exactly 1,
@@ -268,14 +278,16 @@ export function LocalTerrain3DThree({ geo, plan, cx, cy, span, seed, onExit }: {
         // since the terrain mesh carries no scale.
         .replace('#include <normal_fragment_maps>', `
         #ifdef USE_NORMALMAP_TANGENTSPACE
-          vec3 wn = normalize(
-              tpN(nGrass,  1.0) * wGrass
-            + tpN(nRock,   2.4) * wRock
-            + tpN(nSnow,   0.5) * wSnow
-            + tpN(nSand,   1.1) * wSand
-            + tpN(nMud,    1.4) * wMud
-            + tpN(nGravel, 2.0) * wGravel
-          );
+          // the same weight gates as the albedo (18 more fetches saved); normalize()
+          // absorbs the dropped slivers, so no renormalisation is needed here
+          vec3 wn = vec3(0.0);
+          if (wGrass > 0.004)  wn += tpN(nGrass,  1.0) * wGrass;
+          if (wRock > 0.004)   wn += tpN(nRock,   2.4) * wRock;
+          if (wSnow > 0.004)   wn += tpN(nSnow,   0.5) * wSnow;
+          if (wSand > 0.004)   wn += tpN(nSand,   1.1) * wSand;
+          if (wMud > 0.004)    wn += tpN(nMud,    1.4) * wMud;
+          if (wGravel > 0.004) wn += tpN(nGravel, 2.0) * wGravel;
+          wn = normalize(wn);
           normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
         #endif`);
     };
@@ -442,27 +454,66 @@ export function LocalTerrain3DThree({ geo, plan, cx, cy, span, seed, onExit }: {
     // Changing the pixel ratio mid-gesture reallocates every post target (SSAO keeps several
     // float buffers), and on a high-DPI display that texture churn stalls the pipeline at each
     // gesture boundary — the "occasional orbit lockup". The scene is light (≈82k tris, few
-    // draw calls), so full res every frame is smooth; keep the resolution constant.
+    // draw calls), so full res every frame is smooth on a capable GPU; a ONE-TIME probe below
+    // (never per-gesture) steps a struggling device down instead.
     const resize = () => {
       const w = wrap.clientWidth, h = wrap.clientHeight;
       renderer.setSize(w, h); composer.setSize(w, h);
       camera.aspect = w / h; camera.updateProjectionMatrix();
+      needsRender = Math.max(needsRender, 1);
     };
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : undefined;
     ro?.observe(wrap);
 
     renderer.shadowMap.needsUpdate = true; // render the (static) shadow map once, on the first frame
-    let raf = 0, running = true;
+    // RENDER ON DEMAND. Only the water ever changes without input, so a frozen scene is
+    // rendered exactly when something happened (orbit, damping, resize) — near-zero GPU at
+    // rest — and a liquid scene drops its ambient ripple to ~30fps once the hand has been
+    // off the controls a few seconds, snapping back to full rate on the next gesture.
+    // `controls`' change event also fires throughout damping, so the glide stays smooth.
+    let raf = 0, running = true, frame = 0;
+    let lastInteract = performance.now();
+    let needsRender = 24; // first frames: shadow map, SSAO warm-up — and the probe's samples
+    controls.addEventListener('change', () => { lastInteract = performance.now(); needsRender = Math.max(needsRender, 1); });
+    // ADAPTIVE QUALITY, measured once: average the first rendered frames' cost and, if the
+    // device clearly can't afford the full pipeline, drop to pixelRatio 1 and disable SSAO
+    // (the priciest pass for a scene this small). A single adaptation — the render targets
+    // reallocate once, at startup, never at a gesture boundary.
+    let probeN = 0, probeMs = 0, probed = false;
+    const renderOnce = () => {
+      const t0 = performance.now();
+      composer.render();
+      if (!probed) {
+        probeN++; probeMs += performance.now() - t0;
+        if (probeN >= 20) {
+          probed = true;
+          if (probeMs / probeN > 24) {
+            renderer.setPixelRatio(1);
+            ssao.enabled = false;
+            const w = wrap.clientWidth, h = wrap.clientHeight;
+            renderer.setSize(w, h); composer.setSize(w, h);
+          }
+        }
+      }
+    };
     const loop = () => {
       if (!running) return;
-      if (waterMat) { // liquid water animates; frozen ice is a static surface
-        waterMat.uniforms.uTime.value += 1 / 60;
+      raf = requestAnimationFrame(loop);
+      frame++;
+      controls.update(); // damping — emits 'change' while the glide settles
+      const idle = performance.now() - lastInteract > 3000;
+      if (waterMat) { // liquid water animates; halve the ambient rate once idle
+        if (idle && probed && frame % 2 === 1) return;
+        waterMat.uniforms.uTime.value += idle && probed ? 1 / 30 : 1 / 60;
         waterMat.uniforms.uEye.value.copy(camera.position);
         if (riverMat) { riverMat.uniforms.uTime.value = waterMat.uniforms.uTime.value; riverMat.uniforms.uEye.value.copy(camera.position); }
+        renderOnce();
+        return;
       }
-      controls.update();
-      composer.render();
-      raf = requestAnimationFrame(loop);
+      // frozen: a static surface — render only when something changed
+      if (needsRender <= 0) return;
+      needsRender--;
+      renderOnce();
     };
     raf = requestAnimationFrame(loop);
 

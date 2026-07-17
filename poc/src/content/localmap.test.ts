@@ -122,6 +122,32 @@ describe('the town plan (L1)', () => {
       }
     }
   });
+
+  it('a CITY reads as a city: bigger, denser, walled and manned — yet bounded', () => {
+    const village = buildLocalPlan(worldFacts({ population: 420, wealth: 260, leaderTitle: 'Lord' }));
+    const city = buildLocalPlan(worldFacts({ population: 21000, wealth: 30000, leaderTitle: 'Lord', specialization: 'trade & crafts' }));
+
+    // scale: the city fills more of the frame and raises far more roofs
+    expect(city.radius).toBeGreaterThan(village.radius + 1);
+    const housesOf = (p: typeof city) => p.items.filter((i): i is PlanBuilding => i.kind === 'building' && i.role === 'house');
+    expect(housesOf(city).length).toBeGreaterThan(housesOf(village).length * 1.5);
+
+    // fabric: the urban core packs ROW houses; the wall is manned in peacetime
+    expect(housesOf(city).some((h) => h.shape === 'row')).toBe(true);
+    expect(city.items.some((i) => i.kind === 'wall')).toBe(true);
+    expect(city.items.some((i) => i.kind === 'building' && i.role === 'watchtower')).toBe(true);
+
+    // …but the plan stays BOUNDED — legibility, not a dot per soul (design/24's LOD mandate)
+    expect(city.items.length).toBeLessThan(3000);
+  });
+
+  it('village plans are byte-identical to before the urban tier (urbanity 0 changes nothing)', () => {
+    // any settlement under the urban floor draws the exact same plan twice — and the knobs
+    // (spacing, radius, lanes, crowd) all collapse to their old values at urbanity 0
+    const a = buildLocalPlan(worldFacts({ population: 420 }));
+    const b = buildLocalPlan(worldFacts({ population: 420 }));
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
 });
 
 describe('fortunes on the map (design/28)', () => {

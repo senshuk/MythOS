@@ -10,6 +10,7 @@ import { ensureVenues, pickVenue } from './venues';
 import { getChildren } from './location';
 import { renderEventParts } from './render';
 import { serializeWorld, deserializeWorld } from './persistence';
+import { VENUE_HOSTS } from '../content/venues';
 
 // ONE shared world fixture (test-suite convention): a focused town with some life run
 const W = createWorld(123456);
@@ -67,7 +68,9 @@ describe('located outcomes', () => {
   it('social events carry their venue', () => {
     expect(located.length).toBeGreaterThan(0);
     for (const ev of located.slice(0, 10)) {
-      expect(['married', 'friendship', 'brawl', 'died_brawl', 'feud']).toContain(ev.type);
+      // exactly the pack's located-outcome vocabulary may carry a venueId — actor
+      // social outcomes, communal gatherings (design/27), audiences (design/26)
+      expect(Object.keys(VENUE_HOSTS)).toContain(ev.type);
       expect(W.locations.get(ev.data.venueId as number)).toBeDefined();
     }
   });

@@ -43,7 +43,7 @@ export function lifecycleYearly(world: World, actors: EntityId[]): void {
     if (rng.chance(deathProbability(lc.ageYears, sp.lifespan))) {
       const mourners = communityAround(world, [id]); // capture ties before killActor prunes them
       const deathId = killActor(world, id, world.tick, 'died', [], []);
-      if (deathId >= 0) perceiveEvent(world, deathId); // co-residents come to know the death
+      if (deathId >= 0) perceiveEvent(world, deathId, world.focusedSettlementId); // co-residents come to know the death
       if (deathId >= 0) holdGathering(world, 'funeral', [id], mourners, deathId); // the village gathers to mourn (design/27 §4)
     }
   }

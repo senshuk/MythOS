@@ -6,7 +6,7 @@
  * a data-driven Universe Pack; here it is hand-authored TS for speed.
  */
 import { Rng } from '../engine/rng';
-import { DAYS_PER_YEAR } from '../engine/model';
+import { DAYS_PER_YEAR, settlementPopulation } from '../engine/model';
 import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, World, Settlement, Organization, Rules } from '../engine/model';
 import { biomeOf } from './biomes';
 
@@ -920,7 +920,7 @@ export function baselineOperational(): Record<string, number> {
 // read-only helpers over world state (the pack only READS + describes; the engine mutates)
 const actSeat = (world: World, seatId: number | undefined): Settlement | undefined =>
   (seatId === undefined ? undefined : world.settlements[seatId]);
-const foodYears = (s: Settlement): number => (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / Math.max(s.macro.population, 1);
+const foodYears = (world: World, s: Settlement): number => (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / Math.max(settlementPopulation(world, s), 1);
 // the org's own funds (2C: OrgResources) — actions are bounded by what the tithe has
 // actually collected (read directly off the map; the engine's applyEffects mutates it).
 const orgFunds = (world: World, org: Organization): number => world.orgTreasury.get(org.id) ?? 0;
@@ -950,12 +950,12 @@ export const ACTIONS: ActionDef[] = [
     feasible: (world, org) => {
       const s = actSeat(world, org.seatId);
       if (!s) return { ok: false, reason: 'no seat' };
-      if (foodYears(s) < 2) return { ok: false, reason: 'too little food to raise levies' };
+      if (foodYears(world, s) < 2) return { ok: false, reason: 'too little food to raise levies' };
       return orgFunds(world, org) >= 20 ? { ok: true } : { ok: false, reason: 'the treasury cannot pay the levies' };
     },
     resolve: (world, org) => {
       const s = actSeat(world, org.seatId)!;
-      const levies = Math.max(1, Math.round(Math.max(s.macro.population, 1) * 0.02));
+      const levies = Math.max(1, Math.round(Math.max(settlementPopulation(world, s), 1) * 0.02));
       return {
         success: true,
         effects: [ { target: 'stat', key: 'strength', delta: 8 }, { target: 'treasury', delta: -20 } ],
@@ -1015,7 +1015,7 @@ export const ACTIONS: ActionDef[] = [
     feasible: (world, org) => {
       const s = actSeat(world, org.seatId);
       if (!s) return { ok: false, reason: 'no seat' };
-      return orgFunds(world, org) >= 20 && foodYears(s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
+      return orgFunds(world, org) >= 20 && foodYears(world, s) >= 1.5 ? { ok: true } : { ok: false, reason: 'too lean a year to feast' };
     },
     resolve: (_world, org) => ({
       success: true,
@@ -1070,8 +1070,10 @@ const relationBetween = (world: World, aSeat: number | undefined, bSeat: number 
   }
   return 0;
 };
-const seatPop = (world: World, org: Organization): number =>
-  org.seatId === undefined ? 0 : world.settlements[org.seatId]?.macro.population ?? 0;
+const seatPop = (world: World, org: Organization): number => {
+  const s = org.seatId === undefined ? undefined : world.settlements[org.seatId];
+  return s ? settlementPopulation(world, s) : 0;
+};
 const hasPact = (world: World, kind: string, a: Organization, b: Organization): boolean => {
   const [x, y] = a.id < b.id ? [a.id, b.id] : [b.id, a.id];
   return world.orgAgreements.some((g) => g.kind === kind && g.a === x && g.b === y && g.expiresTick > world.tick);
@@ -1660,6 +1662,16 @@ export const DRIFT_SPECS: Record<string, DriftSpec[]> = {
     { id: 'cursed', label: 'was struck down by a curse' },
     { id: 'betrayed', label: 'was betrayed by their own kin' },
     { id: 'vanished', label: 'vanished, and was never found at all' },
+  ],
+  // An exile is public, but its REASON is not — the town saw them go and never learned why, so
+  // the why is invented. Where `dead` drifts over the manner of an ending, `exiled` drifts over
+  // its cause: the same mechanism, a different kind of story.
+  exiled: [
+    { id: 'witchcraft', label: 'was cast out for trafficking with something better left alone' },
+    { id: 'fled', label: 'fled in the night, a step ahead of the rope' },
+    { id: 'went-willingly', label: 'went willingly into the wilds, and shook the dust from their feet' },
+    { id: 'betrayed-kin', label: 'was driven out for selling their own kin' },
+    { id: 'wrongly', label: 'was cast out for a crime they never committed' },
   ],
 };
 

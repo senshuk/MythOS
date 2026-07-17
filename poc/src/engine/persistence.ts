@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, RULES, setCulturesForSeed } from './pack';
 
-export const SAVE_VERSION = 27;
+export const SAVE_VERSION = 28;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -312,6 +312,17 @@ export function deserializeWorld(save: SaveFile): World {
     const loc = st as { locationType?: string; mobility?: string };
     if (loc.locationType === undefined) loc.locationType = 'settlement';
     if (loc.mobility === undefined) loc.mobility = 'fixed';
+  }
+
+  // v27 → v28 (sampled promotion): the FOCUSED settlement's macro now holds its
+  // unmaterialized REMAINDER, not a stale copy of its whole headcount. Old promote()
+  // materialized everyone, so an old save's remainder is exactly zero — clear the
+  // bands or the loaded town would count its people twice (cast + stale macro).
+  if (s.version < 28) {
+    for (const st of s.settlements) {
+      if (!st.detailed) continue;
+      st.macro = { ...st.macro, population: 0, children: 0, adults: 0, elders: 0 };
+    }
   }
 
   // Rebuild the unified location registry: settlements join BY REFERENCE (same objects as

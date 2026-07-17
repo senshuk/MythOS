@@ -20,6 +20,7 @@ import { fullActors, getRel, emit } from './world';
 import { addThought } from './opinion';
 import { Rng, mixSeed } from './rng';
 import { VALUES, type ValueAxis, factionNames } from './pack';
+import { perceiveEvent } from './perception';
 
 const SAMPLE_N = 3; // opposing-faction neighbor samples per actor per year
 const MIN_ACTORS = 20; // minimum settlement size for a split to be meaningful
@@ -155,12 +156,16 @@ export function civilWarYearly(world: World): void {
       world.fidelity.set(loserLeaderId, 'summary');
       world.homeSettlement.set(loserLeaderId, dest);
       world.settlements[dest].macro.population += 1;
-      emit(world, 'exile', [loserLeaderId], {
+      const exileId = emit(world, 'exile', [loserLeaderId], {
         from: focused.name,
         to: world.settlements[dest].name,
         faction: loserName,
         axis: split.axis,
       }, [warEvId], [focused.id, dest]);
+      // the town watches its loser cast out — the one public fact from which, in time, folk
+      // will invent a reason (Legend Drift: `exiled` → cast out for witchcraft, fled in the
+      // night, went willingly…). Witnessed HERE, where it happened, not at the destination.
+      perceiveEvent(world, exileId, focused.id);
     }
   }
 

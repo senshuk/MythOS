@@ -25,6 +25,7 @@ import {
   type BeliefState,
   type StatusBelief,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { beliefOf, computeBelief, stanceFromConfidence, slotAssertion, coronationSlot } from './belief';
 import {
@@ -171,9 +172,7 @@ export function perceive(world: World, orgId: OrgId): PerceptionFact[] {
   const facts: PerceptionFact[] = [];
 
   // --- own seat (high confidence: it is the org's own house) ---
-  let residents = 0;
-  for (const id of world.entities) if (world.homeSettlement.get(id) === s.id) residents++;
-  const pop = Math.max(s.macro.population, residents, 1);
+  const pop = Math.max(settlementPopulation(world, s), 1);
   const yearsBuffer = (s.econ.stock[SUBSISTENCE_RESOURCE] ?? 0) / pop;
   facts.push({ id: 'food_security', value: Math.round(clamp(yearsBuffer * 20, 0, 100)), confidence: 1, source: 'seat' });
   facts.push({ id: 'stability', value: Math.round(s.macro.stability), confidence: 1, source: 'seat' });
@@ -211,7 +210,7 @@ export function perceive(world: World, orgId: OrgId): PerceptionFact[] {
     const os = world.settlements[other];
     if (!os || os.ruinedYear !== undefined) continue;
     neighbourCount++;
-    neighbourStrengthSum += os.macro.population;
+    neighbourStrengthSum += settlementPopulation(world, os);
     if (e.relation < 0) {
       hostilitySum += -e.relation;
       hostileCount++;

@@ -297,7 +297,7 @@ function brawl(world: World, a: EntityId, b: EntityId, edge: RelEdge, rng: Rng):
   // killActor returns the death event ID; that's what witnesses remember.
   const deathId = killActor(world, victim, world.tick, 'died_brawl', [killer], [brawlId]);
   witnessDeed(world, deathId, killer, victim, 'bloodshed');
-  if (deathId >= 0) perceiveEvent(world, deathId); // witnesses come to know the death, not just fear the killer
+  if (deathId >= 0) perceiveEvent(world, deathId, world.focusedSettlementId); // witnesses come to know the death, not just fear the killer
   if (deathId >= 0) holdGathering(world, 'funeral', [victim], mourners, deathId); // the town gathers to mourn
 }
 

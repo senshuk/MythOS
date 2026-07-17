@@ -166,7 +166,35 @@ export function LocalMapView({
     return angles;
   }, [map, node, settlement.id]);
 
-  // the deterministic town plan — same facts, same town, every time
+  // WHAT THE PLAN IS MADE OF, as a fingerprint. The streamed snapshot recreates every
+  // view object each year, so keying the memo on identities rebuilt the town plan — and
+  // reconciled all ~600 glyphs — once per streamed year while the close view was open.
+  // The plan only *draws differently* when one of these facts moves, so volatile numerics
+  // are QUANTIZED (a town at 21,000 vs 21,340 souls is the same drawing): the rebuild now
+  // happens when the town meaningfully changes, not when the calendar does. Trade-off,
+  // accepted: hover labels that embed ages ("Hana (34y)") refresh on the next real change
+  // or 5-year mark rather than every year.
+  const planKey = useMemo(() => {
+    const s = settlement;
+    const q = (x: number, step: number) => Math.round(x / step);
+    return [
+      s.id, s.name, s.ruinedYear ?? -1, s.foundedYear, s.cultureId, s.leaderTitle ?? '', s.ruler ?? '',
+      s.founder ?? '', s.specialization, s.dominantSpecies, s.patronDeity?.id ?? '', s.civilWarYear ?? -1,
+      s.factionSplit ? `${s.factionSplit.axis}:${s.factionSplit.highName}` : '',
+      // quantized volatile numerics: ~4% pop steps, ~10% wealth steps, 10-point stability,
+      // quarter-year food buffer, 5-year history-mark aging
+      q(Math.log(s.population + 1), 0.04), q(Math.log(s.wealth + 1), 0.1), q(s.stability, 10),
+      q(s.subsistenceSecurity, 0.25), q(currentYear, 5),
+      (chronicle ?? []).length, (chronicle ?? [])[Math.max(0, (chronicle ?? []).length - 1)]?.id ?? -1,
+      (households ?? []).map((h) => `${h.members[0]?.id}:${h.members.length}`).join(','),
+      (venues ?? []).map((v) => v.id).join(','),
+      (gatherings ?? []).map((g) => `${g.kind}${g.venueId ?? ''}${g.year}`).join(','),
+      roadEntries.map((a) => a.toFixed(2)).join(','),
+    ].join('|');
+  }, [settlement, currentYear, chronicle, households, venues, gatherings, roadEntries]);
+
+  // the deterministic town plan — same facts, same town, every time. Reads the CURRENT
+  // props via closure; the fingerprint above decides when that read happens.
   const plan = useMemo(() => {
     if (!(sub instanceof SurfaceSubstrate) || !node) return null;
     const facts: LocalPlanFacts = {
@@ -182,7 +210,9 @@ export function LocalMapView({
       gatherings,
     };
     return buildLocalPlan(facts);
-  }, [sub, node, seed, settlement, roadEntries, currentYear, chronicle, households, venues, gatherings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- planKey IS the deps: it
+    // fingerprints every fact the plan reads, quantized so a streamed year is a no-op
+  }, [sub, nx, ny, seed, planKey]);
 
   // the overlay's DRAW LIST: the non-interactive scatter (trees, reeds — no hover, no click)
   // BATCHES into one <path> per (form, tone) group, so ~200 DOM nodes become a dozen; every
@@ -213,12 +243,50 @@ export function LocalMapView({
     for (const { it } of interiors) if (it.kind === 'interior') furnished.add(it.ofBuilding);
     return { structures, persons, interiors, clusters: [...groups.values()], ground, furnished };
   }, [plan]);
-  // the paint reads ground through a ref (like labels): the plan is re-derived every streamed
-  // year, and its patches almost never change — routing them through paintClose's deps would
-  // re-run the whole ~1s terrain paint per tick for nothing. Fresh patches simply ride the
-  // next natural repaint (entering a town, zoom, resize).
+  // the paint reads ground through a ref (like labels): the plan is re-derived on real
+  // change only (see planKey), and its patches almost never change — routing them through
+  // paintClose's deps would re-run the whole terrain paint for nothing. Fresh patches
+  // simply ride the next natural repaint (entering a town, zoom, resize).
   const groundRef = useRef<GroundPatch[]>([]);
   groundRef.current = overlay?.ground ?? [];
+
+  // VIEWPORT CULLING: zoomed into a city, most of its ~600 glyphs are outside the box —
+  // mount only what the view can see (generously padded so a normal pan never outruns
+  // it). The rect settles on the same ~160ms quiet the repaint uses, so nothing is
+  // filtered per gesture frame; at low zoom everything is visible and nothing is culled.
+  const [cullRect, setCullRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (!rect || view.s <= 1.4) { setCullRect(null); return; }
+      const vb = {
+        x: frame.x + (-view.x / view.s) * (frame.w / rect.width),
+        y: frame.y + (-view.y / view.s) * (frame.h / rect.height),
+        w: frame.w / view.s,
+        h: frame.h / view.s,
+      };
+      const pad = Math.max(vb.w, vb.h) * 0.35 + 0.4; // room for pans and for glyph extents
+      setCullRect({ x0: vb.x - pad, y0: vb.y - pad, x1: vb.x + vb.w + pad, y1: vb.y + vb.h + pad });
+    }, 160);
+    return () => window.clearTimeout(t);
+  }, [view, frame]);
+  const vis = useMemo(() => {
+    if (!overlay) return null;
+    const r = cullRect;
+    if (!r) return overlay;
+    const inRect = (x: number, y: number) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+    // point items cull by position; path items (streets, walls — a few dozen) always draw
+    const keep = ({ it }: { it: PlanItem }) => !('x' in it && 'y' in it) || inRect(it.x as number, it.y as number);
+    return {
+      ...overlay,
+      structures: overlay.structures.filter(keep),
+      persons: overlay.persons.filter(keep),
+      interiors: overlay.interiors.filter(keep),
+      clusters: overlay.clusters
+        .map((cl) => ({ ...cl, trees: cl.trees.filter((t) => inRect(t.x, t.y)) }))
+        .filter((cl) => cl.trees.length > 0),
+    };
+  }, [overlay, cullRect]);
 
   // the world's ROADS pass through the frame (SVG clips them to the viewBox)
   const roads = useMemo(
@@ -467,15 +535,15 @@ export function LocalMapView({
             </g>
           );
         })}
-        {overlay && overlay.structures.map(({ it, i }) => (
+        {vis && vis.structures.map(({ it, i }) => (
           <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent}
-            cutaway={cutaway && it.kind === 'building' && it.id !== undefined && overlay.furnished.has(it.id)} />
+            cutaway={cutaway && it.kind === 'building' && it.id !== undefined && vis.furnished.has(it.id)} />
         ))}
-        {overlay && overlay.clusters.map((cl, i) => <TreeCluster key={`t${i}`} form={cl.form} tone={cl.tone} trees={cl.trees} />)}
+        {vis && vis.clusters.map((cl, i) => <TreeCluster key={`t${i}`} form={cl.form} tone={cl.tone} trees={cl.trees} />)}
         {/* INTERIORS (design/32 §5) — only past the cutaway zoom, so the town reads as roofs
             until you lean in close enough for a floor to mean something */}
-        {overlay && cutaway && overlay.interiors.map(({ it, i }) => <PlanGlyph key={`in${i}`} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
-        {overlay && overlay.persons.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
+        {vis && cutaway && vis.interiors.map(({ it, i }) => <PlanGlyph key={`in${i}`} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
+        {vis && vis.persons.map(({ it, i }) => <PlanGlyph key={i} it={it} show={show} hide={hide} onRef={onRef} onPickEvent={onPickEvent} />)}
       </svg>
       </div>
 

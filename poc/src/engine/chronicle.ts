@@ -6,7 +6,7 @@
  * still tell of how…"). History becomes content. (The RimWorld Tale idea, kept
  * deterministic — interest is a pure function of the event, no RNG.)
  */
-import { type World, type WorldEvent, type Tale, type EntityId, DAYS_PER_YEAR } from './model';
+import { type World, type WorldEvent, type Tale, type EntityId, type EventId, DAYS_PER_YEAR } from './model';
 import { fullName, emit } from './world';
 import { endHouseAt } from './figures';
 import { renderEvent } from './render';
@@ -112,19 +112,28 @@ export interface CultureLegend {
 }
 
 /**
- * How the people of `cultureId` currently tell `ev` — the belief THEY hold about it, which past
- * Legend Drift need not be what actually happened.
+ * How the people of `cultureId` currently tell each of `eventIds` — the beliefs THEY hold, which
+ * past Legend Drift need not be what actually happened.
  *
  * DERIVED, never stored, and reduced from the culture's living members exactly as `orgBeliefOf`
  * reduces an institution's belief from its own: subjectivity exists only where agency exists, so
- * a culture with no simulated actors tells no version at all (undefined) and the objective record
- * stands. Of the versions its people hold, the one they most collectively affirm wins — a legend
- * is what a folk generally say, not what any one of them says.
+ * a culture with no simulated actors tells no version at all (an empty map) and the objective
+ * record stands. Of the versions its people hold, the one they most collectively affirm wins — a
+ * legend is what a folk generally say, not what any one of them says.
+ *
+ * BATCHED on purpose: the annals ask about a dozen events at once, and this is a live read on the
+ * snapshot path (every worker advance step). One pass over the culture's members answers all of
+ * them; asking per-event would re-walk every belief a dozen times over.
  *
  * Pure read: touches no world state, gives the culture no evidence stack of its own.
  */
-export function cultureLegendOf(world: World, cultureId: string, ev: WorldEvent): CultureLegend | undefined {
-  const held = new Map<string, { subject: EntityId; sum: number }>();
+export function cultureLegends(
+  world: World,
+  cultureId: string,
+  eventIds: Set<EventId>,
+): Map<EventId, CultureLegend> {
+  // eventId → assertion → the running sum of member confidence in that version
+  const held = new Map<EventId, Map<string, { subject: EntityId; sum: number }>>();
   let people = 0;
   for (const id of world.entities) {
     const sid = world.homeSettlement.get(id);
@@ -132,43 +141,62 @@ export function cultureLegendOf(world: World, cultureId: string, ev: WorldEvent)
     if (!world.personality.get(id)) continue; // a simulated resident — a subject that can know
     people++;
     for (const b of world.beliefs.get(id) ?? []) {
-      // this people's beliefs that trace back to THIS event, however far they have drifted
-      if (!b.evidence.some((e) => e.cause === ev.id)) continue;
       const state = computeBelief(b, world.tick);
       if (state.stance !== 'true') continue; // only what they affirm is something they'd tell
-      const row = held.get(b.assertion) ?? { subject: b.subject, sum: 0 };
-      row.sum += state.confidence;
-      held.set(b.assertion, row);
+      // every asked-about event this belief traces back to, however far it has since drifted
+      for (const e of b.evidence) {
+        if (e.cause === undefined || !eventIds.has(e.cause)) continue;
+        let byAssertion = held.get(e.cause);
+        if (!byAssertion) held.set(e.cause, (byAssertion = new Map()));
+        const row = byAssertion.get(b.assertion) ?? { subject: b.subject, sum: 0 };
+        row.sum += state.confidence;
+        byAssertion.set(b.assertion, row);
+        break; // one vote per belief per event, however many evidence rows point back to it
+      }
     }
   }
-  if (people === 0) return undefined; // no subjects → no subjectivity → no folk version
+  const out = new Map<EventId, CultureLegend>();
+  if (people === 0) return out; // no subjects → no subjectivity → no folk version
 
-  let best: CultureLegend | undefined;
-  for (const [assertion, row] of held) {
-    const confidence = row.sum / people;
-    if (!best || confidence > best.confidence) best = { assertion, subject: row.subject, confidence };
+  for (const [eventId, byAssertion] of held) {
+    let best: CultureLegend | undefined;
+    for (const [assertion, row] of byAssertion) {
+      const confidence = row.sum / people;
+      if (!best || confidence > best.confidence) best = { assertion, subject: row.subject, confidence };
+    }
+    if (best) out.set(eventId, best);
   }
-  return best;
+  return out;
+}
+
+/** The single-event read, for callers who want just one. Prefer `cultureLegends` on any path that
+ *  asks about several — this is that, for a set of one. */
+export function cultureLegendOf(world: World, cultureId: string, ev: WorldEvent): CultureLegend | undefined {
+  return cultureLegends(world, cultureId, new Set([ev.id])).get(ev.id);
 }
 
 /**
- * Re-narrate a tale as the people of `cultureId` tell it. Where they hold a DRIFTED version, that
- * is what gets told — so two cultures' oral histories of the same war genuinely diverge, and the
- * annals stop being a single omniscient record. Where they hold nothing (or the plain truth), this
- * is exactly `renderLegend`.
+ * Re-narrate a tale as the holder of `legend` tells it — the rendering half, split from the reading
+ * half so the snapshot path can batch the reads (`cultureLegends`) and still render one at a time.
+ * Where the legend is a DRIFTED version, that is what gets told; where it is absent, or the plain
+ * truth, this is exactly `renderLegend`.
  *
- * The grammar draw is seeded identically to `renderLegend`, so a culture's telling differs from
- * its neighbours' in WHAT IS CLAIMED, not in incidental phrasing — the divergence you read is the
+ * The grammar draw is seeded identically to `renderLegend`, so a people's telling differs from its
+ * neighbours' in WHAT IS CLAIMED, not in incidental phrasing — the divergence you read is the
  * drift, not the dice.
  */
-export function renderLegendFor(world: World, ev: WorldEvent, cultureId: string): string {
-  const legend = cultureLegendOf(world, cultureId, ev);
+export function renderLegendAs(world: World, ev: WorldEvent, legend: CultureLegend | undefined): string {
   const variant = legend && driftVariant(legend.assertion);
   if (!legend || variant === undefined) return renderLegend(world, ev);
   const spec = driftSpecsFor(baseAssertion(legend.assertion)).find((s) => s.id === variant);
   if (!spec) return renderLegend(world, ev); // a version this pack no longer defines — tell it straight
   const rng = new Rng(mixSeed(world.seed, ev.id, 0x1ee));
   return expand(LEGEND_GRAMMAR, 'legend', rng, { event: `${fullName(world, legend.subject)} ${spec.label}` });
+}
+
+/** Re-narrate a tale as the people of `cultureId` tell it. */
+export function renderLegendFor(world: World, ev: WorldEvent, cultureId: string): string {
+  return renderLegendAs(world, ev, cultureLegendOf(world, cultureId, ev));
 }
 
 /** Give a year its defining name from its single most interesting event. */

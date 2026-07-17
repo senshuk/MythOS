@@ -9,7 +9,9 @@ import type { RegionMapView, SettlementView, EventRef } from '../engine/model';
 import { MAP_STYLES, type MapStyle } from '../content/mapstyles';
 import { SurfaceSubstrate, StarfieldSubstrate } from '../engine/substrate';
 import { substrateFor } from './substrateCache';
-import { paintTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel } from './terrain';
+import { paintTerrain, paintTerrainOverlay, finishTerrain, paintStarfield, buildRoads, buildRivers, type TerrainLabel, type GeoFields } from './terrain';
+import { createTerrainGpu, type TerrainGpu } from './terrainGpu';
+import type { TerrainPaintResponse } from './terrainWorker';
 import { featureName } from '../engine/pack';
 import { cultureColor, cultureName, usePersistentState } from './common';
 
@@ -139,6 +141,48 @@ export function RegionMap({
   const paintedView = useRef<{ s: number; x: number; y: number } | null>(null);
   const repaintTimer = useRef<number | undefined>(undefined);
 
+  // The repaint itself runs OFF the main thread, exactly like the close view's: the GPU
+  // painter (~5ms, WebGL2) first, the paint worker when the GPU is unavailable, and the
+  // synchronous CPU paint only as the last resort. The world map painted synchronously
+  // for historical reasons only — every zoom-settle stalled the main thread for the full
+  // multi-octave noise pass while the close view had long since learned better.
+  const gpuRef = useRef<TerrainGpu | null>(null);
+  if (gpuRef.current === null) gpuRef.current = createTerrainGpu();
+  useEffect(() => () => { gpuRef.current?.dispose(); gpuRef.current = null; }, []);
+  const workerRef = useRef<Worker | null>(null);
+  const reqIdRef = useRef(0);
+  const pendingRef = useRef(new Map<number, { vb: { x: number; y: number; w: number; h: number }; v: { s: number; x: number; y: number }; W: number; H: number }>());
+  const labelsRef = useRef<TerrainLabel[]>([]);
+  labelsRef.current = mapLabels;
+  useEffect(() => {
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL('./terrainWorker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      worker = null; // fallback to synchronous paint
+    }
+    workerRef.current = worker;
+    const pending = pendingRef.current;
+    if (worker) {
+      worker.onmessage = (e: MessageEvent<TerrainPaintResponse>) => {
+        const { id, buf, W, H } = e.data;
+        const rec = pending.get(id);
+        pending.delete(id);
+        if (!rec || id !== reqIdRef.current) return; // superseded by a newer request — drop it
+        const c = canvasRef.current;
+        if (!c || !SURF_THEME) return;
+        c.width = W;
+        c.height = H; // resize (blanks) then blit in the same frame — no visible flash
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        paintTerrainOverlay(ctx, buf, rec.vb, SURF_THEME, W, H, labelsRef.current);
+        paintedView.current = { ...rec.v };
+        c.style.transform = '';
+      };
+    }
+    return () => { worker?.terminate(); workerRef.current = null; pending.clear(); };
+  }, []);
+
   const paintSurface = useCallback(() => {
     if (!(sub instanceof SurfaceSubstrate) || !SURF_THEME) return;
     const c = canvasRef.current;
@@ -147,8 +191,8 @@ export function RegionMap({
     const rect = wrap.getBoundingClientRect();
     if (rect.width < 2) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = Math.min(1600, Math.round(rect.width * dpr));
-    c.height = Math.min(1600, Math.round(rect.height * dpr));
+    const W = Math.min(1600, Math.round(rect.width * dpr));
+    const H = Math.min(1600, Math.round(rect.height * dpr));
     // the world rectangle currently visible through the zoom/pan transform
     const v = viewRef.current;
     const vb = {
@@ -157,6 +201,40 @@ export function RegionMap({
       w: baseVB.w / v.s,
       h: baseVB.h / v.s,
     };
+    const g = sub.geography;
+    const gpu = gpuRef.current;
+    if (gpu) {
+      const geo: GeoFields = {
+        size: g.size, elevation: g.elevation, moisture: g.moisture, temperature: g.temperature,
+        fertility: g.fertility, water: g.water, hilliness: g.hilliness, seaLevel: g.seaLevel,
+      };
+      gpu.paint(geo, vb, SURF_THEME, W, H, seed);
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(gpu.surface, 0, 0);
+        finishTerrain(ctx, vb, SURF_THEME, W, H, mapLabels);
+      }
+      paintedView.current = { ...v };
+      c.style.transform = '';
+      return;
+    }
+    const worker = workerRef.current;
+    if (worker) {
+      // the canvas is NOT resized here (that would blank it) — it keeps riding its CSS
+      // transform until the buffer returns; newer requests supersede older ones.
+      const id = ++reqIdRef.current;
+      pendingRef.current.set(id, { vb, v: { ...v }, W, H });
+      const geo: GeoFields = {
+        size: g.size, elevation: g.elevation, moisture: g.moisture, temperature: g.temperature,
+        fertility: g.fertility, water: g.water, hilliness: g.hilliness, seaLevel: g.seaLevel,
+      };
+      worker.postMessage({ id, geo, vb, theme: SURF_THEME, W, H, key: seed });
+      return;
+    }
+    c.width = W;
+    c.height = H;
     paintTerrain(c, sub.geography, vb, SURF_THEME, mapLabels, seed);
     paintedView.current = { ...v };
     c.style.transform = '';
@@ -245,12 +323,17 @@ export function RegionMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // pause the edge animations while a gesture is live — repainting animated strokes
+  // under a pan doubles the paint work exactly when frames are scarcest. State flips
+  // only at gesture START/END (two renders per drag), never per move.
+  const [dragging, setDragging] = useState(false);
   const onPointerDown = (e: RPointerEvent) => {
     // NB: don't capture the pointer here — it would swallow clicks on nodes/buttons.
     // We capture only once a real drag begins (below).
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     movedRef.current = false;
     pinchDist.current = 0;
+    setDragging(true);
   };
   const onPointerMove = (e: RPointerEvent) => {
     const prev = ptrs.current.get(e.pointerId);
@@ -284,6 +367,7 @@ export function RegionMap({
   const onPointerUp = (e: RPointerEvent) => {
     ptrs.current.delete(e.pointerId);
     if (ptrs.current.size < 2) pinchDist.current = 0;
+    if (ptrs.current.size === 0) setDragging(false);
   };
 
   const nodeById = new Map(map.nodes.map((n) => [n.id, n]));
@@ -323,6 +407,16 @@ export function RegionMap({
   };
 
   const maxTrade = Math.max(1, ...map.edges.map((e) => e.tradeVolume));
+  // Only the GREATEST flows and worst marches ANIMATE (flow/bristle) — SVG stroke
+  // animations are not compositor-accelerated, so every animated edge repaints the layer
+  // continuously, forever. Ten animated lines tell "trade flows / war smoulders" exactly
+  // as well as sixty; the rest are drawn identically but still.
+  const animatedEdges = useMemo(() => {
+    const trade = [...map.edges].filter((e) => e.tradeVolume > 0).sort((a, b) => b.tradeVolume - a.tradeVolume).slice(0, 10);
+    const hostile = [...map.edges].filter((e) => e.relation < -20).sort((a, b) => a.relation - b.relation).slice(0, 10);
+    const key = (e: { a: number; b: number }) => e.a * 4096 + e.b;
+    return { trade: new Set(trade.map(key)), hostile: new Set(hostile.map(key)), key };
+  }, [map.edges]);
   // on a big, busy map only the GREATEST cities are labelled (others are dots with a
   // hover name) — zoom in to read them all, like a world atlas.
   const labelIds = new Set(
@@ -333,7 +427,7 @@ export function RegionMap({
   return (
     <div
       ref={wrapRef}
-      className={`map-wrap${isStarfield ? ' starfield' : ''}`}
+      className={`map-wrap${isStarfield ? ' starfield' : ''}${dragging ? ' dragging' : ''}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -391,7 +485,7 @@ export function RegionMap({
               return (
                 <line
                   key={`t${i}`}
-                  className="edge trade"
+                  className={animatedEdges.trade.has(animatedEdges.key(e)) ? 'edge trade' : 'edge trade still'}
                   x1={a.x} y1={a.y} x2={b.x} y2={b.y}
                   stroke="var(--jade)"
                   strokeWidth={0.35 + 1.3 * (e.tradeVolume / maxTrade)}
@@ -408,7 +502,7 @@ export function RegionMap({
               return (
                 <line
                   key={`h${i}`}
-                  className="edge hostile"
+                  className={animatedEdges.hostile.has(animatedEdges.key(e)) ? 'edge hostile' : 'edge hostile still'}
                   x1={a.x} y1={a.y} x2={b.x} y2={b.y}
                   stroke="var(--rose)"
                   strokeWidth={lens === 'war' ? 0.9 : 0.5}

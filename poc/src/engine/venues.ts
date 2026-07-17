@@ -8,7 +8,7 @@
  * venue choice is a pure hash, minting draws from pure philology. Adding venues to a
  * build changes NO dice: the same seed + inputs yields the same history, annotated.
  */
-import { type World, type Settlement, type EntityId, type LocationId } from './model';
+import { type World, type Settlement, type EntityId, type LocationId, settlementPopulation } from './model';
 import { createLocation, getChildren } from './location';
 import { VENUES, VENUE_HOSTS } from './pack';
 import { mixSeed } from './rng';
@@ -22,8 +22,11 @@ import { mixSeed } from './rng';
 export function ensureVenues(world: World, s: Settlement): void {
   if (s.ruinedYear !== undefined) return;
   const existing = new Set(getChildren(world, s.id).map((c) => c.locationType));
+  // the TRUE headcount (cast + remainder for the focused town) — a def's threshold
+  // must judge the community, not whichever ledger happens to hold it
+  const pop = settlementPopulation(world, s);
   for (const def of VENUES) {
-    if (existing.has(def.type) || !def.applies(s)) continue;
+    if (existing.has(def.type) || !def.applies(s, pop)) continue;
     const named = def.name(s, world.seed);
     createLocation(world, {
       name: named.name,

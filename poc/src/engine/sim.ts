@@ -38,6 +38,7 @@ import {
   type HouseholdMember,
   type VenueDetail,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { type Intent } from './intent';
 import { currentAspiration, aspirationLabel } from './aspiration';
@@ -49,7 +50,7 @@ import { fullActors, summaryActors, fullName, relCount, homeName, primarySpouse,
 import { computeOpinion, opinionReasons } from './opinion';
 import { computeMood, moodWord, moodReasons, pruneSelfThoughts } from './mood';
 import { computeStanding, standingReasons, emptyReputation, standingOf } from './reputation';
-import { chronicleYearly, renderLegend, eraTitle } from './chronicle';
+import { chronicleYearly, renderLegendAs, cultureLegends, eraTitle } from './chronicle';
 import { directorYearly, directorDef, directorMood, initialDirector, DIRECTOR_OPTIONS } from './director';
 import { figuresYearly, getFigure, houseById, computeHousePrestige } from './figures';
 import { computeBelief, beliefReasons, coronationSlot } from './belief';
@@ -762,7 +763,7 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
     case 'settlement': {
       const s = world.settlements[ref.id];
       if (!s) return undefined;
-      const pop = s.detailed ? fullActors(world).length : s.macro.population;
+      const pop = settlementPopulation(world, s);
       return {
         kind: 'settlement',
         name: s.name,
@@ -845,7 +846,8 @@ function orgReasoningView(world: World, orgId: OrgId): OrgIntentView | undefined
 
 function settlementView(world: World, fullCount: number, summariesByHome: Map<number, string[]>): SettlementView[] {
   return world.settlements.map((s) => {
-    const pop = s.detailed ? fullCount : s.macro.population;
+    // detailed = materialized cast + the anonymous remainder (sampled promotion)
+    const pop = s.detailed ? fullCount + s.macro.population : s.macro.population;
     return {
       id: s.id,
       name: s.name,
@@ -1472,6 +1474,18 @@ function buildAttention(
   return items.slice(0, 7).map((x) => x.t);
 }
 
+/**
+ * WHOSE history is the chronicle? The player's own people — their character's culture, falling back
+ * to the settlement being watched when there is no player (worldgen, spectating). Undefined only in
+ * headless mode, where no one is home to hold a version and the objective record stands.
+ */
+function playerCultureId(world: World): string | undefined {
+  const sid =
+    world.playerId !== undefined ? world.homeSettlement.get(world.playerId) : undefined;
+  const s = world.settlements[sid ?? world.focusedSettlementId];
+  return s?.cultureId;
+}
+
 export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   const full = fullActors(world); // the focused settlement
   const summaries = summaryActors(world); // named people living elsewhere
@@ -1480,10 +1494,11 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
 
   const { born, died, marriages, feuds } = world.stats;
 
-  // world population = focused settlement's full count + every other macro headcount
-  // (summary actors are named members already inside those macro headcounts)
+  // world population = the focused settlement's cast + EVERY macro headcount — the
+  // focused town's macro is its unmaterialized remainder (sampled promotion), and
+  // summary actors are named members already inside the other macro headcounts.
   let worldPopulation = full.length;
-  for (const s of world.settlements) if (!s.detailed) worldPopulation += s.macro.population;
+  for (const s of world.settlements) worldPopulation += s.macro.population;
 
   // group summary actors by the settlement they live in (the "still there" names)
   const summariesByHome = new Map<number, string[]>();
@@ -1542,12 +1557,23 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
   // The deep past lives in the ANNALS (permanent), so legends and named ages span
   // ALL of history — including a long pre-play worldgen — not just recent memory.
   // legends: the most momentous tales of all time
-  const chronicleViews = [...world.annals]
+  // The annals are read through the eyes of the player's OWN people: where their culture holds a
+  // drifted version of a tale (Legend Drift, design/30 §4.1), that is what the chronicle tells —
+  // so the player reads their folk's history, not an omniscient record no character has access to.
+  // Their character's knowledge is as bounded as anyone's (CLAUDE.md, Legibility); the truth stays
+  // traceable through the evidence chain, not by exempting the reader from the simulation.
+  const topTales = [...world.annals]
     .sort((a, b) => b.interest - a.interest || a.eventId - b.eventId)
-    .slice(0, 14)
+    .slice(0, 14);
+  // one pass over the culture's members answers all fourteen (this runs on every advance step)
+  const ourCulture = playerCultureId(world);
+  const ourLegends = ourCulture ? cultureLegends(world, ourCulture, new Set(topTales.map((t) => t.eventId))) : undefined;
+  const chronicleViews = topTales
     .map((t) => {
       const ev = getEvent(world, t.eventId);
-      return ev ? { year: t.year, interest: t.interest, text: renderLegend(world, ev), eventId: t.eventId } : null;
+      if (!ev) return null;
+      const text = renderLegendAs(world, ev, ourLegends?.get(t.eventId));
+      return { year: t.year, interest: t.interest, text, eventId: t.eventId };
     })
     .filter((v): v is { year: number; interest: number; text: string; eventId: number } => v !== null);
 
@@ -1652,7 +1678,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
     year: Math.floor(world.tick / DAYS_PER_YEAR),
     tick: world.tick,
     settlementName: focused?.name ?? '(the wider world)',
-    population: full.length,
+    population: full.length + (focused?.macro.population ?? 0),
     totalBorn: born,
     totalDied: died,
     marriages,
@@ -1673,7 +1699,7 @@ export function buildSnapshot(world: World, feedSize = 400): Snapshot {
         nameMeaning: s.nameMeaning,
         x: s.pos.x,
         y: s.pos.y,
-        population: s.detailed ? full.length : s.macro.population,
+        population: s.detailed ? full.length + s.macro.population : s.macro.population,
         detailed: s.detailed,
         ruined: s.ruinedYear !== undefined,
         cultureId: s.cultureId,

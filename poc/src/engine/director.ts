@@ -12,7 +12,8 @@
  * runs on its own RNG stream, so its pacing is independent of which settlement the
  * player is watching, and fully reproducible.
  */
-import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PER_YEAR } from './model';
+import { type World, type MacroPop, type Settlement, type DirectorState, DAYS_PER_YEAR, settlementPopulation } from './model';
+import { scaleToll } from './lod';
 import { Rng } from './rng';
 import { fullActors, emit, clamp } from './world';
 import { killActor } from './world';
@@ -107,7 +108,7 @@ function fireIncident(world: World, def: DirectorDef, rng: Rng): void {
 }
 
 function pickPopulated(world: World, rng: Rng): Settlement | undefined {
-  const live = world.settlements.filter((s) => s.ruinedYear === undefined && s.macro.population > 0);
+  const live = world.settlements.filter((s) => s.ruinedYear === undefined && settlementPopulation(world, s) > 0);
   return live.length ? live[rng.int(live.length)] : undefined;
 }
 
@@ -117,7 +118,7 @@ function wonder(world: World, def: DirectorDef, rng: Rng): void {
   let where: Settlement | undefined;
   let best = -1;
   for (const s of world.settlements) {
-    if (s.ruinedYear !== undefined || s.macro.population < 40) continue;
+    if (s.ruinedYear !== undefined || settlementPopulation(world, s) < 40) continue;
     const score = s.econ.wealth + s.macro.stability * 4;
     if (score > best) {
       best = score;
@@ -135,7 +136,7 @@ function wonder(world: World, def: DirectorDef, rng: Rng): void {
 function beast(world: World, def: DirectorDef, rng: Rng): void {
   const s = pickPopulated(world, rng);
   if (!s) return;
-  const toll = Math.round(rng.range(10, 30) * def.intensity);
+  const toll = scaleToll(Math.round(rng.range(10, 30) * def.intensity), settlementPopulation(world, s));
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(6, 14), -100, 100);
@@ -190,7 +191,7 @@ function hardYear(world: World, def: DirectorDef, rng: Rng): void {
   const aggs = world.settlements.filter((s) => !s.detailed && s.macro.population > 20);
   if (!aggs.length) return;
   const s = aggs[rng.int(aggs.length)];
-  const toll = Math.round(rng.range(8, 20) * def.intensity);
+  const toll = scaleToll(Math.round(rng.range(8, 20) * def.intensity), s.macro.population);
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(4, 10), -100, 100);
@@ -201,19 +202,29 @@ function plague(world: World, def: DirectorDef, rng: Rng): void {
   const live = fullActors(world);
   if (live.length > 25) {
     // a plague in the focused settlement kills named villagers — felt, and memorable
-    const toll = Math.min(live.length - 12, Math.max(2, Math.round(rng.range(4, 10) * def.intensity)));
-    for (let i = 0; i < toll; i++) {
+    const named = Math.min(live.length - 12, Math.max(2, Math.round(rng.range(4, 10) * def.intensity)));
+    for (let i = 0; i < named; i++) {
       const victim = live[rng.int(live.length)];
       if (world.lifecycle.get(victim)!.alive) killActor(world, victim, world.tick, 'died', [], []);
     }
-    const plagueId = emit(world, 'plague', [], { name: world.settlements[world.focusedSettlementId].name, toll }, [], [world.focusedSettlementId]);
+    // in a great city the pestilence also sweeps the anonymous remainder (sampled
+    // promotion) — proportional and draw-free, so a fully-materialized village
+    // (remainder 0) is byte-identical to before.
+    const focused = world.settlements[world.focusedSettlementId];
+    const massToll = Math.round(focused.macro.population * 0.03 * def.intensity);
+    if (massToll > 0) {
+      bandKill(focused.macro, massToll);
+      focused.macro.population = focused.macro.children + focused.macro.adults + focused.macro.elders;
+    }
+    const toll = named + massToll;
+    const plagueId = emit(world, 'plague', [], { name: focused.name, toll }, [], [world.focusedSettlementId]);
     markTimes(world, 'fearful_times', plagueId); // the survivors live in dread of it
     return;
   }
   const aggs = world.settlements.filter((s) => !s.detailed && s.macro.population > 40);
   if (!aggs.length) return;
   const s = aggs[rng.int(aggs.length)];
-  const toll = Math.round(rng.range(20, 45) * def.intensity);
+  const toll = scaleToll(Math.round(rng.range(20, 45) * def.intensity), s.macro.population);
   bandKill(s.macro, toll);
   s.macro.population = s.macro.children + s.macro.adults + s.macro.elders;
   s.macro.stability = clamp(s.macro.stability - rng.range(8, 16), -100, 100);

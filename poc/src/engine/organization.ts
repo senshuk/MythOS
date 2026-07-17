@@ -39,6 +39,7 @@ import {
   type EntityId,
   type RelEdge,
   DAYS_PER_YEAR,
+  settlementPopulation,
 } from './model';
 import { emit, getRel } from './world';
 import { getLocation } from './location';
@@ -333,7 +334,7 @@ export function orgTitheYearly(world: World): void {
   for (const org of world.organizations) {
     if (org.dissolvedYear !== undefined) continue;
     const seat = seatSettlement(world, org);
-    if (!seat || seat.macro.population <= 0) continue;
+    if (!seat || settlementPopulation(world, seat) <= 0) continue;
     const tithe = seat.econ.wealth * ORG_ECONOMY.titheRate;
     seat.econ.wealth -= tithe;
     adjustTreasury(world, org.id, tithe);

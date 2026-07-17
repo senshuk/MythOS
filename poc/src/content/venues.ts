@@ -13,8 +13,10 @@ import { venueName } from './languages';
 export interface VenueDef {
   /** the Location's locationType — the venue's kind, in this pack's vocabulary. */
   type: string;
-  /** does this settlement raise one? (checked at promote; a town can grow into one) */
-  applies(s: Settlement): boolean;
+  /** does this settlement raise one? (checked at promote; a town can grow into one).
+   *  `population` is the settlement's TRUE headcount, supplied by the engine — under
+   *  sampled promotion a focused city's macro ledger holds only its remainder. */
+  applies(s: Settlement, population: number): boolean;
   /** its durable name (and meaning, when coined in a living tongue). */
   name(s: Settlement, seed: number): { name: string; meaning?: string };
 }
@@ -22,7 +24,7 @@ export interface VenueDef {
 export const VENUES: VenueDef[] = [
   {
     type: 'square',
-    applies: (s) => s.macro.population >= 60, // a hamlet has no market
+    applies: (_s, population) => population >= 60, // a hamlet has no market
     name: () => ({ name: 'the market square' }),
   },
   {
@@ -32,7 +34,7 @@ export const VENUES: VenueDef[] = [
   },
   {
     type: 'tavern',
-    applies: (s) => s.macro.population >= 100,
+    applies: (_s, population) => population >= 100,
     // the tavern is named in its people's OWN tongue ("Voskhara — 'the bright hearth'")
     name: (s, seed) => venueName(s.cultureId, seed, s.id),
   },

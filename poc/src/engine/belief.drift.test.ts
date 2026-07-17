@@ -25,7 +25,7 @@ import {
   beliefReasons,
   driftReasons,
 } from './belief';
-import { DRIFT_HOPS, DRIFT_YEARS } from './pack';
+import { DRIFT_HOPS, DRIFT_YEARS, driftSpecsFor } from './pack';
 
 type W = ReturnType<typeof createWorld>;
 
@@ -142,13 +142,17 @@ describe('Legend Drift — bounded, pack-owned, and legible', () => {
   it('an assertion this universe has no table for never drifts (the table is PACK data)', () => {
     const w = createWorld(7);
     const [king, alice, bob] = fullActors(w);
-    // 'exiled' is not in DRIFT_SPECS — this universe has no other version of it to tell
-    witnessBelief(w, alice, king, 'exiled', emit(w, 'died', [king], {}));
+    // `wed` has no DRIFT_SPECS row — this universe tells it straight, so no threshold can loosen
+    // it. (Picked by ASKING the pack rather than naming a row believed to be absent: `exiled` was
+    // this test's original subject until it gained a table of its own, at which point the test
+    // still passed — for the wrong reason, on a chance faithful draw.)
+    expect(driftSpecsFor('wed')).toEqual([]);
+    witnessBelief(w, alice, king, 'wed', emit(w, 'married', [king], {}));
     w.tick += (DRIFT_YEARS + 50) * DAYS_PER_YEAR; // long past every threshold
-    expect(retoldAssertion(w, alice, king, 'exiled')).toBe('exiled');
-    retell(w, alice, bob, king, 'exiled', 0.95);
-    expect(versionsHeldBy(w, bob, king)).toEqual([]); // (not a 'dead' assertion at all)
-    expect(beliefOf(w, bob, king, 'exiled')).toBeDefined();
+    expect(retoldAssertion(w, alice, king, 'wed')).toBe('wed');
+    retell(w, alice, bob, king, 'wed', 0.95);
+    expect(beliefOf(w, bob, king, 'wed')).toBeDefined(); // told, and told faithfully
+    expect(driftVariant(beliefOf(w, bob, king, 'wed')!.assertion)).toBeUndefined();
   });
 
   it('a denial has no story to embellish — only an affirmed tale grows', () => {

@@ -12,7 +12,7 @@
  * Deterministic and RNG-FREE: declaration, joining, and resolution are pure records and
  * fixed-rule outcomes drawing nothing from any stream, so a world with no wars is unaffected.
  */
-import { type World, type OrgId, type War, DAYS_PER_YEAR } from './model';
+import { type World, type OrgId, type War, DAYS_PER_YEAR, settlementPopulation } from './model';
 import { emit } from './world';
 import { getOrganization, adjustTreasury, treasuryOf } from './organization';
 import { sealAgreement, activeAgreement } from './orgInteraction';
@@ -23,8 +23,12 @@ const WAR_QUIET_YEARS = 8;
 const IMPOSED_PEACE_YEARS = 15;
 /** A war must last at least this long before attrition can force a side to capitulate. */
 const WAR_MIN_YEARS_FOR_TERMS = 4;
-/** A side capitulates when it has borne at least this many cumulative casualties… */
+/** A side capitulates when it has borne at least this many cumulative casualties (the
+ *  floor scales with the bled side's own people — see capitulationFloor — so a city's
+ *  war is still a multi-battle affair, not decided by one skirmish's scaled toll)… */
 const CAPITULATE_LOSSES = 45;
+/** …specifically, at least this fraction of its primary seat's population. */
+const CAPITULATE_FRACTION = 0.12;
 /** …AND far more than its enemy (this ratio) — a long, one-sided bleeding. */
 const CAPITULATE_RATIO = 1.8;
 /** Reparations a victor exacts: this fraction of the loser's treasury, up to the cap. */
@@ -32,6 +36,16 @@ const REPARATIONS_FRACTION = 0.4;
 const REPARATIONS_CAP = 60;
 
 const nameOf = (world: World, id: OrgId): string => getOrganization(world, id)?.name ?? 'a fallen power';
+
+/** Losses a side can bear before capitulation is possible — the old absolute floor, or a
+ *  fraction of its primary seat's people, whichever is greater. Scale-free: a village's war
+ *  still turns at ~45 dead, a city of ten thousand fights on until the loss is truly felt. */
+function capitulationFloor(world: World, side: OrgId[]): number {
+  const seat = getOrganization(world, side[0])?.seatId;
+  const s = seat !== undefined ? world.settlements[seat] : undefined;
+  const pop = s && s.ruinedYear === undefined ? settlementPopulation(world, s) : 0;
+  return Math.max(CAPITULATE_LOSSES, Math.round(pop * CAPITULATE_FRACTION));
+}
 
 /** Is a war's side still standing? A side is alive while its PRIMARY belligerent (side[0])
  *  has a living polity whose seat is not razed. Co-belligerents may fall without ending it. */
@@ -131,7 +145,7 @@ export function warYearly(world: World): void {
       const aBled = war.exhaustionA >= war.exhaustionB;
       const bledMore = aBled ? war.exhaustionA : war.exhaustionB;
       const bledLess = aBled ? war.exhaustionB : war.exhaustionA;
-      if (bledMore >= CAPITULATE_LOSSES && bledMore >= bledLess * CAPITULATE_RATIO) {
+      if (bledMore >= capitulationFloor(world, aBled ? war.sideA : war.sideB) && bledMore >= bledLess * CAPITULATE_RATIO) {
         // the exhausted side (aBled → side A) is the loser; the other wins
         endWar(world, war, aBled ? war.sideB : war.sideA, aBled ? war.sideA : war.sideB);
         continue;

@@ -187,9 +187,20 @@ export function pruneRelationshipGraph(world: World): void {
   }
 }
 
+/**
+ * Are `a` and `b` kin (parent/child or siblings)?
+ *
+ * Either id may be something that HAS no kinship rather than merely lacking it: a Belief's subject
+ * is any addressable id (design/17 §4), so callers that ask "am I kin to what I believe about?"
+ * (reactions.ts's mourning, the avenge/grief decisions) will hand this a HistoricalFigure — a
+ * record with no ECS components — the moment a ruler's death becomes belief-worthy, and an Object
+ * once those land (design/30 §4.2). Neither is anyone's kin, so answer no rather than assuming
+ * every id has ties.
+ */
 export function isKin(world: World, a: EntityId, b: EntityId): boolean {
-  const ta = world.ties.get(a)!;
-  const tb = world.ties.get(b)!;
+  const ta = world.ties.get(a);
+  const tb = world.ties.get(b);
+  if (!ta || !tb) return false; // one of them is not an actor — it has no kin, it isn't missing them
   if (ta.parents.includes(b) || tb.parents.includes(a)) return true;
   for (const p of ta.parents) if (tb.parents.includes(p)) return true; // siblings
   return false;

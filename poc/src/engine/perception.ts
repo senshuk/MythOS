@@ -164,13 +164,31 @@ export function standAgainst(world: World, threatEventId: EventId, settlementId:
  * BELIEF-WORTHY events: witnessing one makes co-residents come to KNOW it — the event type
  * maps to the assertion a witness forms about its subject (subjects[0]). Deliberately TINY:
  * witnessing a harvest, a tax update, or a festival must NOT spawn beliefs, or the evidence
- * graph drowns in trivia before we learn what matters. Extend only when a new event type
- * earns it — a clean (subject, assertion) pair — e.g. murder, birth→'alive', exile→'exiled',
- * succession→'rules'. (Subjectivity 1A; see design/19.)
+ * graph drowns in trivia before we learn what matters.
+ *
+ * The bar an event must clear to be added here:
+ *   1. a CLEAN (subject, assertion) pair — the proposition is about `subjects[0]` and nothing else;
+ *   2. PUBLIC — something bystanders could actually see. A private event must never be witnessed
+ *      (religion.ts's crisis of faith is "spontaneous, private" — so `apostasy` is NOT here);
+ *   3. WORTH knowing — rare and consequential enough that the evidence graph earns its keep.
+ *      This is why `born` is absent despite being an obvious candidate: every peasant birth would
+ *      spawn evidence in every witness, and no consumer asks "is X alive". Volume without drama.
+ *
+ * A proposition added here is automatically subject to Legend Drift (design/30 §4.1) once the pack
+ * gives it a `DRIFT_SPECS` table — that is what makes widening this list worth doing: each new row
+ * is a new kind of story the world's oral histories can disagree about.
  */
 export const BELIEF_WORTHY: Record<string, string> = {
   died: 'dead',
   died_brawl: 'dead',
+  // A RULER's death — the archetypal legend, and the running example of every epistemics doc
+  // ("the king is dead"). Reuses the `dead` assertion (and so its drift table) exactly: a death
+  // is a death, whoever it happened to. Fires world-wide, so it leans on perceiveEvent's
+  // locality guard to keep a distant king's death from being "witnessed" at home.
+  ruler_died: 'dead',
+  // Cast out after a civil war: public, rare, momentous, and — unlike a death — a thing whose
+  // REASON folk will happily invent. "Why was she exiled?" is how legends start.
+  exile: 'exiled',
 };
 
 /**
@@ -178,13 +196,23 @@ export const BELIEF_WORTHY: Record<string, string> = {
  * co-resident witnesses (a per-event seeded draw — not everyone sees everything) come to
  * KNOW it firsthand. Returns the witnesses. A no-op for events not in BELIEF_WORTHY.
  *
+ * LOCALITY: `whereId` is the settlement the event HAPPENED IN, and the caller must say so — you
+ * cannot witness what did not happen in front of you. Only the focused settlement has actors to
+ * witness anything, so an event elsewhere forms no belief here; its people learn later, once news
+ * travels (1C-distal). This is required rather than inferred because a witness draw reads
+ * `fullActors`, which is scoped by FIDELITY, not by settlement — so without it, a king dying two
+ * kingdoms away would be "seen" at home by everyone. Every new BELIEF_WORTHY row must therefore
+ * name its place, and the omniscience bug is unavailable by construction rather than by care. It
+ * is the same guard `perceiveCoronation` already applies to itself.
+ *
  * DETERMINISM: witnesses are drawn from a LOCAL stream keyed by (seed, event, subject), so
  * this never advances the shared settlement RNG — the rest of the sim is byte-identical
  * whether or not anyone was watching (exactly like witnessDeed). INERT: forms beliefs, emits
- * nothing (invariant 8). No system consumes these beliefs yet — the running world simply now
- * holds subjective knowledge that diverges across actors.
+ * nothing (invariant 8) — though what an actor DOES on learning it (reactions.ts: mourning) is
+ * history, and a newly-witnessed death is a newly-mourned one.
  */
-export function perceiveEvent(world: World, eventId: EventId): EntityId[] {
+export function perceiveEvent(world: World, eventId: EventId, whereId: number): EntityId[] {
+  if (whereId !== world.focusedSettlementId) return []; // it did not happen where the subjects are
   const ev = getEvent(world, eventId);
   if (!ev) return [];
   const assertion = BELIEF_WORTHY[ev.type];
