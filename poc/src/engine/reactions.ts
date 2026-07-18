@@ -32,8 +32,10 @@
  * *until* that phase.
  */
 import { type World, type EntityId, type Belief } from './model';
-import { isKin, emit } from './world';
+import { isKin, emit, getEvent, isAlive } from './world';
 import { computeBelief } from './belief';
+import { swearBinding } from './binding';
+import { OATH_HONOR_THRESHOLD } from './pack';
 
 /** Stable key: "this actor has already performed this reaction about this proposition." */
 function reactionKey(actor: EntityId, kind: string, subject: EntityId, assertion: string): string {
@@ -64,9 +66,34 @@ export function reactToBelief(world: World, actor: EntityId, belief: Belief): vo
   switch (belief.assertion) {
     case 'dead':
       // you mourn kin you believe have died — once, when you come to believe it.
-      if (isKin(world, actor, belief.subject)) mourn(world, actor, belief);
+      if (isKin(world, actor, belief.subject)) {
+        mourn(world, actor, belief);
+        maybeSwearVengeance(world, actor, belief);
+      }
       break;
   }
+}
+
+/**
+ * THE OATH PRODUCER (design/36): learning that kin was SLAIN — the belief's evidence
+ * traces to a brawl with a killer — an exceptionally honor-driven survivor swears
+ * VENGEANCE: an inheritable Binding on the killer, carried down the bloodline until it
+ * resolves. Reality → Belief → Binding, deterministic and RNG-free: most mourn; the
+ * sworn are the few whose innate honor crosses the pack's threshold.
+ */
+function maybeSwearVengeance(world: World, actor: EntityId, belief: Belief): void {
+  const key = reactionKey(actor, 'swear', belief.subject, belief.assertion);
+  if (world.reactions.has(key)) return;
+  const cause = belief.evidence[0]?.cause;
+  if (cause === undefined) return;
+  const ev = getEvent(world, cause);
+  if (!ev || ev.type !== 'died_brawl') return; // only a violent death calls for vengeance
+  const killer = ev.subjects[1];
+  if (killer === undefined || killer === actor || !isAlive(world, killer)) return;
+  if (isKin(world, actor, killer)) return; // no oath against one's own blood
+  if ((world.personality.get(actor)?.values.honor ?? 0) < OATH_HONOR_THRESHOLD) return;
+  world.reactions.add(key);
+  swearBinding(world, { kind: 'vengeance', swearer: actor, subject: killer, inheritable: true, cause });
 }
 
 function mourn(world: World, actor: EntityId, belief: Belief): void {

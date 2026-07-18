@@ -20,7 +20,7 @@ import { Rng, mixSeed } from './rng';
 import { createSubstrate } from './substrate';
 import { POLITY_LABELS, ORG_CATEGORY_POLITICAL, baselineOperational, PACK_ID, PACK_VERSION, RULES, setCulturesForSeed } from './pack';
 
-export const SAVE_VERSION = 29;
+export const SAVE_VERSION = 30;
 
 /** A fully serialized world — plain data only (JSON-safe & structured-clonable). */
 export interface SaveFile {
@@ -83,6 +83,9 @@ export interface SaveFile {
   /** Storied objects — dynastic heirlooms (design/33). Optional for saves predating v29
    *  (which minted none: objects only enter a world at its own worldgen/successions). */
   objects?: World['objects'];
+  /** Bindings — oaths/curses constraining reasoning across generations (design/36).
+   *  Optional for saves predating v30 (which swore none). */
+  bindings?: World['bindings'];
   /** First-class organizations (plain objects). Optional for saves predating v11. */
   organizations?: Organization[];
   /** per-org membership rosters as entries. Optional for saves predating v12. */
@@ -207,6 +210,7 @@ export function serializeWorld(world: World): SaveFile {
     figures: world.figures,
     houses: world.houses,
     objects: world.objects,
+    bindings: world.bindings,
     organizations: world.organizations,
     orgMembers: [...world.orgMembers],
     currentIntent: [...world.currentIntent],
@@ -507,6 +511,7 @@ export function deserializeWorld(save: SaveFile): World {
     // pre-v29 worlds minted no heirlooms — they simply have none (objects enter a world
     // only at its own house foundings, so an old save stays exactly the world it was)
     objects: s.objects ?? [],
+    bindings: s.bindings ?? [],
     organizations,
     organizationsById,
     orgMembers,

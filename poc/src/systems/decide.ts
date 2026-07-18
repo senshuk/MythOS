@@ -19,6 +19,7 @@ import { isAlive } from '../engine/world';
 import { maybeBreak } from '../engine/mood';
 import { computeOpinion } from '../engine/opinion';
 import { personalityOf } from '../engine/social';
+import { bindingForbids, bindingUrge } from '../engine/binding';
 import { maturityOf, SUBSISTENCE_NEED, WEALTH_NEED, GIFT_WEALTH_FLOOR, giveInclination } from '../engine/pack';
 
 /** The living soul this actor holds dearest — the warmest of their bonds (spouse, friend,
@@ -85,6 +86,13 @@ export function decideCourse(world: World, a: EntityId, adults: EntityId[]): Int
   // subject if it has one, else fall back to deepening an existing bond.
   if (!world.rng.chance(0.55)) return { kind: 'idle' };
 
+  // A BINDING'S URGE (design/36): a sworn avenger whose quarry walks these same streets
+  // feels the pull to face them. The binding only surfaces the pull — this policy, and
+  // these dice, decide whether today is the day. Draw-free for the unbound (bindingUrge
+  // reads, never rolls), so every unsworn soul's stream is byte-identical.
+  const urge = bindingUrge(world, a);
+  if (urge && world.rng.chance(0.3)) return urge.intent;
+
   // GENEROSITY — the everyday virtue (design/23 Stage 2). A warm soul with real surplus
   // sometimes gives to someone they cherish rather than merely chatting; the gift spends
   // their wealth (resolveGift), so it self-limits. This is what makes the creed's virtue
@@ -93,11 +101,14 @@ export function decideCourse(world: World, a: EntityId, adults: EntityId[]): Int
     const warmth = personalityOf(world, a).temperament.warmth ?? 0;
     if (world.rng.chance(giveInclination(warmth))) {
       const dear = dearestBond(world, a);
-      if (dear !== undefined) return { kind: 'give', target: dear };
+      // the FORBID half of a binding: no gift for the sworn quarry (fall through to talk)
+      if (dear !== undefined && !bindingForbids(world, a, { kind: 'give', target: dear })) {
+        return { kind: 'give', target: dear };
+      }
     }
   }
 
-  if (asp.target !== undefined && isAlive(world, asp.target)) {
+  if (asp.target !== undefined && isAlive(world, asp.target) && !bindingForbids(world, a, { kind: 'socialize', target: asp.target })) {
     // NPCs pursue gently via plain socializing (focus, not fervour) — aggressive
     // `court` is reserved for the player's deliberate choice, so NPC courtship
     // doesn't trivialize marriage and explode the population.
@@ -105,5 +116,7 @@ export function decideCourse(world: World, a: EntityId, adults: EntityId[]): Int
   }
   const b = choosePartner(world, a, adults);
   if (b === undefined) return { kind: 'idle' };
+  // an oath bounds the will at the last gate too: no warmth toward the sworn quarry
+  if (bindingForbids(world, a, { kind: 'socialize', target: b })) return { kind: 'idle' };
   return { kind: 'socialize', target: b };
 }

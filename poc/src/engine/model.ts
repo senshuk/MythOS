@@ -289,6 +289,33 @@ export interface WorldObject {
   history: { eventId: EventId; year: number; kind: string }[];
 }
 
+/**
+ * A BINDING (design/30 §4.3, the mythic layer's ONE genuinely new Construct; ADR
+ * design/36): an oath, curse, or vow that constrains FUTURE reasoning across time and
+ * generations. A Binding never fires an action — it only weights or forbids candidate
+ * Intents at the Reasoning stage, exactly as a Belief does (Prime Movers: Belief →
+ * Reasoning, never Belief → Reality). Carriers may be any addressable id; descendants
+ * of an inheritable binding's carriers are enrolled at birth, which is how one sworn
+ * moment ripples for centuries. `cause` makes "why did she refuse?" resolve to "bound
+ * by an oath sworn by her great-grandfather."
+ */
+export interface Binding {
+  id: EntityId; // shares the monotonic entity id space
+  /** pack vocabulary: 'vengeance', 'peace', … — keys the pack's constraint predicate. */
+  kind: string;
+  /** whom or what the constraint concerns (any addressable id, like a Belief subject). */
+  subject: EntityId;
+  /** who is bound — swearer first; descendants appended at birth while inheritable. */
+  carriers: EntityId[];
+  /** does the constraint pass to a carrier's children? (a bloodline oath vs a personal vow) */
+  inheritable: boolean;
+  sinceTick: number;
+  /** set when the binding resolves (subject dead, term lapsed) — kept for history. */
+  resolvedTick?: number;
+  /** the sworn moment — the event this constraint traces to. */
+  cause?: EventId;
+}
+
 export type OrgId = EntityId; // shares the monotonic entity id space (like FigureId/HouseId)
 
 /** An Organization's broad, engine-level CATEGORY — an open string, pack-defined
@@ -1127,6 +1154,9 @@ export interface World {
   /** Storied OBJECTS — dynastic heirlooms and, in time, every other persistent thing
    *  (design/33). World-tier like houses: they outlive actors and survive focus shifts. */
   objects: WorldObject[];
+  /** BINDINGS — oaths/curses that constrain reasoning across generations (design/36).
+   *  In creation (id) order; resolved bindings stay (history), filtered at read. */
+  bindings: Binding[];
   /** First-class Organizations — the enduring collective actors (polities today;
    *  guilds/churches later). In creation (id) order. */
   organizations: Organization[];

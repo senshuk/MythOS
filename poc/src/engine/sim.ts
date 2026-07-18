@@ -73,6 +73,7 @@ import { buildAmbitionView } from './ambition';
 import { createSettlements, promote, macroYearly, summaryYearly, migrationYearly, geographyYearly, economyYearly } from './lod';
 import { objectById, objectRenownTier } from './objects';
 import { legendOrdersYearly, attractorStrength } from './legend';
+import { bindingsOn, bindingsYearly } from './binding';
 import { travelTick } from './travel';
 import { getOrganization, orgTitheYearly, treasuryOf, roleHistory, ROLE_LEADER, ROLE_FOUNDER } from './organization';
 import { orgIntentYearly } from './orgReason';
@@ -164,6 +165,7 @@ export function createWorld(seed: number, focus = true, pack?: UniversePack): Wo
     figuresBySettlement: new Map(),
     houses: [],
     objects: [],
+    bindings: [],
     organizations: [],
     organizationsById: new Map(),
     orgMembers: new Map(),
@@ -234,6 +236,7 @@ export function stepTick(world: World): void {
     directorYearly(world); // the storyteller paces drama (fires incidents)
     figuresYearly(world); // rulers age, die, and are succeeded (the line of history)
     if (hasFocus) legendOrdersYearly(world); // a broadly-held legend founds an order (design/34)
+    bindingsYearly(world); // oaths whose subject has left the world resolve (design/36)
     if (hasFocus && MODULES.factions) civilWarYearly(world); // resolve civil wars after the grace period
     if (hasFocus && MODULES.factions) exileYearly(world);   // formal return of exiles after EXILE_RETURN_YEARS
     orgIntentYearly(world); // organizations form their collective intent (Perception→Worldview→Intent)
@@ -719,12 +722,20 @@ export function buildPeek(world: World, ref: EventRef): PeekCard | undefined {
     case 'actor': {
       if (!world.identity.has(ref.id)) return undefined;
       const a = actorView(world, ref.id);
+      // BINDINGS (design/36): an oath bounds this soul's will — say so, and whose vow it
+      // was ("why did she refuse?" resolves to the sworn moment via the oath's own event)
+      const bound = bindingsOn(world, ref.id).slice(0, 2).map((b) => {
+        const who = world.names.get(b.subject) ?? '?';
+        const inherited = b.carriers[0] !== ref.id;
+        return `sworn to ${b.kind} against ${who}${inherited ? ' — an oath of their line' : ''}`;
+      });
       return {
         kind: 'actor',
         name: a.name,
         lines: [
           `${a.species} ${a.profession} · ${a.ageYears}y${a.alive ? '' : ` · died y${a.deathYear}`}`,
           `of House ${a.house} · ${a.nature}`,
+          ...bound,
         ],
         houseId: a.houseId,
         houseName: a.house,
@@ -2019,6 +2030,10 @@ export function canonicalize(world: World): string {
   // storied objects (design/33): identity, holder, and biography index — part of the world
   for (const o of world.objects) {
     parts.push(`O${o.id}:${o.name}.k${o.kind}.f${o.forgedYear}.h${o.holderHouseId ?? -1}.ev${o.history.map((h) => h.eventId).join('-') || '-'}`);
+  }
+  // bindings (design/36): the sworn constraints and who carries them — part of the world
+  for (const b of world.bindings) {
+    parts.push(`B${b.id}:${b.kind}.s${b.subject}.c${b.carriers.join('-')}.i${b.inheritable ? 1 : 0}.r${b.resolvedTick ?? -1}`);
   }
   // generic (non-settlement) locations: the spatial tree + any in-flight transit. Empty in
   // the default world, so this appends nothing there and existing hashes are unaffected.

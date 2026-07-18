@@ -70,6 +70,9 @@ export const EVENT_RENDER: Record<string, RenderFn> = {
   order_rite: (_n, d) => `${d.org} held the rite of its legend, and the tale of ${d.subject} was told again.`,
   order_search: (_n, d) => `${d.org} scoured the land for ${d.object}, and returned empty-handed.`,
   object_recovered: (_n, d) => `${d.org} found ${d.object} at last — borne home to ${d.settlement}, into the keeping of House ${d.house}.`,
+  // bindings (design/36): a sworn moment, and — perhaps generations later — its quiet end
+  oath_sworn: (n, d) => `${n(0)} swore ${d.kind === 'vengeance' ? 'vengeance' : `an oath of ${d.kind}`} against ${d.who} — a vow their line will carry.`,
+  oath_fulfilled: (_n, d) => `${d.who} is no more, and the ${d.kind === 'vengeance' ? 'vengeance' : String(d.kind)} sworn against them lies quiet at last.`,
   ruler_died: (n, d) => `${n(0)}, ${d.title || 'ruler'} of ${d.settlement}, passed away.`,
   prosperity: (_n, d) => `${d.name} enjoyed a prosperous year (now ${d.population} souls).`,
   hardship: (_n, d) => `${d.name} suffered hardship — ${d.toll} souls lost.`,
@@ -180,6 +183,8 @@ export function eventInterest(type: string, data: Record<string, number | string
     case 'order_rite': return 16; // recurring devotion — felt locally, not annals-worthy
     case 'order_search': return 30; // an expedition rides out — a quest in motion
     case 'object_recovered': return 62; // the quest fulfilled — annals-worthy
+    case 'oath_sworn': return 50; // a vow that will outlive its swearer
+    case 'oath_fulfilled': return 42; // a generations-old constraint lies down
     case 'return_from_exile': return 58; // a triumphant return — dramatic resolution of the exile arc
     case 'exile': return 52; // a named expulsion — memorable consequence, below a brawl death
     case 'contested_succession': return 42; // a power shift between factions — between ascension and dynasty

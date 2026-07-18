@@ -11,6 +11,7 @@ import { killActor } from '../engine/world';
 import { perceiveEvent } from '../engine/perception';
 import { addSelfThought } from '../engine/mood';
 import { holdGathering, communityAround } from '../engine/gathering';
+import { inheritBindings } from '../engine/binding';
 import {
   speciesById,
   pickSex,
@@ -107,6 +108,10 @@ function bear(world: World, bearer: EntityId): void {
 
   world.ties.get(bearer)!.children.push(childId);
   if (mate !== undefined) world.ties.get(mate)!.children.push(childId);
+
+  // a bloodline oath passes down at birth (design/36) — the child of a carrier of an
+  // inheritable binding is enrolled, exactly as traits and family already inherit
+  inheritBindings(world, childId, parents);
 
   const birthId = emit(world, 'born', mate !== undefined ? [childId, bearer, mate] : [childId, bearer], {});
   // a child is a joy the parents carry for a while (mood.ts)

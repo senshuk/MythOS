@@ -11,7 +11,8 @@ import { DAYS_PER_YEAR, settlementPopulation } from '../engine/model';
 // cycle through the pack boundary is safe (the ambitions/aspirations precedent)
 import { objectById } from '../engine/objects';
 import { getFigure } from '../engine/figures';
-import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, OrgOutcome, World, Settlement, Organization, Rules } from '../engine/model';
+import type { Sex, ResourceKey, ThoughtSpec, ReputeSpec, PerceptionFact, Worldview, IntentDef, ActionDef, InteractionDef, OrgOutcome, World, Settlement, Organization, Rules, Binding } from '../engine/model';
+import type { Intent } from '../engine/intent';
 import { biomeOf } from './biomes';
 
 // ------------------------------------------------------------ identity -------
@@ -1825,6 +1826,28 @@ export const EMULATE_STANDING = 120;
 
 /** Organization category for belief-founded orders — the first non-political org kind. */
 export const ORG_CATEGORY_DEVOTIONAL = 'devotional';
+
+// --------------------------------------------------- bindings (design/36) ----
+// WHAT an oath forbids or urges is this universe's vocabulary. Each constraint is a PURE
+// predicate over a candidate Intent — consulted at Reasoning, never firing an action
+// itself (the engine's binding.ts holds that law; these hold the meaning).
+
+/** The constraint a kind of binding places on a candidate intent. */
+export const BINDING_CONSTRAINTS: Record<string, (intent: Intent, binding: Binding) => 'forbid' | 'urge' | undefined> = {
+  // a VENGEANCE oath: no warmth toward the sworn quarry — and the standing pull to face them
+  vengeance: (intent, b) => {
+    if (intent.target !== b.subject) return undefined;
+    if (intent.kind === 'socialize' || intent.kind === 'court' || intent.kind === 'give') return 'forbid';
+    if (intent.kind === 'provoke') return 'urge';
+    return undefined;
+  },
+  // a PEACE oath: never raise a hand against the protected
+  peace: (intent, b) => (intent.target === b.subject && intent.kind === 'provoke' ? 'forbid' : undefined),
+};
+
+/** How honor-driven a soul must be (their innate honor value) to swear vengeance when
+ *  they learn kin was slain — most mourn; the sworn are the exceptional few. */
+export const OATH_HONOR_THRESHOLD = 35;
 
 /** What an order sworn to this legend calls itself ("the Seekers of Wryo"). */
 export function orderNameFor(variant: string, subjectName: string): string {
